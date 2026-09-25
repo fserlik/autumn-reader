@@ -1,0 +1,59 @@
+name: Crear paquete MSIX para Microsoft Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      identity_name:
+        description: Nombre de identidad del paquete en Partner Center
+        required: true
+        type: string
+      publisher:
+        description: Publicador de Partner Center (CN=...)
+        required: true
+        type: string
+      publisher_display_name:
+        description: Nombre público del desarrollador
+        required: true
+        type: string
+      package_version:
+        description: Versión MSIX, con cuatro partes y terminada en .0
+        required: true
+        default: 1.0.0.0
+        type: string
+
+jobs:
+  package:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+      - run: npm ci
+      - name: Compilar y empaquetar
+        shell: pwsh
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+          AUTUMN_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          STORE_IDENTITY_NAME: ${{ inputs.identity_name }}
+          STORE_PUBLISHER: ${{ inputs.publisher }}
+          STORE_PUBLISHER_DISPLAY_NAME: ${{ inputs.publisher_display_name }}
+          STORE_PACKAGE_VERSION: ${{ inputs.package_version }}
+        run: |
+          .\scripts\build-store-msix.ps1 `
+            -IdentityName $env:STORE_IDENTITY_NAME `
+            -Publisher $env:STORE_PUBLISHER `
+            -PublisherDisplayName $env:STORE_PUBLISHER_DISPLAY_NAME `
+            -PackageVersion $env:STORE_PACKAGE_VERSION
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autumn-reader-store-msix
+          path: dist/store-msix/*.msix
+          if-no-files-found: error
