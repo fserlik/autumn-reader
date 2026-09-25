@@ -1,0 +1,24 @@
+[package]
+name = "autumn-reader"
+version = "0.4.1"
+description = "Un lector de libros de escritorio"
+authors = ["Autumn Reader contributors"]
+edition = "2021"
+
+[lib]
+name = "autumn_reader_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+base64 = "0.22"
+rand = "0.8"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+url = "2"
+webbrowser = "1"
