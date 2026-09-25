@@ -7,7 +7,7 @@ param(
   [ValidatePattern('^CN=.+')]
   [string]$Publisher,
 
-  [string]$PublisherDisplayName = 'fserlik',
+  [string]$PublisherDisplayName = 'Facundo Serlik',
   [string]$PackageVersion = '1.0.0.0',
   [switch]$SkipBuild
 )
