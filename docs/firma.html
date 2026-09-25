@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#351b1f" />
+    <meta name="description" content="Política de firma de código de Autumn Reader y procedencia de sus instaladores." />
+    <title>Code signing policy · Autumn Reader</title>
+    <link rel="icon" type="image/png" href="./autumn-leaf.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#contenido">Saltar al contenido</a>
+    <header class="site-header"><div class="header-inner"><a class="brand" href="./" aria-label="Autumn Reader, inicio"><img src="./autumn-leaf.png" alt="" /><span>Autumn Reader</span></a><nav aria-label="Navegación principal"><a href="./">Inicio</a><a href="./#descargas">Descargas</a><a href="./privacidad.html">Privacidad</a></nav></div></header>
+    <main id="contenido" class="policy-page content-width">
+      <div class="policy-intro"><p>Autumn Reader</p><h1>Code signing policy</h1><p class="policy-summary">Cómo verificamos la procedencia de los instaladores de Windows.</p></div>
+      <div class="policy-layout">
+        <nav class="policy-toc" aria-label="En esta página"><p>Contenido</p><a href="#estado">Estado actual</a><a href="#procedencia">Procedencia y publicación</a><a href="#responsables">Responsables</a><a href="#privacidad">Privacidad</a></nav>
+        <div class="policy-content">
+          <section id="estado"><h2>Estado actual</h2><p>El instalador de Windows publicado hasta ahora no tiene firma digital. Autumn Reader está preparando su solicitud de firma gratuita a <a href="https://signpath.org/">SignPath Foundation</a>. Hasta que esa solicitud se apruebe y se publique una nueva versión firmada, los instaladores existentes seguirán apareciendo como no firmados.</p><p>Una vez aprobado el proyecto: Free code signing provided by <a href="https://signpath.io/">SignPath.io</a>, certificate by <a href="https://signpath.org/">SignPath Foundation</a>.</p></section>
+          <section id="procedencia"><h2>Procedencia y publicación</h2><p>Las versiones firmadas se compilarán desde el <a href="https://github.com/fserlik/autumn-reader">repositorio público de Autumn Reader</a> en GitHub Actions. Solo se enviarán a SignPath instaladores producidos por ese flujo a partir de etiquetas de versión que coincidan con el código. Cada solicitud de firma requerirá aprobación manual y la firma se verificará antes de crear la release de GitHub.</p><p>Los instaladores disponibles se enlazan desde la <a href="./#descargas">página de descargas</a>. No firmamos aplicaciones de terceros con el certificado del proyecto.</p></section>
+          <section id="responsables"><h2>Responsables</h2><p><a href="https://github.com/fserlik">fserlik</a> mantiene el proyecto y cumple los roles de autor, revisor de contribuciones externas y aprobador de solicitudes de firma. Las cuentas con acceso al repositorio y a SignPath deben usar autenticación de dos factores.</p></section>
+          <section id="privacidad"><h2>Privacidad</h2><p>La aplicación puede guardar una copia de tu biblioteca en Google Drive solo cuando lo solicitas. Consulta la <a href="./privacidad.html">política de privacidad</a> para conocer los datos locales, el acceso a Drive y cómo eliminar las copias.</p></section>
+        </div>
+      </div>
+    </main>
+    <footer class="site-footer"><div class="footer-inner"><div><a class="footer-brand" href="./">Autumn Reader</a><p>Un proyecto abierto para leer a tu manera.</p></div><div class="footer-links"><a href="./#descargas">Descargas</a><a href="./privacidad.html">Política de privacidad</a><a href="mailto:facundojavierserlik@gmail.com">Contacto</a></div></div></footer>
+  </body>
+</html>
