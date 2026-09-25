@@ -1,10 +1,10 @@
 # Autumn Reader
 
-Un espacio sencillo para leer y organizar tus libros en Windows. Tu biblioteca queda en tu dispositivo: puedes leer sin crear una cuenta ni estar conectado a internet.
+Un espacio sencillo para leer y organizar tus libros en tu computadora. Tu biblioteca queda en tu dispositivo: puedes leer sin crear una cuenta ni estar conectado a internet.
 
 ## Descargar
 
-[Descargar la última versión para Windows](https://github.com/fserlik/autumn-reader/releases/latest). En la sección **Assets**, descarga el instalador `Autumn.Reader_*_x64-setup.exe` y ábrelo.
+[Visita la página de descargas](https://autumnreader.lat/#descargas) para instalar Autumn Reader. Por ahora está disponible el instalador para Windows; las versiones para macOS y Linux aparecerán allí cuando estén listas.
 
 ## Qué puedes hacer
 
@@ -15,4 +15,4 @@ Un espacio sencillo para leer y organizar tus libros en Windows. Tu biblioteca q
 
 Los libros, notas y avances se guardan en tu dispositivo. La copia en Drive es opcional y no se hace automáticamente. Puedes leer más en la [política de privacidad](https://autumnreader.lat/privacidad.html).
 
-[Visitar la página de Autumn Reader](https://autumnreader.lat/) · Código abierto bajo [licencia MIT](LICENSE).
+Código abierto bajo [licencia MIT](LICENSE).

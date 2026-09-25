@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#351b1f" />
     <meta name="google-site-verification" content="bMVblw3qWXpeBr09_p-U8lsUp-gSlDzpxYfw-4q9Y2s" />
-    <meta name="description" content="Autumn Reader es una aplicación de escritorio de código abierto para organizar y leer tus libros, tomar notas y guardar copias opcionales en Google Drive." />
-    <title>Autumn Reader · Tus libros, a tu ritmo</title>
+    <meta name="description" content="Descarga Autumn Reader para tu computadora. Lee y organiza tus libros, guarda notas y conserva tu biblioteca en tu dispositivo." />
+    <title>Descargar Autumn Reader · Tu biblioteca en tu escritorio</title>
     <link rel="icon" type="image/png" href="./autumn-leaf.png" />
     <link rel="stylesheet" href="./styles.css" />
+    <script src="./downloads.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#contenido">Saltar al contenido</a>
@@ -16,9 +17,10 @@
       <div class="header-inner">
         <a class="brand" href="./" aria-label="Autumn Reader, inicio"><img src="./autumn-leaf.png" alt="" /><span>Autumn Reader</span></a>
         <nav aria-label="Navegación principal">
-          <a aria-current="page" href="./">Inicio</a>
+          <a href="#descargas">Descargas</a>
+          <a href="#funciones">La aplicación</a>
           <a href="./privacidad.html">Privacidad</a>
-          <a class="nav-download" href="https://github.com/fserlik/autumn-reader/releases">Descargar</a>
+          <a class="nav-github" href="https://github.com/fserlik/autumn-reader">GitHub</a>
         </nav>
       </div>
     </header>
@@ -26,12 +28,12 @@
     <main id="contenido">
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="hero-overline">Lector de escritorio de código abierto</p>
-          <h1 id="hero-title">Un lugar tranquilo para tus libros.</h1>
-          <p class="hero-lead">Organiza tu biblioteca, retoma tus lecturas y guarda notas sin salir del libro. Autumn Reader funciona en Windows y te deja leer sin cuenta ni conexión.</p>
+          <p class="hero-overline">Un lugar para tus libros</p>
+          <h1 id="hero-title">Cada historia, a tu alcance.</h1>
+          <p class="hero-lead">Autumn Reader reúne tus libros en una biblioteca de escritorio tranquila y personal. Instálalo desde esta página y lee a tu ritmo, incluso sin conexión.</p>
           <div class="hero-actions">
-            <a class="button button-primary" href="https://github.com/fserlik/autumn-reader/releases">Descargar para Windows <span aria-hidden="true">↗</span></a>
-            <a class="text-link" href="https://github.com/fserlik/autumn-reader">Ver el proyecto en GitHub</a>
+            <a class="button button-primary" href="#descargas">Elegir mi sistema</a>
+            <a class="text-link" href="#funciones">Conocer la aplicación</a>
           </div>
         </div>
         <div class="hero-art" aria-hidden="true">
@@ -41,23 +43,56 @@
         </div>
       </section>
 
-      <section class="features content-width" aria-labelledby="features-title">
+      <section id="descargas" class="downloads-section content-width" aria-labelledby="downloads-title">
+        <div class="downloads-heading">
+          <div><p class="section-label">Empieza a leer</p><h2 id="downloads-title">Descarga Autumn Reader</h2></div>
+          <p>Elige tu sistema operativo. Los instaladores se publican en <a href="https://github.com/fserlik/autumn-reader/releases">GitHub Releases</a>.</p>
+        </div>
+        <div class="download-grid">
+          <article class="download-card download-card-available" data-platform="windows">
+            <div class="download-card-top"><span class="platform-icon" aria-hidden="true">⊞</span><span class="availability" data-status>Disponible</span></div>
+            <h3>Windows</h3>
+            <p class="platform-detail">Windows 10 y 11 · 64 bits</p>
+            <a class="button download-button" data-download href="https://github.com/fserlik/autumn-reader/releases/download/v0.4.1/Autumn.Reader_0.4.1_x64-setup.exe">Descargar instalador .exe</a>
+            <p class="download-meta" data-version>Versión v0.4.1</p>
+          </article>
+          <article class="download-card" data-platform="macos">
+            <div class="download-card-top"><span class="platform-icon platform-icon-apple" aria-hidden="true">●</span><span class="availability availability-pending" data-status>En preparación</span></div>
+            <h3>macOS</h3>
+            <p class="platform-detail">Para computadoras Mac</p>
+            <p class="pending-message" data-pending>Publicaremos aquí el instalador cuando esté listo.</p>
+            <a class="button download-button" data-download hidden href="#">Descargar para macOS</a>
+            <p class="download-meta" data-version hidden></p>
+          </article>
+          <article class="download-card" data-platform="linux">
+            <div class="download-card-top"><span class="platform-icon platform-icon-linux" aria-hidden="true">◆</span><span class="availability availability-pending" data-status>En preparación</span></div>
+            <h3>Linux</h3>
+            <p class="platform-detail">Para distribuciones de escritorio</p>
+            <p class="pending-message" data-pending>Publicaremos aquí el instalador cuando esté listo.</p>
+            <a class="button download-button" data-download hidden href="#">Descargar para Linux</a>
+            <p class="download-meta" data-version hidden></p>
+          </article>
+        </div>
+        <div class="download-footnote"><p>El instalador de Windows todavía no está firmado digitalmente; Windows puede mostrar el aviso «Windows protegió su PC». Descárgalo únicamente desde el enlace oficial de esta página.</p><a href="https://github.com/fserlik/autumn-reader/releases">Ver todas las versiones en GitHub</a></div>
+      </section>
+
+      <section id="funciones" class="features content-width" aria-labelledby="features-title">
         <div class="section-heading"><p>Tu espacio de lectura</p><h2 id="features-title">Todo vuelve al libro.</h2></div>
         <div class="feature-list">
-          <article class="feature"><span class="feature-symbol" aria-hidden="true">◫</span><div><h3>Una biblioteca propia</h3><p>Agrega tus libros, encuentra los que leíste hace poco y ten tus favoritos siempre a mano.</p></div></article>
-          <article class="feature"><span class="feature-symbol" aria-hidden="true">Aa</span><div><h3>Lee como prefieras</h3><p>Ajusta el tamaño de lectura, elige un tema claro u oscuro y continúa desde donde quedaste.</p></div></article>
-          <article class="feature"><span class="feature-symbol" aria-hidden="true">✎</span><div><h3>Ideas que permanecen</h3><p>Selecciona un fragmento para añadir una nota de color. La nota queda accesible en el margen sin tapar la página.</p></div></article>
+          <article class="feature"><span class="feature-symbol" aria-hidden="true">◫</span><div><h3>Tu propia biblioteca</h3><p>Reúne tus libros y vuelve rápidamente a los recientes y favoritos.</p></div></article>
+          <article class="feature"><span class="feature-symbol" aria-hidden="true">Aa</span><div><h3>Lee como prefieras</h3><p>Ajusta el tamaño de lectura y continúa desde donde quedaste.</p></div></article>
+          <article class="feature"><span class="feature-symbol" aria-hidden="true">✎</span><div><h3>Notas en el margen</h3><p>Selecciona un fragmento y añade una nota de color sin tapar la página.</p></div></article>
         </div>
       </section>
 
       <section class="drive-section" aria-labelledby="drive-title">
         <div class="drive-inner content-width">
-          <div class="drive-copy"><p class="small-label">Google Drive, si lo necesitas</p><h2 id="drive-title">Guarda una copia cuando tú decidas.</h2><p>La biblioteca se conserva en tu dispositivo. Si conectas tu cuenta de Google, puedes crear manualmente una copia con libros, cubiertas, favoritos, notas y progreso de lectura, e importarla después en otra instalación.</p><p>Autumn Reader solo solicita acceso a su espacio de datos en Drive. No pide permiso para leer el resto de tus archivos.</p><a class="text-link" href="./privacidad.html">Cómo tratamos tus datos <span aria-hidden="true">↗</span></a></div>
+          <div class="drive-copy"><p class="small-label">Tu biblioteca sigue siendo tuya</p><h2 id="drive-title">Lee sin cuenta. Guarda una copia si quieres.</h2><p>Los libros, favoritos, notas y avances se guardan en tu dispositivo. Si conectas Google Drive, puedes crear una copia manual e importarla después en otra instalación.</p><a class="text-link" href="./privacidad.html">Cómo tratamos tus datos</a></div>
           <div class="drive-illustration" aria-hidden="true"><div class="paper paper-back"></div><div class="paper paper-front"><img src="./autumn-leaf.png" alt="" /><span>Tu biblioteca</span><i></i><i></i><i></i></div></div>
         </div>
       </section>
     </main>
 
-    <footer class="site-footer"><div class="footer-inner"><div><a class="footer-brand" href="./">Autumn Reader</a><p>Un proyecto abierto para leer a tu manera.</p></div><div class="footer-links"><a href="./privacidad.html">Política de privacidad</a><a href="https://github.com/fserlik/autumn-reader">Código fuente</a><a href="mailto:facundojavierserlik@gmail.com">Contacto</a></div></div></footer>
+    <footer class="site-footer"><div class="footer-inner"><div><a class="footer-brand" href="./">Autumn Reader</a><p>Un proyecto abierto para leer a tu manera.</p></div><div class="footer-links"><a href="#descargas">Descargas</a><a href="./privacidad.html">Política de privacidad</a><a href="https://github.com/fserlik/autumn-reader">Código fuente</a><a href="mailto:facundojavierserlik@gmail.com">Contacto</a></div></div></footer>
   </body>
 </html>
