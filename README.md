@@ -6,7 +6,7 @@ Lector de libros de escritorio, hecho con Tauri 2 y TypeScript. La biblioteca, l
 
 La versión para Windows está en [GitHub Releases](https://github.com/fserlik/autumn-reader/releases). Descarga el archivo `Autumn Reader_*_x64-setup.exe` de la versión más reciente.
 
-La [página principal](https://fserlik.github.io/autumn-reader/) presenta la aplicación y enlaza a la [política de privacidad](https://fserlik.github.io/autumn-reader/privacidad.html). Ambas páginas se mantienen como archivos estáticos en [`docs/`](docs/). Para la verificación de marca de Google OAuth será necesario alojarlas en un dominio propio, verificar ese dominio en Google Search Console y usar esas mismas URL en Google Auth Platform.
+La [página principal](https://autumnreader.lat/) presenta la aplicación y enlaza a la [política de privacidad](https://autumnreader.lat/privacidad.html). Ambas páginas se mantienen como archivos estáticos en [`docs/`](docs/) y se publican en el dominio propio `autumnreader.lat` mediante GitHub Pages.
 
 ## Funciones
 
