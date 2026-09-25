@@ -31,5 +31,5 @@ jobs:
           releaseName: "Autumn Reader ${{ github.ref_name }}"
           releaseBody: "Instalador de Windows para Autumn Reader."
           releaseDraft: true
-          prerelease: true
+          prerelease: false
           args: --bundles nsis
