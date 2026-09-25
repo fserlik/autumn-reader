@@ -1,4 +1,4 @@
-const releasesUrl = "https://api.github.com/repos/fserlik/autumn-reader/releases/latest";
+const releasesUrl = "https://api.github.com/repos/fserlik/autumn-reader/releases?per_page=20";
 
 const installers = {
   windows: [/\.exe$/i, /\.msi$/i],
@@ -49,10 +49,17 @@ async function loadLatestInstallers() {
     });
     if (!response.ok) return;
 
-    const release = await response.json();
-    if (!Array.isArray(release.assets) || typeof release.tag_name !== "string") return;
+    const releases = await response.json();
+    if (!Array.isArray(releases)) return;
 
     for (const [platform, patterns] of Object.entries(installers)) {
+      const release = releases.find((candidate) =>
+        !candidate.draft && !candidate.prerelease &&
+        Array.isArray(candidate.assets) &&
+        candidate.assets.some((asset) => patterns.some((pattern) => pattern.test(asset.name)))
+      );
+      if (!release || typeof release.tag_name !== "string") continue;
+
       const assets = release.assets
         .filter((asset) => patterns.some((pattern) => pattern.test(asset.name)))
         .filter((asset) => asset.browser_download_url?.startsWith("https://github.com/fserlik/autumn-reader/releases/download/"))
