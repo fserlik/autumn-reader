@@ -10,6 +10,7 @@ import {
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { invoke } from "@tauri-apps/api/core";
 import { createBackup, readBackup } from "./backup";
+import { countText, language, localizeDriveError, saveLanguage, t, type Language } from "./i18n";
 import leafUrl from "./assets/autumn-leaf.png";
 import { deleteBook, listBooks, saveBook, saveBooks, type BookNote, type StoredBook } from "./storage";
 import "./style.css";
@@ -34,79 +35,81 @@ function svg(name: keyof typeof icons, size = 19): string {
 }
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
+document.documentElement.lang = language;
 app.innerHTML = `
   <div class="shell">
     <aside class="sidebar">
-      <button class="brand" id="brand-home" type="button" aria-label="Ir al inicio">
+      <button class="brand" id="brand-home" type="button" aria-label="${t("goHome")}">
         <img src="${leafUrl}" alt="" /><span>Autumn <strong>Reader</strong></span>
       </button>
-      <div class="nav-caption">Tu espacio</div>
-      <nav class="sidebar-nav" aria-label="Navegación principal">
-        <button class="nav-button active" data-view="home" type="button">${svg("home")}<span>Inicio</span></button>
-        <button class="nav-button" data-view="library" type="button">${svg("library")}<span>Biblioteca</span><span id="nav-book-count" class="nav-count">0</span></button>
-        <button class="nav-button" data-view="settings" type="button">${svg("settings")}<span>Configuración</span></button>
+      <div class="nav-caption">${t("yourSpace")}</div>
+      <nav class="sidebar-nav" aria-label="${t("mainNavigation")}">
+        <button class="nav-button active" data-view="home" type="button">${svg("home")}<span>${t("home")}</span></button>
+        <button class="nav-button" data-view="library" type="button">${svg("library")}<span>${t("library")}</span><span id="nav-book-count" class="nav-count">0</span></button>
+        <button class="nav-button" data-view="settings" type="button">${svg("settings")}<span>${t("settings")}</span></button>
       </nav>
-      <div class="sidebar-signature"><img src="${leafUrl}" alt="" /><p>Historias para cada estación.</p></div>
-      <div class="sidebar-foot">Tus libros, a tu ritmo</div>
+      <div class="sidebar-signature"><img src="${leafUrl}" alt="" /><p>${t("storiesSeason")}</p></div>
+      <div class="sidebar-foot">${t("booksYourPace")}</div>
     </aside>
 
     <div class="workspace">
       <header class="topbar">
-        <div class="topbar-copy"><h1 id="page-title">Inicio</h1><p id="page-subtitle">Un lugar para volver a tus historias</p></div>
-        <button id="import-button" class="primary-button" type="button">${svg("plus", 18)}<span>Agregar libros</span></button>
+        <div class="topbar-copy"><h1 id="page-title">${t("home")}</h1><p id="page-subtitle">${t("homeSubtitle")}</p></div>
+        <button id="import-button" class="primary-button" type="button">${svg("plus", 18)}<span>${t("addBooks")}</span></button>
         <input id="file-input" type="file" accept=".pdf,.epub,application/pdf,application/epub+zip" multiple hidden />
       </header>
 
       <main class="content-area">
         <section id="view-home" class="view home-view">
           <div class="hero">
-            <div class="hero-copy"><p class="hero-eyebrow">Bienvenido a tu rincón de lectura</p><h2>Cada historia tiene<br />su estación.</h2><p id="hero-description">Añade tus libros y empieza a leer a tu ritmo. Tus historias se quedan contigo.</p><button id="hero-action" class="hero-button" type="button"><span>Agregar mi primer libro</span>${svg("arrow", 18)}</button></div>
+            <div class="hero-copy"><p class="hero-eyebrow">${t("welcome")}</p><h2>${t("heroTitle")}</h2><p id="hero-description">${t("heroDescription")}</p><button id="hero-action" class="hero-button" type="button"><span>${t("firstBook")}</span>${svg("arrow", 18)}</button></div>
             <div class="hero-art" aria-hidden="true"><span class="hero-orbit"></span><img src="${leafUrl}" alt="" /></div>
           </div>
 
-          <div class="shelf-heading"><div><p class="section-kicker">Continúa donde lo dejaste</p><h2>Lecturas recientes</h2></div><button class="text-link" id="recent-see-all" type="button">Ver biblioteca ${svg("arrow", 16)}</button></div>
+          <div class="shelf-heading"><div><p class="section-kicker">${t("continueWhere")}</p><h2>${t("recentReads")}</h2></div><button class="text-link" id="recent-see-all" type="button">${t("viewLibrary")} ${svg("arrow", 16)}</button></div>
           <div id="recent-list" class="book-grid recent-grid"></div>
 
-          <div class="shelf-heading favorites-heading"><div><p class="section-kicker">Tus elegidos</p><h2>Favoritos</h2></div><button class="text-link" id="favorites-see-all" type="button">Ver todos ${svg("arrow", 16)}</button></div>
+          <div class="shelf-heading favorites-heading"><div><p class="section-kicker">${t("yourPicks")}</p><h2>${t("favorites")}</h2></div><button class="text-link" id="favorites-see-all" type="button">${t("viewAll")} ${svg("arrow", 16)}</button></div>
           <div id="favorite-list" class="book-grid favorite-grid"></div>
         </section>
 
         <section id="view-library" class="view library-view" hidden>
-          <div class="section-intro"><div><p class="section-kicker">Todos tus libros en un lugar</p><h2>Biblioteca</h2><p id="library-count-line">0 libros guardados</p></div><img src="${leafUrl}" alt="" /></div>
+          <div class="section-intro"><div><p class="section-kicker">${t("allBooksOnePlace")}</p><h2>${t("library")}</h2><p id="library-count-line">${countText(0, "savedBook", "savedBooks")}</p></div><img src="${leafUrl}" alt="" /></div>
           <div class="library-tools">
-            <label class="search-field">${svg("search", 18)}<input id="library-search" type="search" placeholder="Buscar por título" aria-label="Buscar libros por título" /></label>
+            <label class="search-field">${svg("search", 18)}<input id="library-search" type="search" placeholder="${t("searchTitle")}" aria-label="${t("searchBooks")}" /></label>
           </div>
           <div id="library-list" class="book-grid library-grid"></div>
         </section>
 
         <section id="view-settings" class="view settings-view" hidden>
-          <div class="settings-intro"><p class="section-kicker">Tu manera de leer</p><h2>Configuración</h2><p>Ajustes sencillos para hacer este espacio más cómodo.</p></div>
-          <div class="settings-group"><div class="settings-copy"><h3>Apariencia</h3><p>Elige los colores de la aplicación. Puedes cambiarlos cuando quieras.</p></div><div class="theme-options" role="group" aria-label="Tema de la aplicación"><button type="button" data-theme-choice="light" class="theme-choice"><span class="theme-preview theme-light"></span>Claro</button><button type="button" data-theme-choice="dark" class="theme-choice"><span class="theme-preview theme-dark"></span>Oscuro</button></div></div>
-          <div class="settings-group"><div class="settings-copy"><h3>Tamaño inicial del texto</h3><p>Se aplicará a los libros con texto adaptable que agregues a partir de ahora. Puedes ajustarlo mientras lees.</p></div><select id="default-font-size" aria-label="Tamaño de texto predeterminado"><option value="90">Pequeño · 90%</option><option value="100">Normal · 100%</option><option value="110">Cómodo · 110%</option><option value="120">Grande · 120%</option><option value="130">Muy grande · 130%</option></select></div>
+          <div class="settings-intro"><p class="section-kicker">${t("yourWay")}</p><h2>${t("settings")}</h2><p>${t("settingsIntro")}</p></div>
+          <div class="settings-group"><div class="settings-copy"><h3>${t("appearance")}</h3><p>${t("appearanceHelp")}</p></div><div class="theme-options" role="group" aria-label="${t("appTheme")}"><button type="button" data-theme-choice="light" class="theme-choice"><span class="theme-preview theme-light"></span>${t("light")}</button><button type="button" data-theme-choice="dark" class="theme-choice"><span class="theme-preview theme-dark"></span>${t("dark")}</button></div></div>
+          <div class="settings-group"><div class="settings-copy"><h3>${t("defaultTextSize")}</h3><p>${t("defaultTextSizeHelp")}</p></div><select id="default-font-size" aria-label="${t("defaultTextSizeLabel")}"><option value="90">${t("sizeSmall")}</option><option value="100">${t("sizeNormal")}</option><option value="110">${t("sizeComfortable")}</option><option value="120">${t("sizeLarge")}</option><option value="130">${t("sizeVeryLarge")}</option></select></div>
+          <div class="settings-group"><div class="settings-copy"><h3>${t("language")}</h3><p>${t("languageHelp")}</p></div><select id="app-language" aria-label="${t("languageLabel")}"><option value="en">English</option><option value="es">Español</option><option value="it">Italiano</option><option value="fr">Français</option></select></div>
           <div class="drive-panel">
-            <div class="settings-copy"><h3>Copia en Google Drive</h3><p>Guarda una copia cuando quieras e impórtala después. Incluye tus libros, cubiertas, favoritos, notas y progreso de lectura. La copia solo está disponible para Autumn Reader dentro de tu Drive.</p></div>
-            <div class="drive-actions"><button id="drive-connect" type="button" class="secondary-button">Iniciar sesión con Google</button><span id="drive-connected" class="drive-connected" hidden><span aria-hidden="true">●</span> Conectado a Google Drive</span><button id="drive-save" type="button" class="primary-button" disabled>Guardar copia</button></div>
-            <div class="drive-restore"><label for="drive-backups">Copia disponible</label><select id="drive-backups" disabled><option value="">Conecta Drive para buscar copias</option></select><button id="drive-import" type="button" class="secondary-button" disabled>Importar copia</button></div>
-            <p id="drive-status" class="drive-status" role="status" aria-live="polite">La copia de Drive es opcional. La lectura sigue funcionando sin conexión.</p>
+            <div class="settings-copy"><h3>${t("driveBackup")}</h3><p>${t("driveBackupHelp")}</p></div>
+            <div class="drive-actions"><button id="drive-connect" type="button" class="secondary-button">${t("signInGoogle")}</button><span id="drive-connected" class="drive-connected" hidden><span aria-hidden="true">●</span> ${t("driveConnected")}</span><button id="drive-save" type="button" class="primary-button" disabled>${t("saveBackup")}</button></div>
+            <div class="drive-restore"><label for="drive-backups">${t("availableBackup")}</label><select id="drive-backups" disabled><option value="">${t("connectToFind")}</option></select><button id="drive-import" type="button" class="secondary-button" disabled>${t("importBackup")}</button></div>
+            <p id="drive-status" class="drive-status" role="status" aria-live="polite">${t("driveOptional")}</p>
           </div>
-          <div class="settings-note"><img src="${leafUrl}" alt="" /><div><h3>Tus libros son tuyos</h3><p>Autumn Reader guarda libros, favoritos y progreso en este dispositivo. No necesitas una cuenta ni conexión para leer.</p><span id="storage-count">0 libros en tu biblioteca</span></div></div>
+          <div class="settings-note"><img src="${leafUrl}" alt="" /><div><h3>${t("booksYours")}</h3><p>${t("localStorageHelp")}</p><span id="storage-count">${countText(0, "bookInLibrary", "booksInLibrary")}</span></div></div>
         </section>
 
         <section id="view-reader" class="view reader-view" hidden>
-          <div class="reader-toolbar"><button id="back-button" class="back-button" type="button">${svg("back", 18)}<span>Volver</span></button><div class="reader-controls"><button id="previous-button" class="tool-button" type="button" aria-label="Página anterior">←</button><span id="position-label" class="position-label">—</span><button id="next-button" class="tool-button" type="button" aria-label="Página siguiente">→</button></div><div class="reader-controls"><span id="size-label" class="size-label">Zoom</span><button id="smaller-button" class="tool-button" type="button" aria-label="Reducir tamaño">−</button><span id="size-value" class="size-value">100%</span><button id="larger-button" class="tool-button" type="button" aria-label="Aumentar tamaño">＋</button></div></div>
+          <div class="reader-toolbar"><button id="back-button" class="back-button" type="button">${svg("back", 18)}<span>${t("back")}</span></button><div class="reader-controls"><button id="previous-button" class="tool-button" type="button" aria-label="${t("previousPage")}">←</button><span id="position-label" class="position-label">—</span><button id="next-button" class="tool-button" type="button" aria-label="${t("nextPage")}">→</button></div><div class="reader-controls"><span id="size-label" class="size-label">${t("zoom")}</span><button id="smaller-button" class="tool-button" type="button" aria-label="${t("decreaseSize")}">−</button><span id="size-value" class="size-value">100%</span><button id="larger-button" class="tool-button" type="button" aria-label="${t("increaseSize")}">＋</button></div></div>
           <div id="reading-surface" class="reading-surface"><div id="reader-content" class="reader-content"></div></div>
-          <div class="reader-bottom"><span>Selecciona texto y haz clic derecho para agregar una nota</span><span id="save-status">Progreso guardado</span></div>
+          <div class="reader-bottom"><span>${t("noteHint")}</span><span id="save-status">${t("progressSaved")}</span></div>
         </section>
       </main>
       <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-      <div id="note-menu" class="note-menu" hidden><button id="note-add" type="button">Agregar nota</button></div>
+      <div id="note-menu" class="note-menu" hidden><button id="note-add" type="button">${t("addNote")}</button></div>
       <div id="note-dialog" class="note-dialog" hidden>
         <div class="note-card" role="dialog" aria-modal="true" aria-labelledby="note-heading">
-          <div class="note-card-head"><h2 id="note-heading">Agregar nota</h2><button id="note-close" type="button" class="note-close" aria-label="Cerrar nota">×</button></div>
+          <div class="note-card-head"><h2 id="note-heading">${t("addNote")}</h2><button id="note-close" type="button" class="note-close" aria-label="${t("closeNote")}">×</button></div>
           <p id="note-quote" class="note-quote"></p>
-          <fieldset class="note-colors"><legend>Color de la marca</legend><div id="note-color-options" class="note-color-options"></div></fieldset>
-          <label class="note-label" for="note-text">Tu nota</label><textarea id="note-text" maxlength="5000" rows="5" placeholder="Escribe lo que quieres recordar…"></textarea>
-          <div class="note-card-actions"><button id="note-delete" type="button" class="note-delete" hidden>Eliminar nota</button><button id="note-cancel" type="button" class="secondary-button">Cancelar</button><button id="note-save" type="button" class="primary-button">Guardar nota</button></div>
+          <fieldset class="note-colors"><legend>${t("markerColor")}</legend><div id="note-color-options" class="note-color-options"></div></fieldset>
+          <label class="note-label" for="note-text">${t("yourNote")}</label><textarea id="note-text" maxlength="5000" rows="5" placeholder="${t("notePlaceholder")}"></textarea>
+          <div class="note-card-actions"><button id="note-delete" type="button" class="note-delete" hidden>${t("deleteNote")}</button><button id="note-cancel" type="button" class="secondary-button">${t("cancel")}</button><button id="note-save" type="button" class="primary-button">${t("saveNote")}</button></div>
         </div>
       </div>
       <div id="confirm-dialog" class="confirm-dialog" hidden>
@@ -114,7 +117,7 @@ app.innerHTML = `
           <div class="confirm-symbol" aria-hidden="true"><img src="${leafUrl}" alt="" /></div>
           <h2 id="confirm-heading"></h2>
           <p id="confirm-message"></p>
-          <div class="confirm-actions"><button id="confirm-cancel" type="button" class="secondary-button">Cancelar</button><button id="confirm-accept" type="button" class="primary-button"></button></div>
+          <div class="confirm-actions"><button id="confirm-cancel" type="button" class="secondary-button">${t("cancel")}</button><button id="confirm-accept" type="button" class="primary-button"></button></div>
         </div>
       </div>
     </div>
@@ -183,11 +186,11 @@ async function refreshDriveBackups(): Promise<void> {
   const select = $<HTMLSelectElement>("#drive-backups");
   select.replaceChildren();
   if (!backups.length) {
-    select.add(new Option("Todavía no hay copias guardadas", ""));
+    select.add(new Option(t("noBackups"), ""));
   } else {
     for (const backup of backups) {
       const date = new Date(backup.modifiedTime);
-      const label = Number.isNaN(date.getTime()) ? "Copia guardada" : date.toLocaleString("es");
+      const label = Number.isNaN(date.getTime()) ? t("savedBackup") : date.toLocaleString(language);
       const size = backup.size ? ` · ${(Number(backup.size) / 1024 / 1024).toFixed(1)} MB` : "";
       select.add(new Option(`${label}${size}`, backup.id));
     }
@@ -197,9 +200,11 @@ async function refreshDriveBackups(): Promise<void> {
 
 function driveError(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-  driveMessage(message);
-  showToast(message);
-  if (message.includes("conexión con Drive venció") || message.includes("sesión de Drive venció") || message.includes("(401")) {
+  const sessionExpired = message.startsWith("DRIVE_ERROR:session_expired") || message.includes("conexión con Drive venció") || message.includes("sesión de Drive venció") || message.includes("401");
+  const displayMessage = sessionExpired ? t("driveSessionExpired") : localizeDriveError(message);
+  driveMessage(displayMessage);
+  showToast(displayMessage);
+  if (sessionExpired) {
     driveConnected = false;
     driveAccessToken = "";
     setDriveBusy(false);
@@ -209,12 +214,12 @@ function driveError(error: unknown): void {
 async function connectDrive(): Promise<void> {
   if (!googleClientId) return;
   setDriveBusy(true);
-  driveMessage("Abriendo Google en tu navegador para autorizar Autumn Reader…");
+  driveMessage(t("openingGoogle"));
   try {
-    driveAccessToken = await invoke<string>("drive_connect", { clientId: googleClientId });
+    driveAccessToken = await invoke<string>("drive_connect", { clientId: googleClientId, language });
     driveConnected = true;
     await refreshDriveBackups();
-    driveMessage("Drive conectado. Puedes guardar o importar una copia.");
+    driveMessage(t("driveReady"));
   } catch (error) {
     driveConnected = false;
     driveAccessToken = "";
@@ -227,16 +232,16 @@ async function connectDrive(): Promise<void> {
 async function saveDriveBackup(): Promise<void> {
   if (!driveConnected) return;
   setDriveBusy(true);
-  driveMessage("Preparando copia de la biblioteca…");
+  driveMessage(t("preparingBackup"));
   try {
     const archive = await createBackup(books);
-    driveMessage(`Subiendo ${(archive.byteLength / 1024 / 1024).toFixed(1)} MB a Drive…`);
+    driveMessage(t("uploadingBackup", { size: (archive.byteLength / 1024 / 1024).toFixed(1) }));
     await invoke("drive_save_backup", archive, {
       headers: { Authorization: `Bearer ${driveAccessToken}` },
     });
     await refreshDriveBackups();
-    driveMessage(`Copia guardada en Drive con ${books.length} ${books.length === 1 ? "libro" : "libros"}.`);
-    showToast("Copia guardada en Drive");
+    driveMessage(countText(books.length, "backupSavedOne", "backupSavedCount"));
+    showToast(t("backupSaved"));
   } catch (error) {
     driveError(error);
   } finally {
@@ -248,13 +253,13 @@ async function importDriveBackup(): Promise<void> {
   const fileId = $<HTMLSelectElement>("#drive-backups").value;
   if (!driveConnected || !fileId) return;
   if (!await confirmAction({
-    title: "Importar copia",
-    message: "Se añadirán los libros de esta copia. Si alguno ya está en tu biblioteca, se actualizará; los demás permanecerán como están.",
-    confirmLabel: "Importar libros",
+    title: t("importBackup"),
+    message: t("importBackupMessage"),
+    confirmLabel: t("importBooks"),
     tone: "import",
   })) return;
   setDriveBusy(true);
-  driveMessage("Descargando y verificando la copia…");
+  driveMessage(t("downloadingBackup"));
   try {
     const bytes = await invoke<ArrayBuffer>("drive_download_backup", { fileId });
     const restored = await readBackup(new Uint8Array(bytes));
@@ -269,8 +274,8 @@ async function importDriveBackup(): Promise<void> {
       currentBook = null;
     }
     renderCollections();
-    driveMessage(`Se importaron ${restored.length} ${restored.length === 1 ? "libro" : "libros"}. Tu biblioteca local está lista.`);
-    showToast("Copia importada");
+    driveMessage(countText(restored.length, "importedOne", "importedCount"));
+    showToast(t("backupImported"));
   } catch (error) {
     driveError(error);
   } finally {
@@ -301,7 +306,7 @@ function closeConfirmation(confirmed: boolean): void {
   resolve?.(confirmed);
 }
 
-function confirmAction(options: { title: string; message: string; confirmLabel: string; tone: "remove" | "import" }): Promise<boolean> {
+function confirmAction(options: { title: string; message: string; confirmLabel: string; cancelLabel?: string; tone: "remove" | "import" }): Promise<boolean> {
   if (confirmResolve) closeConfirmation(false);
   const dialog = $<HTMLDivElement>("#confirm-dialog");
   const card = dialog.querySelector<HTMLElement>(".confirm-card")!;
@@ -309,6 +314,7 @@ function confirmAction(options: { title: string; message: string; confirmLabel: 
   $<HTMLElement>("#confirm-heading").textContent = options.title;
   $<HTMLElement>("#confirm-message").textContent = options.message;
   $<HTMLButtonElement>("#confirm-accept").textContent = options.confirmLabel;
+  $<HTMLButtonElement>("#confirm-cancel").textContent = options.cancelLabel ?? t("cancel");
   confirmPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   dialog.hidden = false;
   $<HTMLButtonElement>("#confirm-cancel").focus();
@@ -331,10 +337,10 @@ function setView(next: View): void {
     else button.removeAttribute("aria-current");
   }
   const headings: Record<View, [string, string]> = {
-    home: ["Inicio", "Un lugar para volver a tus historias"],
-    library: ["Biblioteca", `${books.length} ${books.length === 1 ? "libro guardado" : "libros guardados"}`],
-    settings: ["Configuración", "Haz de este espacio uno tuyo"],
-    reader: [currentBook ? titleOf(currentBook) : "Lector", "Disfruta tu lectura"],
+    home: [t("home"), t("homeSubtitle")],
+    library: [t("library"), countText(books.length, "savedBook", "savedBooks")],
+    settings: [t("settings"), t("settingsSubtitle")],
+    reader: [currentBook ? titleOf(currentBook) : t("reader"), t("enjoyReading")],
   };
   $<HTMLElement>("#page-title").textContent = headings[next][0];
   $<HTMLElement>("#page-subtitle").textContent = headings[next][1];
@@ -382,7 +388,7 @@ function createBookCard(book: StoredBook, context: "home" | "library"): HTMLElem
   const coverButton = document.createElement("button");
   coverButton.className = "cover-button";
   coverButton.type = "button";
-  coverButton.setAttribute("aria-label", `Abrir ${titleOf(book)}`);
+  coverButton.setAttribute("aria-label", t("openBook", { title: titleOf(book) }));
   coverButton.append(coverElement(book));
   coverButton.addEventListener("click", () => void openBook(book));
   const info = document.createElement("div");
@@ -394,15 +400,15 @@ function createBookCard(book: StoredBook, context: "home" | "library"): HTMLElem
   titleButton.addEventListener("click", () => void openBook(book));
   const meta = document.createElement("span");
   meta.className = "book-meta";
-  meta.textContent = book.lastOpenedAt ? "En lectura" : "Sin empezar";
+  meta.textContent = book.lastOpenedAt ? t("reading") : t("notStarted");
   const actions = document.createElement("div");
   actions.className = "book-actions";
   const favorite = document.createElement("button");
   favorite.className = `favorite-button${book.favorite ? " is-favorite" : ""}`;
   favorite.type = "button";
   favorite.innerHTML = svg("star", 17);
-  favorite.title = book.favorite ? "Quitar de favoritos" : "Agregar a favoritos";
-  favorite.setAttribute("aria-label", `${book.favorite ? "Quitar" : "Agregar"} ${titleOf(book)} ${book.favorite ? "de" : "a"} favoritos`);
+  favorite.title = book.favorite ? t("removeFavorite") : t("addFavorite");
+  favorite.setAttribute("aria-label", t(book.favorite ? "removeFavoriteBook" : "addFavoriteBook", { title: titleOf(book) }));
   favorite.setAttribute("aria-pressed", String(Boolean(book.favorite)));
   favorite.addEventListener("click", () => void toggleFavorite(book));
   actions.append(favorite);
@@ -411,8 +417,8 @@ function createBookCard(book: StoredBook, context: "home" | "library"): HTMLElem
     remove.className = "remove-button";
     remove.type = "button";
     remove.innerHTML = svg("trash", 16);
-    remove.title = "Quitar de la biblioteca";
-    remove.setAttribute("aria-label", `Quitar ${titleOf(book)} de la biblioteca`);
+    remove.title = t("removeLibrary");
+    remove.setAttribute("aria-label", t("removeLibraryBook", { title: titleOf(book) }));
     remove.addEventListener("click", () => void removeBook(book));
     actions.append(remove);
   }
@@ -433,7 +439,7 @@ function emptyState(message: string, withAction = false): HTMLElement {
   if (withAction) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = "Agregar libros";
+    button.textContent = t("addBooks");
     button.addEventListener("click", () => fileInput.click());
     empty.append(button);
   }
@@ -447,24 +453,24 @@ function renderCollections(): void {
   const recent = [...books].filter((book) => book.lastOpenedAt > 0).sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
   const favorites = [...books].filter((book) => book.favorite).sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
   const recentList = $<HTMLDivElement>("#recent-list");
-  recentList.replaceChildren(...(recent.length ? recent.slice(0, 5).map((book) => createBookCard(book, "home")) : [emptyState("Aquí aparecerán los libros que abras.", books.length === 0)]));
+  recentList.replaceChildren(...(recent.length ? recent.slice(0, 5).map((book) => createBookCard(book, "home")) : [emptyState(t("recentEmpty"), books.length === 0)]));
   const favoriteList = $<HTMLDivElement>("#favorite-list");
-  favoriteList.replaceChildren(...(favorites.length ? favorites.slice(0, 5).map((book) => createBookCard(book, "home")) : [emptyState("Marca un libro con la estrella para verlo aquí.")]));
+  favoriteList.replaceChildren(...(favorites.length ? favorites.slice(0, 5).map((book) => createBookCard(book, "home")) : [emptyState(t("favoritesEmpty"))]));
 
   const heroAction = $<HTMLButtonElement>("#hero-action");
-  heroAction.querySelector("span")!.textContent = recent.length ? "Continuar leyendo" : books.length ? "Explorar biblioteca" : "Agregar mi primer libro";
+  heroAction.querySelector("span")!.textContent = recent.length ? t("continueReading") : books.length ? t("exploreLibrary") : t("firstBook");
   $<HTMLElement>("#hero-description").textContent = recent.length
-    ? `Tu última lectura fue «${titleOf(recent[0])}». Retómala cuando quieras.`
-    : "Añade tus libros y empieza a leer a tu ritmo. Tus historias se quedan contigo.";
+    ? t("lastRead", { title: titleOf(recent[0]) })
+    : t("heroDescription");
   heroAction.onclick = () => recent.length ? void openBook(recent[0]) : books.length ? setView("library") : fileInput.click();
 
-  $<HTMLElement>("#library-count-line").textContent = `${books.length} ${books.length === 1 ? "libro guardado" : "libros guardados"}`;
-  $<HTMLElement>("#storage-count").textContent = `${books.length} ${books.length === 1 ? "libro en tu biblioteca" : "libros en tu biblioteca"}`;
+  $<HTMLElement>("#library-count-line").textContent = countText(books.length, "savedBook", "savedBooks");
+  $<HTMLElement>("#storage-count").textContent = countText(books.length, "bookInLibrary", "booksInLibrary");
   if (view === "library") setView("library");
   const query = $<HTMLInputElement>("#library-search").value.trim().toLocaleLowerCase();
   const matches = [...books].filter((book) => titleOf(book).toLocaleLowerCase().includes(query)).sort((a, b) => b.addedAt - a.addedAt);
   const libraryList = $<HTMLDivElement>("#library-list");
-  libraryList.replaceChildren(...(matches.length ? matches.map((book) => createBookCard(book, "library")) : [emptyState(books.length ? "No hay libros que coincidan con la búsqueda." : "Tu biblioteca está vacía. Agrega un libro para empezar.", books.length === 0)]));
+  libraryList.replaceChildren(...(matches.length ? matches.map((book) => createBookCard(book, "library")) : [emptyState(books.length ? t("noSearchResults") : t("libraryEmpty"), books.length === 0)]));
 }
 
 async function toggleFavorite(book: StoredBook): Promise<void> {
@@ -472,18 +478,18 @@ async function toggleFavorite(book: StoredBook): Promise<void> {
   try {
     await saveBook(book);
     renderCollections();
-    showToast(book.favorite ? "Agregado a favoritos" : "Quitado de favoritos");
+    showToast(book.favorite ? t("addedFavorite") : t("removedFavorite"));
   } catch {
     book.favorite = !book.favorite;
-    showToast("No se pudo guardar el favorito");
+    showToast(t("favoriteSaveFailed"));
   }
 }
 
 async function removeBook(book: StoredBook): Promise<void> {
   if (!await confirmAction({
-    title: "Quitar libro",
-    message: `«${titleOf(book)}» se quitará de tu biblioteca junto con sus notas y progreso de lectura en este dispositivo.`,
-    confirmLabel: "Quitar libro",
+    title: t("removeBook"),
+    message: t("removeBookMessage", { title: titleOf(book) }),
+    confirmLabel: t("removeBook"),
     tone: "remove",
   })) return;
   try {
@@ -496,21 +502,21 @@ async function removeBook(book: StoredBook): Promise<void> {
       setView("library");
     }
     renderCollections();
-    showToast("Libro quitado de la biblioteca");
+    showToast(t("bookRemoved"));
   } catch {
-    showToast("No se pudo quitar el libro");
+    showToast(t("bookRemoveFailed"));
   }
 }
 
 function updatePosition(): void {
   if (!currentBook) return;
   const position = currentBook.format === "pdf"
-    ? `Página ${currentBook.page} de ${pdfDocument?.numPages ?? "…"}`
-    : rendition?.location?.start ? `Sección ${rendition.location.start.index + 1}` : "Libro";
+    ? t("pageOf", { page: currentBook.page, total: pdfDocument?.numPages ?? "…" })
+    : rendition?.location?.start ? t("section", { number: rendition.location.start.index + 1 }) : t("book");
   $<HTMLSpanElement>("#position-label").textContent = position;
   $<HTMLButtonElement>("#previous-button").disabled = currentBook.format === "pdf" && currentBook.page <= 1;
   $<HTMLButtonElement>("#next-button").disabled = currentBook.format === "pdf" && currentBook.page >= (pdfDocument?.numPages ?? Infinity);
-  $<HTMLSpanElement>("#size-label").textContent = currentBook.format === "pdf" ? "Zoom" : "Texto";
+  $<HTMLSpanElement>("#size-label").textContent = currentBook.format === "pdf" ? t("zoom") : t("text");
   $<HTMLSpanElement>("#size-value").textContent = currentBook.format === "pdf" ? `${Math.round(zoom * 100)}%` : `${currentBook.fontSize}%`;
 }
 
@@ -518,9 +524,9 @@ async function persistCurrent(): Promise<void> {
   if (!currentBook) return;
   try {
     await saveBook(currentBook);
-    $<HTMLElement>("#save-status").textContent = "Progreso guardado";
+    $<HTMLElement>("#save-status").textContent = t("progressSaved");
   } catch {
-    $<HTMLElement>("#save-status").textContent = "No se pudo guardar el progreso";
+    $<HTMLElement>("#save-status").textContent = t("progressSaveFailed");
   }
 }
 
@@ -543,7 +549,7 @@ function renderNoteColors(): void {
     button.type = "button";
     button.className = `note-color${color === selectedNoteColor ? " selected" : ""}`;
     button.style.backgroundColor = color;
-    button.setAttribute("aria-label", `Elegir color ${color}`);
+    button.setAttribute("aria-label", t("chooseColor", { color }));
     button.setAttribute("aria-pressed", String(color === selectedNoteColor));
     button.addEventListener("click", () => {
       selectedNoteColor = color;
@@ -558,7 +564,7 @@ function openNoteDialog(note?: BookNote): void {
   hideNoteMenu();
   editingNoteId = note?.id ?? null;
   selectedNoteColor = note?.color ?? noteColors[0];
-  $<HTMLElement>("#note-heading").textContent = note ? "Tu nota" : "Agregar nota";
+  $<HTMLElement>("#note-heading").textContent = note ? t("yourNote") : t("addNote");
   $<HTMLElement>("#note-quote").textContent = `“${note?.quote ?? pendingNote?.quote ?? ""}”`;
   $<HTMLTextAreaElement>("#note-text").value = note?.text ?? "";
   $<HTMLButtonElement>("#note-delete").hidden = !note;
@@ -577,7 +583,7 @@ async function saveNote(): Promise<void> {
   const book = currentBook;
   const text = $<HTMLTextAreaElement>("#note-text").value.trim();
   if (!book || !text) {
-    showToast("Escribe algo en la nota antes de guardarla");
+    showToast(t("noteEmpty"));
     return;
   }
   const previous = book.notes ?? [];
@@ -593,10 +599,10 @@ async function saveNote(): Promise<void> {
     await saveBook(book);
     closeNoteDialog();
     renderNoteMarkers();
-    showToast("Nota guardada");
+    showToast(t("noteSaved"));
   } catch {
     book.notes = previous;
-    showToast("No se pudo guardar la nota");
+    showToast(t("noteSaveFailed"));
   }
 }
 
@@ -609,10 +615,10 @@ async function deleteNote(): Promise<void> {
     await saveBook(book);
     closeNoteDialog();
     renderNoteMarkers();
-    showToast("Nota eliminada");
+    showToast(t("noteDeleted"));
   } catch {
     book.notes = previous;
-    showToast("No se pudo eliminar la nota");
+    showToast(t("noteDeleteFailed"));
   }
 }
 
@@ -654,8 +660,8 @@ function renderNoteMarkers(): void {
     const y = Math.max(8, placement.y - 10, lastY + 24);
     marker.style.top = `${y}px`;
     lastY = y;
-    marker.title = "Abrir nota";
-    marker.setAttribute("aria-label", `Abrir nota sobre ${placement.note.quote}`);
+    marker.title = t("openNote");
+    marker.setAttribute("aria-label", t("openNoteQuote", { quote: placement.note.quote }));
     marker.addEventListener("click", () => openNoteDialog(placement.note));
     readerContent.append(marker);
   }
@@ -710,7 +716,7 @@ async function renderPdfPage(): Promise<void> {
   sheet.append(canvas, textLayerElement);
   readerContent.replaceChildren(sheet);
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("No se pudo iniciar el visor PDF");
+  if (!context) throw new Error(t("viewerFailed"));
   const task = page.render({ canvasContext: context, canvas, viewport, transform: [ratio, 0, 0, ratio, 0, 0] });
   pdfRenderTask = task;
   try { await task.promise; }
@@ -720,7 +726,7 @@ async function renderPdfPage(): Promise<void> {
   const textLayer = new TextLayer({ textContentSource: page.streamTextContent(), container: textLayerElement, viewport });
   pdfTextLayer = textLayer;
   try { await textLayer.render(); }
-  catch (error) { if (sequence === pdfRenderSequence) console.info("Esta página no tiene texto seleccionable", error); }
+  catch (error) { if (sequence === pdfRenderSequence) console.info(t("noSelectableText"), error); }
   if (sequence !== pdfRenderSequence) return;
   textLayerElement.addEventListener("contextmenu", (event) => {
     const selection = window.getSelection();
@@ -748,7 +754,11 @@ async function openBook(book: StoredBook): Promise<void> {
   zoom = 1;
   setView("reader");
   renderCollections();
-  readerContent.innerHTML = '<div class="reader-message">Abriendo libro…</div>';
+  readerContent.textContent = "";
+  const loadingMessage = document.createElement("div");
+  loadingMessage.className = "reader-message";
+  loadingMessage.textContent = t("openingBook");
+  readerContent.append(loadingMessage);
   updatePosition();
   try {
     const buffer = await book.data.arrayBuffer();
@@ -797,8 +807,12 @@ async function openBook(book: StoredBook): Promise<void> {
   } catch (error) {
     if (sequence !== loadSequence) return;
     console.error(error);
-    readerContent.innerHTML = '<div class="reader-message">No se pudo abrir este libro. Comprueba que el archivo sea compatible.</div>';
-    showToast("No se pudo abrir el libro");
+    readerContent.replaceChildren();
+    const errorMessage = document.createElement("div");
+    errorMessage.className = "reader-message";
+    errorMessage.textContent = t("bookOpenFailedHelp");
+    readerContent.append(errorMessage);
+    showToast(t("bookOpenFailed"));
   }
 }
 
@@ -839,7 +853,7 @@ async function makeCover(book: StoredBook): Promise<void> {
       renderCollections();
     }
   } catch (error) {
-    console.info("Este libro se mostrará con una cubierta sencilla", error);
+    console.info(t("simpleCover"), error);
   }
 }
 
@@ -863,7 +877,7 @@ async function importFiles(files: FileList): Promise<void> {
   }
   renderCollections();
   if (first) await openBook(first);
-  if (rejected) showToast(`${rejected} archivo${rejected === 1 ? " no se pudo agregar" : "s no se pudieron agregar"}`);
+  if (rejected) showToast(countText(rejected, "filesRejectedOne", "filesRejectedMany"));
 }
 
 async function navigate(direction: -1 | 1): Promise<void> {
@@ -939,11 +953,34 @@ fontSelect.value = String(defaultFontSize);
 fontSelect.addEventListener("change", () => {
   defaultFontSize = Number(fontSelect.value);
   localStorage.setItem("autumn-default-font-size", String(defaultFontSize));
-  showToast("Tamaño predeterminado guardado");
+  showToast(t("fontSaved"));
+});
+const languageSelect = $<HTMLSelectElement>("#app-language");
+languageSelect.value = (localStorage.getItem("autumn-language") || language) as Language;
+if (!languageSelect.selectedOptions.length) languageSelect.value = language;
+languageSelect.addEventListener("change", async () => {
+  const next = languageSelect.value as Language;
+  saveLanguage(next);
+  if (next === language) return;
+  const restart = await confirmAction({
+    title: t("restartTitle"),
+    message: t("restartMessage"),
+    confirmLabel: t("restartNow"),
+    cancelLabel: t("restartLater"),
+    tone: "import",
+  });
+  if (restart) {
+    try {
+      await invoke("restart_app");
+    } catch (error) {
+      console.error(error);
+      showToast(t("restartLaterStatus"));
+    }
+  } else showToast(t("restartLaterStatus"));
 });
 if (!googleClientId) {
-  driveMessage("La conexión con Google Drive estará disponible cuando se configure para esta versión.");
-  $<HTMLButtonElement>("#drive-connect").title = "Conexión con Google Drive pendiente de configurar";
+  driveMessage(t("driveNotConfigured"));
+  $<HTMLButtonElement>("#drive-connect").title = t("driveNotConfiguredTitle");
 }
 setDriveBusy(false);
 $<HTMLButtonElement>("#drive-connect").addEventListener("click", () => void connectDrive());
@@ -988,4 +1025,4 @@ setView("home");
 listBooks().then((loaded) => {
   books = loaded;
   renderCollections();
-}).catch(() => showToast("No se pudo abrir la biblioteca local"));
+}).catch(() => showToast(t("libraryOpenFailed")));

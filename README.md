@@ -1,18 +1,19 @@
 # Autumn Reader
 
-Un espacio sencillo para leer y organizar tus libros en tu computadora. Tu biblioteca queda en tu dispositivo: puedes leer sin crear una cuenta ni estar conectado a internet.
+A simple place to read and organize your books on your computer. Your library stays on your device, so you can read without creating an account or being connected to the internet.
 
-## Descargar
+## Download
 
-[Visita la página de descargas](https://autumnreader.lat/#descargas) para instalar Autumn Reader. Por ahora está disponible el instalador para Windows; las versiones para macOS y Linux aparecerán allí cuando estén listas.
+[Visit the download page](https://autumnreader.lat/#descargas) to install Autumn Reader. A Windows installer is currently available. macOS and Linux versions will appear there when they are ready.
 
-## Qué puedes hacer
+## What you can do
 
-- Reunir tus libros en una biblioteca y volver rápidamente a los recientes o favoritos.
-- Ajustar la lectura a tu gusto y continuar desde donde la dejaste.
-- Seleccionar texto para añadir notas de color que se abren desde el margen.
-- Guardar e importar una copia de tu biblioteca en Google Drive cuando tú lo decidas.
+- Keep your books in one library and quickly return to recent reads or favorites.
+- Adjust the reading view and pick up where you left off.
+- Select text to add colored notes that open from the page margin.
+- Save and import a copy of your library in Google Drive whenever you choose.
+- Choose English, Spanish, Italian, or French in Settings.
 
-Los libros, notas y avances se guardan en tu dispositivo. La copia en Drive es opcional y no se hace automáticamente. Puedes leer más en la [política de privacidad](https://autumnreader.lat/privacidad.html).
+Books, notes, and reading progress are stored on your device. Drive backup is optional and does not happen automatically. Read the [privacy policy](https://autumnreader.lat/privacidad.html) for more information.
 
-Código abierto bajo [licencia MIT](LICENSE).
+Open source under the [MIT license](LICENSE).

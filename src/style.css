@@ -137,7 +137,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .theme-preview { display: block; width: 23px; height: 23px; border: 1px solid #a48878; border-radius: 5px; }
 .theme-light { background: linear-gradient(135deg, #fffbf4 50%, #cc5500 50%); }
 .theme-dark { background: linear-gradient(135deg, #351b1f 50%, #b7410e 50%); }
-#default-font-size { width: 195px; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); font-size: 12px; }
+#default-font-size, #app-language { width: 195px; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); font-size: 12px; }
 .settings-note { display: flex; align-items: center; gap: 19px; max-width: 740px; margin-top: 38px; padding: 22px 26px; border-radius: 11px; background: #80800019; }
 .settings-note img { flex: none; width: 79px; height: 79px; object-fit: contain; }
 .settings-note p { max-width: 510px; margin: 0 0 11px; color: var(--muted); font-size: 12px; line-height: 1.55; }

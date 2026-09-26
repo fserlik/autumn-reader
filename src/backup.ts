@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { t } from "./i18n";
 import type { BookNote, StoredBook } from "./storage";
 
 export const MAX_BACKUP_BYTES = 250 * 1024 * 1024;
@@ -74,7 +75,7 @@ function validRecord(value: unknown): value is BookRecord {
 
 export async function createBackup(books: StoredBook[]): Promise<Uint8Array> {
   const estimatedSize = books.reduce((total, book) => total + book.data.size + (book.cover?.size ?? 0), 0);
-  if (estimatedSize > MAX_BACKUP_BYTES - 1024 * 1024) throw new Error("La biblioteca supera el límite de copia de 250 MB");
+  if (estimatedSize > MAX_BACKUP_BYTES - 1024 * 1024) throw new Error(t("backupTooLargeLibrary"));
   const zip = new JSZip();
   const manifest: Manifest = {
     app: "autumn-reader",
@@ -88,38 +89,38 @@ export async function createBackup(books: StoredBook[]): Promise<Uint8Array> {
     if (book.cover) zip.file(`covers/${book.id}.bin`, book.cover);
   }
   const archive = await zip.generateAsync({ type: "uint8array", compression: "STORE" });
-  if (archive.byteLength > MAX_BACKUP_BYTES) throw new Error("La copia supera el límite de 250 MB");
+  if (archive.byteLength > MAX_BACKUP_BYTES) throw new Error(t("backupTooLarge"));
   return archive;
 }
 
 export async function readBackup(bytes: Uint8Array): Promise<StoredBook[]> {
-  if (!bytes.byteLength || bytes.byteLength > MAX_BACKUP_BYTES) throw new Error("El archivo de copia es demasiado grande o está vacío");
+  if (!bytes.byteLength || bytes.byteLength > MAX_BACKUP_BYTES) throw new Error(t("backupInvalidSize"));
   const zip = await JSZip.loadAsync(bytes);
   const manifestFile = zip.file("manifest.json");
-  if (!manifestFile) throw new Error("La copia no contiene un manifiesto");
+  if (!manifestFile) throw new Error(t("backupNoManifest"));
   const manifest = JSON.parse(await manifestFile.async("string")) as Partial<Manifest>;
   if (manifest.app !== "autumn-reader" || manifest.version !== 1 || !Array.isArray(manifest.books) || manifest.books.length > 1000) {
-    throw new Error("Esta copia no es compatible con Autumn Reader");
+    throw new Error(t("backupIncompatible"));
   }
   const ids = new Set<string>();
   const restored: StoredBook[] = [];
   let total = 0;
   for (const record of manifest.books) {
-    if (!validRecord(record) || ids.has(record.id)) throw new Error("La copia contiene datos de libros inválidos");
+    if (!validRecord(record) || ids.has(record.id)) throw new Error(t("backupInvalidBooks"));
     if (record.notes !== undefined && (!Array.isArray(record.notes) || record.notes.length > 1000 || !record.notes.every((note) => validNote(note, record.format)))) {
-      throw new Error("La copia contiene notas inválidas");
+      throw new Error(t("backupInvalidNotes"));
     }
     ids.add(record.id);
     const dataFile = zip.file(`books/${record.id}.bin`);
-    if (!dataFile) throw new Error(`Falta el archivo de «${record.name}»`);
+    if (!dataFile) throw new Error(t("backupMissingFile", { title: record.name }));
     const data = await dataFile.async("uint8array");
     total += data.byteLength;
-    if (!data.byteLength || total > MAX_BACKUP_BYTES) throw new Error("La copia contiene archivos demasiado grandes");
+    if (!data.byteLength || total > MAX_BACKUP_BYTES) throw new Error(t("backupFilesTooLarge"));
     const coverFile = record.hasCover ? zip.file(`covers/${record.id}.bin`) : null;
-    if (record.hasCover && !coverFile) throw new Error(`Falta la cubierta de «${record.name}»`);
+    if (record.hasCover && !coverFile) throw new Error(t("backupMissingCover", { title: record.name }));
     const cover = coverFile ? await coverFile.async("uint8array") : null;
     total += cover?.byteLength ?? 0;
-    if (total > MAX_BACKUP_BYTES) throw new Error("La copia contiene archivos demasiado grandes");
+    if (total > MAX_BACKUP_BYTES) throw new Error(t("backupFilesTooLarge"));
     restored.push({
       id: record.id,
       name: record.name,

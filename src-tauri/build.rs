@@ -20,7 +20,7 @@ fn main() {
                 character.is_ascii_alphanumeric() || character == '-' || character == '_'
             })
         {
-            panic!("AUTUMN_GOOGLE_CLIENT_SECRET tiene un formato inválido");
+            panic!("AUTUMN_GOOGLE_CLIENT_SECRET has an invalid format");
         }
         println!("cargo:rustc-env=AUTUMN_GOOGLE_CLIENT_SECRET={secret}");
     }

@@ -51,7 +51,7 @@ fn drive_client() -> Result<Client, String> {
         .map_err(|e| e.to_string())
 }
 
-fn receive_authorization(listener: TcpListener, expected_state: &str) -> Result<String, String> {
+fn receive_authorization(listener: TcpListener, expected_state: &str, language: &str) -> Result<String, String> {
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let deadline = Instant::now() + Duration::from_secs(180);
     while Instant::now() < deadline {
@@ -64,9 +64,9 @@ fn receive_authorization(listener: TcpListener, expected_state: &str) -> Result<
                 let path = request
                     .split_whitespace()
                     .nth(1)
-                    .ok_or("Respuesta OAuth inválida")?;
+                    .ok_or("DRIVE_ERROR:invalid_oauth_response")?;
                 let callback = Url::parse(&format!("http://127.0.0.1{path}"))
-                    .map_err(|_| "Respuesta OAuth inválida")?;
+                    .map_err(|_| "DRIVE_ERROR:invalid_oauth_response")?;
                 let parameters: std::collections::HashMap<_, _> =
                     callback.query_pairs().into_owned().collect();
                 let valid_state = parameters
@@ -77,25 +77,30 @@ fn receive_authorization(listener: TcpListener, expected_state: &str) -> Result<
                 } else {
                     None
                 };
-                let html = if code.is_some() {
-                    "<h1>Autumn Reader conectado</h1><p>Ya puedes cerrar esta pestaña y volver a la aplicación.</p>"
-                } else {
-                    "<h1>No se pudo conectar</h1><p>Vuelve a Autumn Reader e inténtalo de nuevo.</p>"
+                let html = match (language, code.is_some()) {
+                    ("es", true) => "<h1>Autumn Reader conectado</h1><p>Ya puedes cerrar esta pestaña y volver a la aplicación.</p>",
+                    ("es", false) => "<h1>No se pudo conectar</h1><p>Vuelve a Autumn Reader e inténtalo de nuevo.</p>",
+                    ("it", true) => "<h1>Autumn Reader connesso</h1><p>Puoi chiudere questa scheda e tornare all'app.</p>",
+                    ("it", false) => "<h1>Connessione non riuscita</h1><p>Torna ad Autumn Reader e riprova.</p>",
+                    ("fr", true) => "<h1>Autumn Reader connecté</h1><p>Vous pouvez fermer cet onglet et revenir à l'application.</p>",
+                    ("fr", false) => "<h1>Connexion impossible</h1><p>Revenez dans Autumn Reader et réessayez.</p>",
+                    (_, true) => "<h1>Autumn Reader connected</h1><p>You can close this tab and return to the app.</p>",
+                    (_, false) => "<h1>Could not connect</h1><p>Return to Autumn Reader and try again.</p>",
                 };
                 let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{html}", html.len());
                 let _ = stream.write_all(response.as_bytes());
                 if !valid_state {
-                    return Err("La respuesta de Google no coincide con esta solicitud".into());
+                    return Err("DRIVE_ERROR:state_mismatch".into());
                 }
                 if let Some(code) = code {
                     return Ok(code);
                 }
                 return Err(format!(
-                    "Google no autorizó la conexión: {}",
+                    "DRIVE_ERROR:not_authorized:{}",
                     parameters
                         .get("error")
                         .map(String::as_str)
-                        .unwrap_or("sin código")
+                        .unwrap_or("unknown")
                 ));
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -104,16 +109,16 @@ fn receive_authorization(listener: TcpListener, expected_state: &str) -> Result<
             Err(error) => return Err(error.to_string()),
         }
     }
-    Err("Se agotó el tiempo para conectar con Google".into())
+    Err("DRIVE_ERROR:timeout".into())
 }
 
 #[tauri::command]
-async fn drive_connect(client_id: String, session: State<'_, DriveSession>) -> Result<String, String> {
+async fn drive_connect(client_id: String, language: String, session: State<'_, DriveSession>) -> Result<String, String> {
     if !client_id.ends_with(".apps.googleusercontent.com") || client_id.len() > 300 {
-        return Err("Introduce un Client ID de Google OAuth para aplicación de escritorio".into());
+        return Err("DRIVE_ERROR:invalid_client_id".into());
     }
     let client_secret = option_env!("AUTUMN_GOOGLE_CLIENT_SECRET")
-        .ok_or("Falta configurar Google OAuth para esta versión de Autumn Reader")?;
+        .ok_or("DRIVE_ERROR:missing_oauth_config")?;
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     let redirect_uri = format!("http://127.0.0.1:{port}");
@@ -131,9 +136,9 @@ async fn drive_connect(client_id: String, session: State<'_, DriveSession>) -> R
         .append_pair("code_challenge_method", "S256")
         .append_pair("state", &state);
     webbrowser::open(auth_url.as_str())
-        .map_err(|e| format!("No se pudo abrir el navegador: {e}"))?;
+        .map_err(|e| format!("DRIVE_ERROR:browser_failed:{e}"))?;
     let code =
-        tauri::async_runtime::spawn_blocking(move || receive_authorization(listener, &state))
+        tauri::async_runtime::spawn_blocking(move || receive_authorization(listener, &state, &language))
             .await
             .map_err(|e| e.to_string())??;
     let client = drive_client()?;
@@ -156,13 +161,13 @@ async fn drive_connect(client_id: String, session: State<'_, DriveSession>) -> R
         let code = details
             .get("error")
             .and_then(serde_json::Value::as_str)
-            .unwrap_or("error desconocido");
+            .unwrap_or("unknown_error");
         let description = details
             .get("error_description")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("");
         return Err(format!(
-            "Google rechazó la conexión ({status}): {code}. {description}"
+            "DRIVE_ERROR:google_rejected:{status}: {code}. {description}"
         ));
     }
     let token: TokenResponse = response.json().await.map_err(|e| e.to_string())?;
@@ -175,7 +180,7 @@ fn access_token(session: &DriveSession) -> Result<String, String> {
     let guard = session.0.lock().map_err(|e| e.to_string())?;
     match guard.as_ref() {
         Some((token, expires)) if Instant::now() < *expires => Ok(token.clone()),
-        _ => Err("La conexión con Drive venció. Vuelve a conectar tu cuenta".into()),
+        _ => Err("DRIVE_ERROR:session_expired".into()),
     }
 }
 
@@ -197,7 +202,7 @@ async fn drive_list_backups(session: State<'_, DriveSession>) -> Result<Vec<Driv
         .map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!(
-            "Drive no pudo listar las copias ({})",
+            "DRIVE_ERROR:list_failed:{}",
             response.status()
         ));
     }
@@ -211,10 +216,10 @@ async fn drive_save_backup(request: tauri::ipc::Request<'_>) -> Result<(), Strin
         tauri::ipc::InvokeBody::Raw(bytes) => bytes.to_vec(),
         tauri::ipc::InvokeBody::Json(value) => {
             let Some(values) = value.as_array() else {
-                return Err("La copia recibida no tiene un formato válido".into());
+                return Err("DRIVE_ERROR:invalid_backup_format".into());
             };
             if values.is_empty() || values.len() > MAX_BACKUP_BYTES {
-                return Err("La copia debe ocupar menos de 250 MB".into());
+                return Err("DRIVE_ERROR:backup_size_limit".into());
             }
             values
                 .iter()
@@ -223,13 +228,13 @@ async fn drive_save_backup(request: tauri::ipc::Request<'_>) -> Result<(), Strin
                         .as_u64()
                         .filter(|byte| *byte <= u8::MAX as u64)
                         .map(|byte| byte as u8)
-                        .ok_or_else(|| "La copia contiene datos no válidos".to_string())
+                        .ok_or_else(|| "DRIVE_ERROR:invalid_backup_data".to_string())
                 })
                 .collect::<Result<Vec<_>, _>>()?
         }
     };
     if bytes.is_empty() || bytes.len() > MAX_BACKUP_BYTES {
-        return Err("La copia debe ocupar menos de 250 MB".into());
+        return Err("DRIVE_ERROR:backup_size_limit".into());
     }
     let bytes = bytes.to_vec();
     let token = request
@@ -238,7 +243,7 @@ async fn drive_save_backup(request: tauri::ipc::Request<'_>) -> Result<(), Strin
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
         .filter(|value| !value.is_empty())
-        .ok_or("La sesión de Drive venció. Vuelve a conectar tu cuenta")?
+        .ok_or("DRIVE_ERROR:session_expired")?
         .to_string();
     let client = drive_client()?;
     let metadata = serde_json::json!({ "name": BACKUP_NAME, "parents": ["appDataFolder"], "mimeType": "application/zip" });
@@ -255,19 +260,19 @@ async fn drive_save_backup(request: tauri::ipc::Request<'_>) -> Result<(), Strin
         .map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!(
-            "Drive no pudo iniciar la copia ({})",
+            "DRIVE_ERROR:upload_start_failed:{}",
             response.status()
         ));
     }
     let location = response
         .headers()
         .get(header::LOCATION)
-        .ok_or("Drive no devolvió una dirección de subida")?
+        .ok_or("DRIVE_ERROR:upload_location_missing")?
         .to_str()
         .map_err(|e| e.to_string())?
         .to_string();
     if !location.starts_with("https://www.googleapis.com/upload/drive/v3/files?") {
-        return Err("Drive devolvió una dirección de subida inesperada".into());
+        return Err("DRIVE_ERROR:upload_location_invalid".into());
     }
     let response = client
         .put(location)
@@ -278,7 +283,7 @@ async fn drive_save_backup(request: tauri::ipc::Request<'_>) -> Result<(), Strin
         .map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!(
-            "Drive no pudo guardar la copia ({})",
+            "DRIVE_ERROR:upload_failed:{}",
             response.status()
         ));
     }
@@ -295,7 +300,7 @@ async fn drive_download_backup(
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err("Identificador de copia inválido".into());
+        return Err("DRIVE_ERROR:invalid_backup_id".into());
     }
     let token = access_token(&session)?;
     let response = drive_client()?
@@ -309,7 +314,7 @@ async fn drive_download_backup(
         .map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!(
-            "Drive no pudo descargar la copia ({})",
+            "DRIVE_ERROR:download_failed:{}",
             response.status()
         ));
     }
@@ -317,13 +322,18 @@ async fn drive_download_backup(
         .content_length()
         .is_some_and(|length| length as usize > MAX_BACKUP_BYTES)
     {
-        return Err("La copia supera los 250 MB admitidos".into());
+        return Err("DRIVE_ERROR:backup_size_limit".into());
     }
     let bytes = response.bytes().await.map_err(|e| e.to_string())?;
     if bytes.len() > MAX_BACKUP_BYTES {
-        return Err("La copia supera los 250 MB admitidos".into());
+        return Err("DRIVE_ERROR:backup_size_limit".into());
     }
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
+}
+
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -334,8 +344,9 @@ pub fn run() {
             drive_connect,
             drive_list_backups,
             drive_save_backup,
-            drive_download_backup
+            drive_download_backup,
+            restart_app
         ])
         .run(tauri::generate_context!())
-        .expect("No se pudo iniciar Autumn Reader");
+        .expect("Could not start Autumn Reader");
 }

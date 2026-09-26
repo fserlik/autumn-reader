@@ -2,7 +2,7 @@
   "name": "autumn-reader",
   "version": "0.4.1",
   "private": true,
-  "description": "Lector de libros de escritorio",
+  "description": "Desktop book reader",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
