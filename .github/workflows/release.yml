@@ -1,4 +1,4 @@
-name: Publicar instalador firmado de Windows
+name: Publicar versión de Windows
 
 on:
   push:
@@ -9,7 +9,6 @@ jobs:
   release:
     runs-on: windows-latest
     permissions:
-      actions: read
       contents: write
     steps:
       - uses: actions/checkout@v4
@@ -21,98 +20,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri -> target
-
-      - name: Comprobar versión y configuración de SignPath
-        id: version
-        shell: pwsh
-        env:
-          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
-          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-        run: |
-          $version = (Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json).version
-          if ($env:GITHUB_REF_NAME -ne "v$version") {
-            throw "La etiqueta $env:GITHUB_REF_NAME no coincide con la versión $version de la aplicación."
-          }
-          foreach ($name in @('SIGNPATH_API_TOKEN', 'SIGNPATH_ORGANIZATION_ID', 'SIGNPATH_PROJECT_SLUG', 'SIGNPATH_SIGNING_POLICY_SLUG')) {
-            if (-not [Environment]::GetEnvironmentVariable($name)) {
-              throw "Falta configurar $name en GitHub antes de publicar una release firmada."
-            }
-          }
-          "number=$version" >> $env:GITHUB_OUTPUT
-
       - run: npm ci
-      - name: Compilar instalador sin publicar
-        shell: pwsh
+      - uses: tauri-apps/tauri-action@v1
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
           AUTUMN_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-        run: |
-          npm run tauri -- build --bundles nsis
-          if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación de Autumn Reader.' }
-          $installers = @(Get-ChildItem -LiteralPath 'src-tauri/target/release/bundle/nsis' -Filter '*-setup.exe' -File)
-          if ($installers.Count -ne 1) { throw 'Se esperaba exactamente un instalador NSIS.' }
-          New-Item -ItemType Directory -Path 'signpath-unsigned' -Force | Out-Null
-          Copy-Item -LiteralPath $installers[0].FullName -Destination 'signpath-unsigned/AutumnReader-Setup.exe'
-
-      - name: Subir instalador para firma
-        id: unsigned
-        uses: actions/upload-artifact@v4
         with:
-          name: autumn-reader-unsigned-for-signpath
-          path: signpath-unsigned/AutumnReader-Setup.exe
-          if-no-files-found: error
-
-      - name: Firmar con SignPath Foundation
-        uses: signpath/github-action-submit-signing-request@v3
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          artifact-configuration-slug: windows-installer
-          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
-          parameters: |
-            version: "${{ steps.version.outputs.number }}"
-          wait-for-completion: true
-          wait-for-completion-timeout-in-seconds: '3600'
-          output-artifact-directory: signpath-signed
-
-      - name: Verificar firma y preparar descarga
-        shell: pwsh
-        env:
-          APP_VERSION: ${{ steps.version.outputs.number }}
-        run: |
-          $files = @(Get-ChildItem -LiteralPath 'signpath-signed' -Recurse -Filter 'AutumnReader-Setup.exe' -File)
-          if ($files.Count -ne 1) { throw 'SignPath no devolvió exactamente un instalador firmado.' }
-          $signature = Get-AuthenticodeSignature -LiteralPath $files[0].FullName
-          if ($signature.Status -ne 'Valid') { throw "Firma inválida: $($signature.Status)" }
-          if ($signature.SignerCertificate.Subject -notmatch 'SignPath Foundation') {
-            throw 'El certificado no pertenece a SignPath Foundation.'
-          }
-          New-Item -ItemType Directory -Path 'signed-release' -Force | Out-Null
-          Copy-Item -LiteralPath $files[0].FullName -Destination "signed-release/Autumn.Reader_$($env:APP_VERSION)_x64-setup.exe"
-
-      - name: Crear release con el instalador firmado
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $installer = @(Get-ChildItem -LiteralPath 'signed-release' -Filter '*.exe' -File)
-          if ($installer.Count -ne 1) { throw 'No se encontró el instalador firmado.' }
-          gh release view $env:GITHUB_REF_NAME --json tagName --jq .tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:GITHUB_REF_NAME $installer[0].FullName --clobber
-          } else {
-            $notes = @'
-          Instalador de Windows firmado por SignPath Foundation.
-
-          Code signing policy: https://autumnreader.lat/firma.html
-          '@
-            $notes | Set-Content -LiteralPath 'signed-release/notes.md' -Encoding utf8
-            gh release create $env:GITHUB_REF_NAME $installer[0].FullName --verify-tag --draft `
-              --title "Autumn Reader $env:GITHUB_REF_NAME" `
-              --notes-file 'signed-release/notes.md'
-          }
-          if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar el instalador firmado.' }
+          tagName: ${{ github.ref_name }}
+          releaseName: "Autumn Reader ${{ github.ref_name }}"
+          releaseBody: "Instalador de Windows para Autumn Reader."
+          releaseDraft: true
+          prerelease: false
+          args: --bundles nsis
