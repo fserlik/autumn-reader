@@ -27,6 +27,7 @@ const icons = {
   star: '<path d="m12 2 3.1 6.4 7.1 1-5.1 5 .9 7.1-6-3.3-6 3.3.9-7.1-5.1-5 7.1-1z"/>',
   trash: '<path d="M4 7h16m-10 4v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/>',
+  notes: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
 };
 
@@ -98,8 +99,13 @@ app.innerHTML = `
         </section>
 
         <section id="view-reader" class="view reader-view" hidden>
-          <div class="reader-toolbar"><button id="back-button" class="back-button" type="button">${svg("back", 18)}<span>${t("back")}</span></button><div class="reader-controls page-controls"><button id="previous-button" class="tool-button" type="button" aria-label="${t("previousPage")}">←</button><span id="position-label" class="position-label">—</span><button id="next-button" class="tool-button" type="button" aria-label="${t("nextPage")}">→</button></div><div class="reader-controls size-controls"><span id="size-label" class="size-label">${t("zoom")}</span><button id="smaller-button" class="tool-button" type="button" aria-label="${t("decreaseSize")}">−</button><span id="size-value" class="size-value">100%</span><button id="larger-button" class="tool-button" type="button" aria-label="${t("increaseSize")}">＋</button></div></div>
-          <div id="reading-surface" class="reading-surface"><div id="reader-content" class="reader-content"></div></div>
+          <div class="reader-toolbar">
+            <button id="back-button" class="back-button" type="button">${svg("back", 18)}<span>${t("back")}</span></button>
+            <div class="reader-controls page-controls"><button id="previous-button" class="tool-button" type="button" aria-label="${t("previousPage")}">←</button><span id="position-label" class="position-label">—</span><button id="next-button" class="tool-button" type="button" aria-label="${t("nextPage")}">→</button></div>
+            <button id="all-notes-button" class="reader-notes-button" type="button" aria-haspopup="dialog" aria-controls="all-notes-dialog">${svg("notes", 17)}<span>${t("notes")}</span><span id="notes-count" class="notes-count">0</span></button>
+            <div class="reader-controls size-controls"><span id="size-label" class="size-label">${t("zoom")}</span><button id="smaller-button" class="tool-button" type="button" aria-label="${t("decreaseSize")}">−</button><span id="size-value" class="size-value">100%</span><button id="larger-button" class="tool-button" type="button" aria-label="${t("increaseSize")}">＋</button></div>
+          </div>
+          <div id="reading-surface" class="reading-surface" tabindex="-1"><div id="reader-content" class="reader-content"></div></div>
           <div class="reader-bottom"><span>${t("noteHint")}</span><span id="save-status">${t("progressSaved")}</span></div>
         </section>
       </main>
@@ -113,6 +119,12 @@ app.innerHTML = `
           <label class="note-label" for="note-text">${t("yourNote")}</label><textarea id="note-text" maxlength="5000" rows="5" placeholder="${t("notePlaceholder")}"></textarea>
           <div class="note-card-actions"><button id="note-delete" type="button" class="note-delete" hidden>${t("deleteNote")}</button><button id="note-cancel" type="button" class="secondary-button">${t("cancel")}</button><button id="note-save" type="button" class="primary-button">${t("saveNote")}</button></div>
         </div>
+      </div>
+      <div id="all-notes-dialog" class="notes-dialog" hidden>
+        <aside class="notes-panel" role="dialog" aria-modal="true" aria-labelledby="all-notes-title">
+          <div class="notes-panel-header"><div><span class="notes-eyebrow">Autumn Reader</span><h2 id="all-notes-title">${t("notes")}</h2></div><button id="all-notes-close" class="note-close" type="button" aria-label="${t("closeNotes")}">×</button></div>
+          <div id="all-notes-list" class="notes-list"></div>
+        </aside>
       </div>
       <div id="confirm-dialog" class="confirm-dialog" hidden>
         <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirm-heading" aria-describedby="confirm-message">
@@ -347,6 +359,7 @@ function setView(next: View): void {
   if (next !== "reader") {
     hideNoteMenu();
     closeNoteDialog();
+    closeAllNotes();
   }
   view = next;
   $<HTMLElement>(".workspace").dataset.view = next;
@@ -635,6 +648,7 @@ async function saveNote(): Promise<void> {
   try {
     await saveBook(book);
     closeNoteDialog();
+    updateNotesCount();
     renderNoteMarkers();
     showToast(t("noteSaved"));
   } catch {
@@ -651,11 +665,111 @@ async function deleteNote(): Promise<void> {
   try {
     await saveBook(book);
     closeNoteDialog();
+    updateNotesCount();
     renderNoteMarkers();
     showToast(t("noteDeleted"));
   } catch {
     book.notes = previous;
     showToast(t("noteDeleteFailed"));
+  }
+}
+
+function updateNotesCount(): void {
+  $<HTMLSpanElement>("#notes-count").textContent = String(currentBook?.notes?.length ?? 0);
+}
+
+function epubNoteSection(note: BookNote): number | null {
+  if (note.format !== "epub") return null;
+  try { return epubBook?.spine.get(note.cfi)?.index ?? null; }
+  catch { return null; }
+}
+
+function noteLocation(note: BookNote): string {
+  if (note.format === "pdf") return t("pageOf", { page: note.page, total: pdfDocument?.numPages ?? "…" });
+  const section = epubNoteSection(note);
+  return section === null ? t("book") : t("section", { number: section + 1 });
+}
+
+function renderAllNotes(): void {
+  const list = $<HTMLDivElement>("#all-notes-list");
+  const notes = [...(currentBook?.notes ?? [])].sort((a, b) => {
+    if (a.format === "pdf" && b.format === "pdf") return a.page - b.page || a.y - b.y || a.createdAt - b.createdAt;
+    if (a.format === "epub" && b.format === "epub") return (epubNoteSection(a) ?? 0) - (epubNoteSection(b) ?? 0) || a.createdAt - b.createdAt;
+    return a.createdAt - b.createdAt;
+  });
+  if (!notes.length) {
+    const empty = document.createElement("p");
+    empty.className = "notes-empty";
+    empty.textContent = t("notesEmpty");
+    list.replaceChildren(empty);
+    return;
+  }
+  list.replaceChildren(...notes.map((note) => {
+    const card = document.createElement("article");
+    card.className = "notes-entry";
+    const header = document.createElement("div");
+    header.className = "notes-entry-header";
+    const color = document.createElement("span");
+    color.className = "notes-entry-color";
+    color.style.backgroundColor = note.color;
+    color.setAttribute("aria-hidden", "true");
+    const location = document.createElement("span");
+    location.textContent = noteLocation(note);
+    header.append(color, location);
+    const quote = document.createElement("p");
+    quote.className = "notes-entry-quote";
+    quote.textContent = note.quote;
+    const body = document.createElement("p");
+    body.className = "notes-entry-text";
+    body.textContent = note.text;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "notes-go-button";
+    button.textContent = `${t("goToNote")} →`;
+    button.addEventListener("click", () => void goToNote(note));
+    card.append(header, quote, body, button);
+    return card;
+  }));
+}
+
+function openAllNotes(): void {
+  if (!currentBook) return;
+  renderAllNotes();
+  $<HTMLDivElement>("#all-notes-dialog").hidden = false;
+  $<HTMLButtonElement>("#all-notes-close").focus();
+}
+
+function closeAllNotes(): void {
+  const dialog = $<HTMLDivElement>("#all-notes-dialog");
+  if (dialog.hidden) return;
+  dialog.hidden = true;
+  $<HTMLButtonElement>("#all-notes-button").focus();
+}
+
+async function goToNote(note: BookNote): Promise<void> {
+  if (!currentBook) return;
+  closeAllNotes();
+  try {
+    if (note.format === "pdf" && currentBook.format === "pdf" && pdfDocument) {
+      currentBook.page = note.page;
+      readingSurface.scrollLeft = 0;
+      await renderPdfPage();
+      const sheet = readerContent.querySelector<HTMLElement>(".pdf-sheet");
+      if (sheet) {
+        const y = sheet.getBoundingClientRect().top - readingSurface.getBoundingClientRect().top
+          + readingSurface.scrollTop + Math.max(0, Math.min(1, note.y)) * sheet.clientHeight;
+        readingSurface.scrollTop = Math.max(0, y - readingSurface.clientHeight / 3);
+      }
+      await persistCurrent();
+    } else if (note.format === "epub" && currentBook.format === "epub" && rendition) {
+      await rendition.display(note.cfi);
+      updatePosition();
+      window.requestAnimationFrame(renderNoteMarkers);
+    } else return;
+    readingSurface.focus({ preventScroll: true });
+  } catch (error) {
+    console.error(error);
+    showToast(t("noteJumpFailed"));
   }
 }
 
@@ -707,6 +821,7 @@ function renderNoteMarkers(): void {
 async function clearReader(): Promise<void> {
   hideNoteMenu();
   closeNoteDialog();
+  closeAllNotes();
   window.clearTimeout(touchNoteTimer);
   pdfSelectionListener?.abort();
   pdfSelectionListener = null;
@@ -819,6 +934,7 @@ async function openBook(book: StoredBook): Promise<void> {
   currentBook = book;
   book.lastOpenedAt = Date.now();
   zoom = 1;
+  updateNotesCount();
   setView("reader");
   renderCollections();
   readerContent.textContent = "";
@@ -1005,7 +1121,7 @@ function addTapNavigation(target: Document | HTMLElement, getSelection: () => Se
     const elapsed = Date.now() - start.time;
     start = null;
     if (elapsed > 450 || Math.abs(dx) > 12 || Math.abs(dy) > 12) return;
-    if (getSelection()?.isCollapsed === false || !$<HTMLDivElement>("#note-dialog").hidden || !$<HTMLDivElement>("#note-menu").hidden) return;
+    if (getSelection()?.isCollapsed === false || !$<HTMLDivElement>("#note-dialog").hidden || !$<HTMLDivElement>("#all-notes-dialog").hidden || !$<HTMLDivElement>("#note-menu").hidden) return;
     const embedded = "documentElement" in target;
     const width = embedded ? target.documentElement.clientWidth : target.clientWidth;
     const x = embedded ? touch.clientX : touch.clientX - target.getBoundingClientRect().left;
@@ -1054,6 +1170,11 @@ $("#note-save").addEventListener("click", () => void saveNote());
 $("#note-delete").addEventListener("click", () => void deleteNote());
 $("#note-cancel").addEventListener("click", closeNoteDialog);
 $("#note-close").addEventListener("click", closeNoteDialog);
+$("#all-notes-button").addEventListener("click", openAllNotes);
+$("#all-notes-close").addEventListener("click", closeAllNotes);
+$<HTMLDivElement>("#all-notes-dialog").addEventListener("mousedown", (event) => {
+  if (event.target === event.currentTarget) closeAllNotes();
+});
 $<HTMLDivElement>("#note-dialog").addEventListener("mousedown", (event) => {
   if (event.target === event.currentTarget) closeNoteDialog();
 });
@@ -1130,10 +1251,11 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape") {
     if (!$<HTMLDivElement>("#note-dialog").hidden) closeNoteDialog();
+    if (!$<HTMLDivElement>("#all-notes-dialog").hidden) closeAllNotes();
     hideNoteMenu();
     return;
   }
-  if (!$<HTMLDivElement>("#note-dialog").hidden) return;
+  if (!$<HTMLDivElement>("#note-dialog").hidden || !$<HTMLDivElement>("#all-notes-dialog").hidden) return;
   if (event.altKey || event.ctrlKey || event.metaKey || view !== "reader") return;
   if (event.key === "ArrowLeft") { event.preventDefault(); void navigate(-1); }
   if (event.key === "ArrowRight") { event.preventDefault(); void navigate(1); }

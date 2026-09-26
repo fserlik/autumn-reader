@@ -18,6 +18,11 @@ const en = {
   fontVerdana: "Verdana",
   fontTimes: "Times New Roman",
   bookFontSaved: "Book font saved",
+  notes: "Notes",
+  closeNotes: "Close notes",
+  notesEmpty: "You haven't added notes to this book yet.",
+  goToNote: "Go to passage",
+  noteJumpFailed: "Couldn't open this note's location",
   goHome: "Go to home",
   yourSpace: "Your space",
   mainNavigation: "Main navigation",
@@ -178,6 +183,11 @@ type TranslationKey = keyof typeof en;
 type TranslationSet = Record<TranslationKey, string>;
 
 const es: TranslationSet = {
+  notes: "Notas",
+  closeNotes: "Cerrar notas",
+  notesEmpty: "Todavía no agregaste notas a este libro.",
+  goToNote: "Ir al pasaje",
+  noteJumpFailed: "No se pudo abrir la ubicación de esta nota",
   bookFont: "Fuente de los libros",
   bookFontHelp: "Elige una fuente para los libros con texto adaptable. Los libros de diseño fijo conservan su tipografía original.",
   bookFontLabel: "Fuente de los libros",
@@ -191,6 +201,11 @@ const es: TranslationSet = {
 };
 
 const it: TranslationSet = {
+  notes: "Note",
+  closeNotes: "Chiudi le note",
+  notesEmpty: "Non hai ancora aggiunto note a questo libro.",
+  goToNote: "Vai al passaggio",
+  noteJumpFailed: "Impossibile aprire la posizione di questa nota",
   bookFont: "Carattere dei libri",
   bookFontHelp: "Scegli un carattere per i libri con testo regolabile. I libri a impaginazione fissa mantengono il carattere originale.",
   bookFontLabel: "Carattere dei libri",
@@ -204,6 +219,11 @@ const it: TranslationSet = {
 };
 
 const fr: TranslationSet = {
+  notes: "Notes",
+  closeNotes: "Fermer les notes",
+  notesEmpty: "Vous n'avez pas encore ajouté de notes à ce livre.",
+  goToNote: "Aller au passage",
+  noteJumpFailed: "Impossible d'ouvrir l'emplacement de cette note",
   bookFont: "Police des livres",
   bookFontHelp: "Choisissez une police pour les livres à texte ajustable. Les livres à mise en page fixe conservent leur police d'origine.",
   bookFontLabel: "Police des livres",

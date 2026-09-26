@@ -166,6 +166,10 @@ html.android-app .shell { padding-top: max(32px, env(safe-area-inset-top, 0px));
 .position-label { min-width: 110px; text-align: center; font-size: 11px; }
 .size-label { margin-right: 7px; color: var(--muted); font-size: 11px; }
 .size-value { min-width: 43px; text-align: center; font-size: 11px; }
+.reader-notes-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 35px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-alt); color: var(--ink); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.reader-notes-button:hover { border-color: var(--accent); }
+.reader-notes-button svg { flex: none; color: var(--accent-dark); }
+.notes-count { display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 6px; background: var(--surface); color: var(--accent-dark); font-size: 11px; }
 .reading-surface { flex: 1; min-width: 0; min-height: 0; overflow: auto; background: var(--bg); }
 .reader-content { display: flex; position: relative; align-items: flex-start; justify-content: flex-start; min-height: 100%; padding: 34px 38px; }
 .reader-content.pdf-content { box-sizing: border-box; width: max-content; min-width: 100%; height: auto; min-height: 100%; }
@@ -195,6 +199,21 @@ html.android-app .shell { padding-top: max(32px, env(safe-area-inset-top, 0px));
 #note-text { display: block; width: 100%; min-height: 112px; padding: 11px 12px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font-size: 13px; line-height: 1.5; }
 .note-card-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
 .note-delete { margin-right: auto; padding: 0 6px; border: 0; background: transparent; color: var(--burgundy); font-size: 12px; font-weight: 700; }
+.notes-dialog { position: fixed; inset: 0; z-index: 25; display: flex; justify-content: flex-end; background: #1e1118a6; }
+.notes-panel { display: flex; flex-direction: column; width: min(460px, 100%); height: 100%; min-height: 0; padding: 26px 24px; background: var(--surface); color: var(--ink); box-shadow: -16px 0 48px #180b0b45; }
+.notes-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex: none; padding-bottom: 19px; border-bottom: 1px solid var(--line); }
+.notes-panel-header h2 { margin: 4px 0 0; font-family: Georgia, serif; font-size: 29px; font-weight: 400; }
+.notes-panel-header .note-close { width: 40px; height: 40px; font-size: 26px; }
+.notes-eyebrow { color: var(--accent-dark); font-size: 10px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+.notes-list { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 20px 2px 8px 0; overflow: auto; overscroll-behavior: contain; }
+.notes-empty { margin: auto 0; padding: 28px 18px; border: 1px dashed var(--line); border-radius: 11px; color: var(--muted); text-align: center; font-size: 13px; line-height: 1.6; }
+.notes-entry { flex: none; padding: 18px 18px 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--bg); }
+.notes-entry-header { display: flex; align-items: center; gap: 8px; color: var(--accent-dark); font-size: 11px; font-weight: 700; }
+.notes-entry-color { flex: none; width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface); }
+.notes-entry-quote { display: -webkit-box; margin: 13px 0 9px; overflow: hidden; color: var(--muted); font-family: Georgia, serif; font-size: 12px; font-style: italic; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.notes-entry-text { margin: 0 0 15px; color: var(--ink); font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.notes-go-button { min-height: 40px; padding: 0 12px; border: 1px solid var(--accent-dark); border-radius: 8px; background: transparent; color: var(--accent-dark); font-size: 12px; font-weight: 700; }
+.notes-go-button:hover { background: var(--surface-alt); }
 .confirm-dialog { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px; background: #1e1118a6; }
 .confirm-card { width: min(430px, 100%); max-height: calc(100vh - 48px); overflow: auto; padding: 29px 30px 26px; border: 1px solid var(--line); border-top: 4px solid var(--accent); border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: 0 22px 70px #180b0b65; }
 .confirm-card[data-tone="remove"] { border-top-color: var(--burgundy); }
@@ -265,15 +284,20 @@ html.android-app .shell { padding-top: max(32px, env(safe-area-inset-top, 0px));
   .back-button span { display: inline; }
   .page-controls { justify-content: space-between; min-width: 0; }
   .position-label { flex: 1; min-width: 0; font-size: 13px; }
+  .reader-notes-button { grid-column: 1; grid-row: 2; min-height: 44px; padding: 0 8px; gap: 5px; }
+  .reader-notes-button svg { display: none; }
   .tool-button { width: 44px; height: 44px; flex: none; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); font-size: 23px; }
-  .size-controls { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) 44px 56px 44px; gap: 6px; align-items: center; padding: 3px 0 0; }
-  .size-label { display: block; margin: 0; font-size: 13px; font-weight: 700; }
-  .size-value { min-width: 0; font-size: 13px; }
+  .size-controls { display: grid; grid-column: 2; grid-row: 2; grid-template-columns: minmax(0, 1fr) 44px 45px 44px; gap: 4px; align-items: center; min-width: 0; }
+  .size-label { display: block; margin: 0; font-size: 11px; font-weight: 700; }
+  .size-value { min-width: 0; font-size: 12px; }
   .reader-content { height: 100%; min-height: 0; padding: 12px 32px 12px 12px; }
   .epub-frame { width: 100%; height: 100%; min-height: 0; margin: 0; padding: 10px 12px; }
   .reader-bottom { display: none; }
   .note-menu button { min-height: 44px; }
   .note-marker { width: 24px; height: 34px; }
+  .notes-dialog { align-items: flex-end; }
+  .notes-panel { width: 100%; height: auto; max-height: 78dvh; padding: 20px 18px max(24px, env(safe-area-inset-bottom, 0px)); border-radius: 18px 18px 0 0; }
+  .notes-go-button { min-height: 44px; }
   .confirm-card { padding: 23px 21px 21px; }
   .confirm-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .confirm-actions button { width: 100%; min-width: 0; min-height: 48px; padding: 8px 10px; white-space: normal; line-height: 1.2; font-size: 13px; }
