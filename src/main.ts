@@ -87,7 +87,6 @@ app.innerHTML = `
           <div class="settings-intro"><p class="section-kicker">${t("yourWay")}</p><h2>${t("settings")}</h2><p>${t("settingsIntro")}</p></div>
           <div class="settings-group"><div class="settings-copy"><h3>${t("appearance")}</h3><p>${t("appearanceHelp")}</p></div><div class="theme-options" role="group" aria-label="${t("appTheme")}"><button type="button" data-theme-choice="light" class="theme-choice"><span class="theme-preview theme-light"></span>${t("light")}</button><button type="button" data-theme-choice="dark" class="theme-choice"><span class="theme-preview theme-dark"></span>${t("dark")}</button></div></div>
           <div class="settings-group"><div class="settings-copy"><h3>${t("bookFont")}</h3><p>${t("bookFontHelp")}</p></div><select id="book-font" aria-label="${t("bookFontLabel")}"><option value="original">${t("fontOriginal")}</option><option value="georgia">${t("fontGeorgia")}</option><option value="arial">${t("fontArial")}</option><option value="verdana">${t("fontVerdana")}</option><option value="times">${t("fontTimes")}</option></select></div>
-          <div class="settings-group"><div class="settings-copy"><h3>${t("defaultTextSize")}</h3><p>${t("defaultTextSizeHelp")}</p></div><select id="default-font-size" aria-label="${t("defaultTextSizeLabel")}"><option value="90">${t("sizeSmall")}</option><option value="100">${t("sizeNormal")}</option><option value="110">${t("sizeComfortable")}</option><option value="120">${t("sizeLarge")}</option><option value="130">${t("sizeVeryLarge")}</option></select></div>
           <div class="settings-group"><div class="settings-copy"><h3>${t("language")}</h3><p>${t("languageHelp")}</p></div><select id="app-language" aria-label="${t("languageLabel")}"><option value="en">English</option><option value="es">Español</option><option value="it">Italiano</option><option value="fr">Français</option></select></div>
           <div class="drive-panel" ${isAndroid ? "hidden" : ""}>
             <div class="settings-copy"><h3>${t("driveBackup")}</h3><p>${t("driveBackupHelp")}</p></div>
@@ -150,7 +149,6 @@ let loadSequence = 0;
 let pdfRenderSequence = 0;
 let toastTimer: number | undefined;
 let theme: "light" | "dark" = localStorage.getItem("autumn-theme") === "dark" ? "dark" : "light";
-let defaultFontSize = Number(localStorage.getItem("autumn-default-font-size")) || 100;
 const bookFontFamilies = {
   original: "",
   georgia: 'Georgia, "Times New Roman", serif',
@@ -725,9 +723,19 @@ async function clearReader(): Promise<void> {
   epubBook?.destroy();
   epubBook = null;
   readerContent.replaceChildren();
+  readerContent.classList.remove("pdf-content");
 }
 
-async function renderPdfPage(): Promise<void> {
+type ScrollCenter = { x: number; y: number };
+
+function readerScrollCenter(): ScrollCenter {
+  return {
+    x: (readingSurface.scrollLeft + readingSurface.clientWidth / 2) / Math.max(readingSurface.scrollWidth, readingSurface.clientWidth),
+    y: (readingSurface.scrollTop + readingSurface.clientHeight / 2) / Math.max(readingSurface.scrollHeight, readingSurface.clientHeight),
+  };
+}
+
+async function renderPdfPage(scrollCenter?: ScrollCenter): Promise<void> {
   if (!pdfDocument || !currentBook || currentBook.format !== "pdf") return;
   const sequence = ++pdfRenderSequence;
   pdfSelectionListener?.abort();
@@ -761,7 +769,12 @@ async function renderPdfPage(): Promise<void> {
   const textLayerElement = document.createElement("div");
   textLayerElement.className = "pdf-text-layer";
   sheet.append(canvas, textLayerElement);
+  readerContent.classList.add("pdf-content");
   readerContent.replaceChildren(sheet);
+  if (scrollCenter) {
+    readingSurface.scrollLeft = scrollCenter.x * readingSurface.scrollWidth - readingSurface.clientWidth / 2;
+    readingSurface.scrollTop = scrollCenter.y * readingSurface.scrollHeight - readingSurface.clientHeight / 2;
+  }
   const context = canvas.getContext("2d");
   if (!context) throw new Error(t("viewerFailed"));
   const task = page.render({ canvasContext: context, canvas, viewport, transform: [ratio, 0, 0, ratio, 0, 0] });
@@ -830,7 +843,7 @@ async function openBook(book: StoredBook): Promise<void> {
       epubBook = ePub(buffer);
       rendition = epubBook.renderTo(frame, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
       rendition.hooks.content.register((contents: Contents) => {
-        addSwipeNavigation(contents.document, () => contents.window.getSelection());
+        addTapNavigation(contents.document, () => contents.window.getSelection());
         const selectedText = () => {
           const selection = contents.window.getSelection();
           if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
@@ -935,7 +948,7 @@ async function importFiles(files: FileList): Promise<void> {
     const book: StoredBook = {
       id: newId(), name: file.name, format, data: file,
       addedAt: Date.now(), lastOpenedAt: 0, favorite: false,
-      page: 1, cfi: null, fontSize: defaultFontSize,
+      page: 1, cfi: null, fontSize: 100,
     };
     try {
       await saveBook(book);
@@ -956,6 +969,7 @@ async function navigate(direction: -1 | 1): Promise<void> {
     if (next < 1 || next > pdfDocument.numPages) return;
     currentBook.page = next;
     readingSurface.scrollTop = 0;
+    readingSurface.scrollLeft = 0;
     await renderPdfPage();
     await persistCurrent();
   } else if (rendition) {
@@ -963,13 +977,24 @@ async function navigate(direction: -1 | 1): Promise<void> {
   }
 }
 
-function addSwipeNavigation(target: Document | HTMLElement, getSelection: () => Selection | null): void {
+function addTapNavigation(target: Document | HTMLElement, getSelection: () => Selection | null): void {
   let start: { x: number; y: number; time: number } | null = null;
   target.addEventListener("touchstart", (event) => {
     const touches = (event as TouchEvent).touches;
     if (touches.length !== 1 || view !== "reader") { start = null; return; }
+    if ((event.target as Element | null)?.closest?.("a, button, input, select, textarea, [role='button'], [contenteditable='true']")) {
+      start = null;
+      return;
+    }
     const touch = touches[0];
     start = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  }, { passive: true });
+  target.addEventListener("touchmove", (event) => {
+    if (!start) return;
+    const touches = (event as TouchEvent).touches;
+    if (touches.length !== 1 || Math.abs(touches[0].clientX - start.x) > 12 || Math.abs(touches[0].clientY - start.y) > 12) {
+      start = null;
+    }
   }, { passive: true });
   target.addEventListener("touchend", (event) => {
     const touches = (event as TouchEvent).changedTouches;
@@ -979,21 +1004,26 @@ function addSwipeNavigation(target: Document | HTMLElement, getSelection: () => 
     const dy = touch.clientY - start.y;
     const elapsed = Date.now() - start.time;
     start = null;
-    if (elapsed > 850 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    if (target === readingSurface && currentBook?.format !== "pdf") return;
-    if (getSelection()?.isCollapsed === false || !$<HTMLDivElement>("#note-dialog").hidden) return;
-    void navigate(dx < 0 ? 1 : -1);
+    if (elapsed > 450 || Math.abs(dx) > 12 || Math.abs(dy) > 12) return;
+    if (getSelection()?.isCollapsed === false || !$<HTMLDivElement>("#note-dialog").hidden || !$<HTMLDivElement>("#note-menu").hidden) return;
+    const embedded = "documentElement" in target;
+    const width = embedded ? target.documentElement.clientWidth : target.clientWidth;
+    const x = embedded ? touch.clientX : touch.clientX - target.getBoundingClientRect().left;
+    const edgeWidth = Math.min(width * 0.25, 120);
+    if (x < edgeWidth) void navigate(-1);
+    else if (x > width - edgeWidth) void navigate(1);
   }, { passive: true });
   target.addEventListener("touchcancel", () => { start = null; }, { passive: true });
 }
 
-addSwipeNavigation(readingSurface, () => window.getSelection());
+addTapNavigation(readingSurface, () => window.getSelection());
 
 function changeSize(direction: -1 | 1): void {
   if (!currentBook) return;
   if (currentBook.format === "pdf") {
+    const scrollCenter = readerScrollCenter();
     zoom = Math.max(0.5, Math.min(2, Math.round((zoom + direction * 0.1) * 10) / 10));
-    void renderPdfPage();
+    void renderPdfPage(scrollCenter);
   } else if (rendition) {
     currentBook.fontSize = Math.max(70, Math.min(180, currentBook.fontSize + direction * 10));
     rendition.themes.fontSize(`${currentBook.fontSize}%`);
@@ -1043,13 +1073,6 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(".theme-choice
     applyTheme();
   });
 }
-const fontSelect = $<HTMLSelectElement>("#default-font-size");
-fontSelect.value = String(defaultFontSize);
-fontSelect.addEventListener("change", () => {
-  defaultFontSize = Number(fontSelect.value);
-  localStorage.setItem("autumn-default-font-size", String(defaultFontSize));
-  showToast(t("fontSaved"));
-});
 const bookFontSelect = $<HTMLSelectElement>("#book-font");
 bookFontSelect.value = bookFont;
 bookFontSelect.addEventListener("change", () => {
