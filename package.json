@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "android:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android-local.ps1",
     "preview": "vite preview",
     "tauri": "tauri"
   },

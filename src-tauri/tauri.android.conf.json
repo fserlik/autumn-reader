@@ -1,0 +1,10 @@
+{
+  "app": {
+    "windows": [
+      {
+        "title": "Autumn Reader",
+        "backgroundColor": "#F4EEE3"
+      }
+    ]
+  }
+}

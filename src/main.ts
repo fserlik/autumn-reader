@@ -6,8 +6,8 @@ import {
   type PDFDocumentLoadingTask,
   type PDFDocumentProxy,
   type RenderTask,
-} from "pdfjs-dist";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+} from "pdfjs-dist/legacy/build/pdf.mjs";
+import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { invoke } from "@tauri-apps/api/core";
 import { createBackup, readBackup } from "./backup";
 import { countText, language, localizeDriveError, saveLanguage, t, type Language } from "./i18n";
@@ -34,8 +34,10 @@ function svg(name: keyof typeof icons, size = 19): string {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
 }
 
+const isAndroid = /\bAndroid\b/i.test(navigator.userAgent);
 const app = document.querySelector<HTMLDivElement>("#app")!;
 document.documentElement.lang = language;
+if (isAndroid) document.documentElement.classList.add("android-app");
 app.innerHTML = `
   <div class="shell">
     <aside class="sidebar">
@@ -84,9 +86,10 @@ app.innerHTML = `
         <section id="view-settings" class="view settings-view" hidden>
           <div class="settings-intro"><p class="section-kicker">${t("yourWay")}</p><h2>${t("settings")}</h2><p>${t("settingsIntro")}</p></div>
           <div class="settings-group"><div class="settings-copy"><h3>${t("appearance")}</h3><p>${t("appearanceHelp")}</p></div><div class="theme-options" role="group" aria-label="${t("appTheme")}"><button type="button" data-theme-choice="light" class="theme-choice"><span class="theme-preview theme-light"></span>${t("light")}</button><button type="button" data-theme-choice="dark" class="theme-choice"><span class="theme-preview theme-dark"></span>${t("dark")}</button></div></div>
+          <div class="settings-group"><div class="settings-copy"><h3>${t("bookFont")}</h3><p>${t("bookFontHelp")}</p></div><select id="book-font" aria-label="${t("bookFontLabel")}"><option value="original">${t("fontOriginal")}</option><option value="georgia">${t("fontGeorgia")}</option><option value="arial">${t("fontArial")}</option><option value="verdana">${t("fontVerdana")}</option><option value="times">${t("fontTimes")}</option></select></div>
           <div class="settings-group"><div class="settings-copy"><h3>${t("defaultTextSize")}</h3><p>${t("defaultTextSizeHelp")}</p></div><select id="default-font-size" aria-label="${t("defaultTextSizeLabel")}"><option value="90">${t("sizeSmall")}</option><option value="100">${t("sizeNormal")}</option><option value="110">${t("sizeComfortable")}</option><option value="120">${t("sizeLarge")}</option><option value="130">${t("sizeVeryLarge")}</option></select></div>
           <div class="settings-group"><div class="settings-copy"><h3>${t("language")}</h3><p>${t("languageHelp")}</p></div><select id="app-language" aria-label="${t("languageLabel")}"><option value="en">English</option><option value="es">Español</option><option value="it">Italiano</option><option value="fr">Français</option></select></div>
-          <div class="drive-panel">
+          <div class="drive-panel" ${isAndroid ? "hidden" : ""}>
             <div class="settings-copy"><h3>${t("driveBackup")}</h3><p>${t("driveBackupHelp")}</p></div>
             <div class="drive-actions"><button id="drive-connect" type="button" class="secondary-button">${t("signInGoogle")}</button><span id="drive-connected" class="drive-connected" hidden><span aria-hidden="true">●</span> ${t("driveConnected")}</span><button id="drive-save" type="button" class="primary-button" disabled>${t("saveBackup")}</button></div>
             <div class="drive-restore"><label for="drive-backups">${t("availableBackup")}</label><select id="drive-backups" disabled><option value="">${t("connectToFind")}</option></select><button id="drive-import" type="button" class="secondary-button" disabled>${t("importBackup")}</button></div>
@@ -96,7 +99,7 @@ app.innerHTML = `
         </section>
 
         <section id="view-reader" class="view reader-view" hidden>
-          <div class="reader-toolbar"><button id="back-button" class="back-button" type="button">${svg("back", 18)}<span>${t("back")}</span></button><div class="reader-controls"><button id="previous-button" class="tool-button" type="button" aria-label="${t("previousPage")}">←</button><span id="position-label" class="position-label">—</span><button id="next-button" class="tool-button" type="button" aria-label="${t("nextPage")}">→</button></div><div class="reader-controls"><span id="size-label" class="size-label">${t("zoom")}</span><button id="smaller-button" class="tool-button" type="button" aria-label="${t("decreaseSize")}">−</button><span id="size-value" class="size-value">100%</span><button id="larger-button" class="tool-button" type="button" aria-label="${t("increaseSize")}">＋</button></div></div>
+          <div class="reader-toolbar"><button id="back-button" class="back-button" type="button">${svg("back", 18)}<span>${t("back")}</span></button><div class="reader-controls page-controls"><button id="previous-button" class="tool-button" type="button" aria-label="${t("previousPage")}">←</button><span id="position-label" class="position-label">—</span><button id="next-button" class="tool-button" type="button" aria-label="${t("nextPage")}">→</button></div><div class="reader-controls size-controls"><span id="size-label" class="size-label">${t("zoom")}</span><button id="smaller-button" class="tool-button" type="button" aria-label="${t("decreaseSize")}">−</button><span id="size-value" class="size-value">100%</span><button id="larger-button" class="tool-button" type="button" aria-label="${t("increaseSize")}">＋</button></div></div>
           <div id="reading-surface" class="reading-surface"><div id="reader-content" class="reader-content"></div></div>
           <div class="reader-bottom"><span>${t("noteHint")}</span><span id="save-status">${t("progressSaved")}</span></div>
         </section>
@@ -139,6 +142,7 @@ let pdfDocument: PDFDocumentProxy | null = null;
 let pdfLoadingTask: PDFDocumentLoadingTask | null = null;
 let pdfRenderTask: RenderTask | null = null;
 let pdfTextLayer: TextLayer | null = null;
+let pdfSelectionListener: AbortController | null = null;
 let epubBook: EpubBook | null = null;
 let rendition: Rendition | null = null;
 let zoom = 1;
@@ -147,6 +151,16 @@ let pdfRenderSequence = 0;
 let toastTimer: number | undefined;
 let theme: "light" | "dark" = localStorage.getItem("autumn-theme") === "dark" ? "dark" : "light";
 let defaultFontSize = Number(localStorage.getItem("autumn-default-font-size")) || 100;
+const bookFontFamilies = {
+  original: "",
+  georgia: 'Georgia, "Times New Roman", serif',
+  arial: 'Arial, Helvetica, sans-serif',
+  verdana: 'Verdana, Geneva, sans-serif',
+  times: '"Times New Roman", Times, serif',
+} as const;
+type BookFont = keyof typeof bookFontFamilies;
+const storedBookFont = localStorage.getItem("autumn-book-font");
+let bookFont: BookFont = storedBookFont && Object.hasOwn(bookFontFamilies, storedBookFont) ? storedBookFont as BookFont : "original";
 const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || localStorage.getItem("autumn-google-client-id") || "").trim();
 let driveConnected = false;
 let driveAccessToken = "";
@@ -157,6 +171,7 @@ type NoteAnchor = { format: "pdf"; page: number; y: number } | { format: "epub";
 let pendingNote: { quote: string; anchor: NoteAnchor } | null = null;
 let editingNoteId: string | null = null;
 let selectedNoteColor = noteColors[0];
+let touchNoteTimer: number | undefined;
 let confirmResolve: ((confirmed: boolean) => void) | null = null;
 let confirmPreviousFocus: HTMLElement | null = null;
 
@@ -287,6 +302,15 @@ function titleOf(book: StoredBook): string {
   return book.name.replace(/\.(pdf|epub)$/i, "");
 }
 
+function newId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
+
 function showToast(message: string): void {
   const toast = $<HTMLDivElement>("#toast");
   toast.textContent = message;
@@ -327,6 +351,7 @@ function setView(next: View): void {
     closeNoteDialog();
   }
   view = next;
+  $<HTMLElement>(".workspace").dataset.view = next;
   if (next === "home" || next === "library") lastCollectionView = next;
   for (const section of document.querySelectorAll<HTMLElement>(".view")) section.hidden = section.id !== `view-${next}`;
   $<HTMLButtonElement>("#import-button").hidden = next === "reader" || next === "settings";
@@ -354,6 +379,10 @@ function applyTheme(): void {
     button.setAttribute("aria-pressed", String(selected));
   }
   rendition?.themes.default({ body: { color: theme === "light" ? "#342a26" : "#ece4d8", background: theme === "light" ? "#fffdf8" : "#292322" } });
+}
+
+function applyBookFont(): void {
+  rendition?.themes.font(bookFontFamilies[bookFont]);
 }
 
 function coverElement(book: StoredBook): HTMLElement {
@@ -542,6 +571,16 @@ function showNoteMenu(quote: string, anchor: NoteAnchor, x: number, y: number): 
   menu.style.top = `${Math.min(y, window.innerHeight - 52)}px`;
 }
 
+function scheduleTouchNote(selection: () => { quote: string; anchor: NoteAnchor; x: number; y: number } | null): void {
+  if (!navigator.maxTouchPoints && !window.matchMedia("(pointer: coarse)").matches) return;
+  window.clearTimeout(touchNoteTimer);
+  touchNoteTimer = window.setTimeout(() => {
+    if (view !== "reader" || !$<HTMLDivElement>("#note-dialog").hidden) return;
+    const note = selection();
+    if (note) showNoteMenu(note.quote, note.anchor, note.x, note.y);
+  }, 400);
+}
+
 function renderNoteColors(): void {
   const options = $<HTMLDivElement>("#note-color-options");
   options.replaceChildren(...noteColors.map((color) => {
@@ -591,7 +630,7 @@ async function saveNote(): Promise<void> {
     book.notes = previous.map((note) => note.id === editingNoteId ? { ...note, text, color: selectedNoteColor } : note);
   } else if (pendingNote) {
     book.notes = [...previous, {
-      id: crypto.randomUUID(), quote: pendingNote.quote, text, color: selectedNoteColor,
+      id: newId(), quote: pendingNote.quote, text, color: selectedNoteColor,
       createdAt: Date.now(), ...pendingNote.anchor,
     }];
   } else return;
@@ -657,7 +696,7 @@ function renderNoteMarkers(): void {
     marker.className = "note-marker";
     marker.style.backgroundColor = placement.note.color;
     marker.style.left = `${Math.min(placement.x, readerContent.clientWidth - 27)}px`;
-    const y = Math.max(8, placement.y - 10, lastY + 24);
+    const y = Math.max(8, placement.y - 10, lastY + (navigator.maxTouchPoints ? 36 : 24));
     marker.style.top = `${y}px`;
     lastY = y;
     marker.title = t("openNote");
@@ -670,6 +709,9 @@ function renderNoteMarkers(): void {
 async function clearReader(): Promise<void> {
   hideNoteMenu();
   closeNoteDialog();
+  window.clearTimeout(touchNoteTimer);
+  pdfSelectionListener?.abort();
+  pdfSelectionListener = null;
   ++pdfRenderSequence;
   pdfRenderTask?.cancel();
   pdfRenderTask = null;
@@ -688,6 +730,8 @@ async function clearReader(): Promise<void> {
 async function renderPdfPage(): Promise<void> {
   if (!pdfDocument || !currentBook || currentBook.format !== "pdf") return;
   const sequence = ++pdfRenderSequence;
+  pdfSelectionListener?.abort();
+  pdfSelectionListener = null;
   pdfRenderTask?.cancel();
   pdfTextLayer?.cancel();
   pdfTextLayer = null;
@@ -695,8 +739,11 @@ async function renderPdfPage(): Promise<void> {
   const page = await pdfDocument.getPage(currentBook.page);
   if (sequence !== pdfRenderSequence) return;
   const natural = page.getViewport({ scale: 1 });
-  const availableWidth = Math.max(200, readingSurface.clientWidth - 76);
-  const availableHeight = Math.max(200, readingSurface.clientHeight - 68);
+  const contentStyle = getComputedStyle(readerContent);
+  const horizontalPadding = parseFloat(contentStyle.paddingLeft) + parseFloat(contentStyle.paddingRight);
+  const verticalPadding = parseFloat(contentStyle.paddingTop) + parseFloat(contentStyle.paddingBottom);
+  const availableWidth = Math.max(120, readingSurface.clientWidth - horizontalPadding);
+  const availableHeight = Math.max(120, readingSurface.clientHeight - verticalPadding);
   const fitScale = Math.min(availableWidth / natural.width, availableHeight / natural.height);
   const viewport = page.getViewport({ scale: fitScale * zoom });
   const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -728,19 +775,26 @@ async function renderPdfPage(): Promise<void> {
   try { await textLayer.render(); }
   catch (error) { if (sequence === pdfRenderSequence) console.info(t("noSelectableText"), error); }
   if (sequence !== pdfRenderSequence) return;
-  textLayerElement.addEventListener("contextmenu", (event) => {
+  const selectedText = () => {
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
     const range = selection.getRangeAt(0);
-    if (!textLayerElement.contains(range.startContainer) || !textLayerElement.contains(range.endContainer)) return;
+    if (!textLayerElement.contains(range.startContainer) || !textLayerElement.contains(range.endContainer)) return null;
     const quote = selection.toString().trim();
-    if (!quote || !currentBook || currentBook.format !== "pdf") return;
-    event.preventDefault();
+    if (!quote || !currentBook || currentBook.format !== "pdf") return null;
     const rect = range.getBoundingClientRect();
     const pageRect = sheet.getBoundingClientRect();
     const y = Math.max(0, Math.min(1, (rect.top - pageRect.top) / pageRect.height));
-    showNoteMenu(quote, { format: "pdf", page: currentBook.page, y }, event.clientX, event.clientY);
+    return { quote, anchor: { format: "pdf" as const, page: currentBook.page, y }, x: rect.left, y: rect.bottom + 8 };
+  };
+  textLayerElement.addEventListener("contextmenu", (event) => {
+    const note = selectedText();
+    if (!note) return;
+    event.preventDefault();
+    showNoteMenu(note.quote, note.anchor, event.clientX, event.clientY);
   });
+  pdfSelectionListener = new AbortController();
+  document.addEventListener("selectionchange", () => scheduleTouchNote(selectedText), { signal: pdfSelectionListener.signal });
   renderNoteMarkers();
   updatePosition();
 }
@@ -776,22 +830,37 @@ async function openBook(book: StoredBook): Promise<void> {
       epubBook = ePub(buffer);
       rendition = epubBook.renderTo(frame, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
       rendition.hooks.content.register((contents: Contents) => {
-        contents.document.addEventListener("contextmenu", (event) => {
+        addSwipeNavigation(contents.document, () => contents.window.getSelection());
+        const selectedText = () => {
           const selection = contents.window.getSelection();
-          if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+          if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
           const quote = selection.toString().trim();
-          if (!quote) return;
+          if (!quote) return null;
           const range = selection.getRangeAt(0);
-          const cfi = contents.cfiFromRange(range);
+          let cfi: string;
+          try { cfi = contents.cfiFromRange(range); }
+          catch { return null; }
           const frameElement = contents.document.defaultView?.frameElement as HTMLElement | null;
-          if (!frameElement) return;
-          event.preventDefault();
+          if (!frameElement) return null;
           const frameRect = frameElement.getBoundingClientRect();
-          showNoteMenu(quote, { format: "epub", cfi }, frameRect.left + event.clientX, frameRect.top + event.clientY);
+          const rect = range.getBoundingClientRect();
+          return { quote, anchor: { format: "epub" as const, cfi }, x: frameRect.left + rect.left, y: frameRect.top + rect.bottom + 8 };
+        };
+        contents.document.addEventListener("contextmenu", (event) => {
+          const note = selectedText();
+          if (!note) return;
+          event.preventDefault();
+          const frameElement = contents.document.defaultView?.frameElement as HTMLElement | null;
+          if (frameElement) {
+            const frameRect = frameElement.getBoundingClientRect();
+            showNoteMenu(note.quote, note.anchor, frameRect.left + event.clientX, frameRect.top + event.clientY);
+          }
         });
+        contents.document.addEventListener("selectionchange", () => scheduleTouchNote(selectedText));
       });
       rendition.themes.fontSize(`${book.fontSize}%`);
       applyTheme();
+      applyBookFont();
       rendition.on("relocated", (location: Location) => {
         if (currentBook?.id !== book.id) return;
         book.cfi = location.start.cfi;
@@ -864,7 +933,7 @@ async function importFiles(files: FileList): Promise<void> {
     const format = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : file.name.toLowerCase().endsWith(".epub") ? "epub" : null;
     if (!format) { rejected++; continue; }
     const book: StoredBook = {
-      id: crypto.randomUUID(), name: file.name, format, data: file,
+      id: newId(), name: file.name, format, data: file,
       addedAt: Date.now(), lastOpenedAt: 0, favorite: false,
       page: 1, cfi: null, fontSize: defaultFontSize,
     };
@@ -893,6 +962,32 @@ async function navigate(direction: -1 | 1): Promise<void> {
     await (direction < 0 ? rendition.prev() : rendition.next());
   }
 }
+
+function addSwipeNavigation(target: Document | HTMLElement, getSelection: () => Selection | null): void {
+  let start: { x: number; y: number; time: number } | null = null;
+  target.addEventListener("touchstart", (event) => {
+    const touches = (event as TouchEvent).touches;
+    if (touches.length !== 1 || view !== "reader") { start = null; return; }
+    const touch = touches[0];
+    start = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+  }, { passive: true });
+  target.addEventListener("touchend", (event) => {
+    const touches = (event as TouchEvent).changedTouches;
+    if (!start || touches.length !== 1 || view !== "reader") return;
+    const touch = touches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    const elapsed = Date.now() - start.time;
+    start = null;
+    if (elapsed > 850 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (target === readingSurface && currentBook?.format !== "pdf") return;
+    if (getSelection()?.isCollapsed === false || !$<HTMLDivElement>("#note-dialog").hidden) return;
+    void navigate(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  target.addEventListener("touchcancel", () => { start = null; }, { passive: true });
+}
+
+addSwipeNavigation(readingSurface, () => window.getSelection());
 
 function changeSize(direction: -1 | 1): void {
   if (!currentBook) return;
@@ -954,6 +1049,16 @@ fontSelect.addEventListener("change", () => {
   defaultFontSize = Number(fontSelect.value);
   localStorage.setItem("autumn-default-font-size", String(defaultFontSize));
   showToast(t("fontSaved"));
+});
+const bookFontSelect = $<HTMLSelectElement>("#book-font");
+bookFontSelect.value = bookFont;
+bookFontSelect.addEventListener("change", () => {
+  const choice = bookFontSelect.value;
+  if (!Object.hasOwn(bookFontFamilies, choice)) return;
+  bookFont = choice as BookFont;
+  localStorage.setItem("autumn-book-font", bookFont);
+  applyBookFont();
+  showToast(t("bookFontSaved"));
 });
 const languageSelect = $<HTMLSelectElement>("#app-language");
 languageSelect.value = (localStorage.getItem("autumn-language") || language) as Language;

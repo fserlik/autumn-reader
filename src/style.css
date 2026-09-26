@@ -40,6 +40,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 [hidden] { display: none !important; }
 
 .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); height: 100vh; min-height: 540px; overflow: hidden; }
+html.android-app { background: #351b1f; }
+html.android-app .shell { padding-top: max(32px, env(safe-area-inset-top, 0px)); }
 .sidebar { display: flex; flex-direction: column; min-width: 0; padding: 27px 16px 20px; background: #351b1f; color: #fbefe1; }
 .brand { display: flex; align-items: center; gap: 9px; width: 100%; margin-bottom: 63px; padding: 0 5px; border: 0; background: transparent; color: inherit; text-align: left; font-family: Georgia, serif; font-size: 22px; letter-spacing: -.055em; white-space: nowrap; }
 .brand img { width: 39px; height: 39px; object-fit: contain; }
@@ -137,7 +139,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .theme-preview { display: block; width: 23px; height: 23px; border: 1px solid #a48878; border-radius: 5px; }
 .theme-light { background: linear-gradient(135deg, #fffbf4 50%, #cc5500 50%); }
 .theme-dark { background: linear-gradient(135deg, #351b1f 50%, #b7410e 50%); }
-#default-font-size, #app-language { width: 195px; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); font-size: 12px; }
+#book-font, #default-font-size, #app-language { width: 195px; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); font-size: 12px; }
 .settings-note { display: flex; align-items: center; gap: 19px; max-width: 740px; margin-top: 38px; padding: 22px 26px; border-radius: 11px; background: #80800019; }
 .settings-note img { flex: none; width: 79px; height: 79px; object-fit: contain; }
 .settings-note p { max-width: 510px; margin: 0 0 11px; color: var(--muted); font-size: 12px; line-height: 1.55; }
@@ -236,11 +238,47 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .epub-frame { padding: 18px; }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 600px) {
+  .shell { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; }
+  .workspace { flex: 1; order: 0; min-height: 0; }
+  .sidebar { flex: none; order: 1; width: 100%; height: calc(65px + env(safe-area-inset-bottom)); padding: 3px 8px env(safe-area-inset-bottom); }
+  html.android-app .sidebar { height: calc(65px + max(24px, env(safe-area-inset-bottom, 0px))); padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); }
+  .brand { display: none; }
+  .sidebar-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; height: 100%; }
+  .nav-button { flex-direction: column; gap: 3px; justify-content: center; min-height: 0; height: 100%; padding: 4px; font-size: 10px; line-height: 1.1; }
+  .nav-button span { display: inline; }
+  .nav-button .nav-count { display: none; }
+  .nav-button.active { box-shadow: inset 0 3px 0 #f0a033; }
+  .topbar { height: 59px; padding-inline: 17px; }
+  .topbar-copy h1 { font-size: 19px; }
+  .workspace[data-view="reader"] .topbar { display: none; }
+  .home-view, .library-view, .settings-view { padding: 18px 16px 38px; }
+  .section-intro { padding: 18px; }
+  .section-intro > img { width: 60px; height: 60px; }
+  .shelf-heading h2, .section-intro h2, .settings-intro h2 { font-size: 23px; }
+  .recent-grid .book-card, .favorite-grid .book-card { flex-basis: 128px; }
+  .library-grid { grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); gap: 18px 14px; }
+  .favorite-button, .remove-button { width: 39px; height: 39px; }
+  .reader-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: 0; gap: 7px 10px; padding: 8px 12px 10px; }
+  .back-button { min-width: 67px; min-height: 44px; font-size: 13px; }
+  .back-button span { display: inline; }
+  .page-controls { justify-content: space-between; min-width: 0; }
+  .position-label { flex: 1; min-width: 0; font-size: 13px; }
+  .tool-button { width: 44px; height: 44px; flex: none; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); font-size: 23px; }
+  .size-controls { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) 44px 56px 44px; gap: 6px; align-items: center; padding: 3px 0 0; }
+  .size-label { display: block; margin: 0; font-size: 13px; font-weight: 700; }
+  .size-value { min-width: 0; font-size: 13px; }
+  .reader-content { height: 100%; min-height: 0; padding: 12px 32px 12px 12px; }
+  .epub-frame { width: 100%; height: 100%; min-height: 0; margin: 0; padding: 10px 12px; }
+  .reader-bottom { display: none; }
+  .note-menu button { min-height: 44px; }
+  .note-marker { width: 24px; height: 34px; }
   .confirm-card { padding: 23px 21px 21px; }
+  .confirm-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .confirm-actions button { width: 100%; min-width: 0; min-height: 48px; padding: 8px 10px; white-space: normal; line-height: 1.2; font-size: 13px; }
   .topbar-copy p { display: none; }
-  .primary-button { width: 38px; height: 38px; padding: 0; }
-  .primary-button span { display: none; }
+  .topbar > .primary-button { width: 44px; height: 44px; padding: 0; }
+  .topbar > .primary-button span { display: none; }
   .hero { display: flex; flex-direction: column-reverse; }
   .hero-art { min-height: 125px; height: 125px; }
   .hero-art img { height: 130px; }

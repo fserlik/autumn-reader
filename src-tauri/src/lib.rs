@@ -1,34 +1,49 @@
+#[cfg(not(mobile))]
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+#[cfg(not(mobile))]
 use rand::RngCore;
+#[cfg(not(mobile))]
 use reqwest::{header, Client};
+#[cfg(not(mobile))]
 use serde::{Deserialize, Serialize};
+#[cfg(not(mobile))]
 use sha2::{Digest, Sha256};
+#[cfg(not(mobile))]
 use std::{
     io::{Read, Write},
     net::TcpListener,
     sync::Mutex,
     time::{Duration, Instant},
 };
+#[cfg(not(mobile))]
 use tauri::State;
+#[cfg(not(mobile))]
 use url::Url;
 
+#[cfg(not(mobile))]
 const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.appdata";
+#[cfg(not(mobile))]
 const BACKUP_NAME: &str = "autumn-reader-backup.zip";
+#[cfg(not(mobile))]
 const MAX_BACKUP_BYTES: usize = 250 * 1024 * 1024;
 
+#[cfg(not(mobile))]
 struct DriveSession(Mutex<Option<(String, Instant)>>);
 
+#[cfg(not(mobile))]
 #[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
     expires_in: u64,
 }
 
+#[cfg(not(mobile))]
 #[derive(Deserialize)]
 struct FileList {
     files: Vec<DriveBackup>,
 }
 
+#[cfg(not(mobile))]
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DriveBackup {
@@ -38,12 +53,14 @@ struct DriveBackup {
     size: Option<String>,
 }
 
+#[cfg(not(mobile))]
 fn random_url_safe() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
+#[cfg(not(mobile))]
 fn drive_client() -> Result<Client, String> {
     Client::builder()
         .timeout(Duration::from_secs(600))
@@ -51,6 +68,7 @@ fn drive_client() -> Result<Client, String> {
         .map_err(|e| e.to_string())
 }
 
+#[cfg(not(mobile))]
 fn receive_authorization(listener: TcpListener, expected_state: &str, language: &str) -> Result<String, String> {
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let deadline = Instant::now() + Duration::from_secs(180);
@@ -112,6 +130,7 @@ fn receive_authorization(listener: TcpListener, expected_state: &str, language: 
     Err("DRIVE_ERROR:timeout".into())
 }
 
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn drive_connect(client_id: String, language: String, session: State<'_, DriveSession>) -> Result<String, String> {
     if !client_id.ends_with(".apps.googleusercontent.com") || client_id.len() > 300 {
@@ -176,6 +195,7 @@ async fn drive_connect(client_id: String, language: String, session: State<'_, D
     Ok(token.access_token)
 }
 
+#[cfg(not(mobile))]
 fn access_token(session: &DriveSession) -> Result<String, String> {
     let guard = session.0.lock().map_err(|e| e.to_string())?;
     match guard.as_ref() {
@@ -184,6 +204,7 @@ fn access_token(session: &DriveSession) -> Result<String, String> {
     }
 }
 
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn drive_list_backups(session: State<'_, DriveSession>) -> Result<Vec<DriveBackup>, String> {
     let token = access_token(&session)?;
@@ -210,6 +231,7 @@ async fn drive_list_backups(session: State<'_, DriveSession>) -> Result<Vec<Driv
     Ok(list.files)
 }
 
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn drive_save_backup(request: tauri::ipc::Request<'_>) -> Result<(), String> {
     let bytes = match request.body() {
@@ -290,6 +312,7 @@ async fn drive_save_backup(request: tauri::ipc::Request<'_>) -> Result<(), Strin
     Ok(())
 }
 
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn drive_download_backup(
     file_id: String,
@@ -338,7 +361,9 @@ fn restart_app(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(not(mobile))]
+    let builder = builder
         .manage(DriveSession(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             drive_connect,
@@ -346,7 +371,10 @@ pub fn run() {
             drive_save_backup,
             drive_download_backup,
             restart_app
-        ])
+        ]);
+    #[cfg(mobile)]
+    let builder = builder.invoke_handler(tauri::generate_handler![restart_app]);
+    builder
         .run(tauri::generate_context!())
         .expect("Could not start Autumn Reader");
 }
