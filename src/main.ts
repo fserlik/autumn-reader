@@ -704,6 +704,17 @@ function noteLocation(note: BookNote): string {
   return section === null ? t("book") : t("section", { number: section + 1 });
 }
 
+function epubNoteOnVisiblePage(note: BookNote): boolean {
+  if (note.format !== "epub" || !rendition?.location) return false;
+  const { start, end, atEnd } = rendition.location;
+  if (!start?.cfi || !end?.cfi) return false;
+  try {
+    const compare = rendition.epubcfi.compare.bind(rendition.epubcfi);
+    const endComparison = compare(note.cfi, end.cfi);
+    return compare(note.cfi, start.cfi) >= 0 && (endComparison < 0 || (atEnd && endComparison === 0));
+  } catch { return false; }
+}
+
 function renderAllNotes(): void {
   const list = $<HTMLDivElement>("#all-notes-list");
   const notes = [...(currentBook?.notes ?? [])].sort((a, b) => {
@@ -801,15 +812,18 @@ function renderNoteMarkers(): void {
       placements.push({ note, x: rect.right - contentRect.left + 8, y: rect.top - contentRect.top + note.y * rect.height });
     } else if (currentBook.format === "epub" && rendition) {
       try {
+        if (!epubNoteOnVisiblePage(note)) continue;
         const range = rendition.getRange(note.cfi);
         if (!range) continue;
         const frame = range.startContainer.ownerDocument?.defaultView?.frameElement as HTMLElement | null;
         if (!frame) continue;
         const frameRect = frame.getBoundingClientRect();
+        const paper = readerContent.querySelector<HTMLElement>(".epub-frame");
+        if (!paper) continue;
         const visibleRect = Array.from(range.getClientRects()).find((rect) => rect.width > 0 && rect.height > 0
           && rect.left < frameRect.width && rect.right > 0 && rect.top < frameRect.height && rect.bottom > 0);
         if (!visibleRect) continue;
-        placements.push({ note, x: frameRect.right - contentRect.left + 8,
+        placements.push({ note, x: paper.getBoundingClientRect().right - contentRect.left + 8,
           y: frameRect.top - contentRect.top + visibleRect.top });
       } catch { /* The note belongs to a section that is not displayed. */ }
     }
@@ -821,7 +835,6 @@ function renderNoteMarkers(): void {
     marker.type = "button";
     marker.className = "note-marker";
     marker.style.backgroundColor = placement.note.color;
-    marker.style.left = `${Math.min(placement.x, readerContent.clientWidth - 27)}px`;
     const y = Math.max(8, placement.y - 10, lastY + (navigator.maxTouchPoints ? 36 : 24));
     marker.style.top = `${y}px`;
     lastY = y;
@@ -829,6 +842,7 @@ function renderNoteMarkers(): void {
     marker.setAttribute("aria-label", t("openNoteQuote", { quote: placement.note.quote }));
     marker.addEventListener("click", () => openNoteDialog(placement.note));
     readerContent.append(marker);
+    marker.style.left = `${Math.max(0, Math.min(placement.x, readerContent.clientWidth - marker.offsetWidth - 8))}px`;
   }
 }
 
