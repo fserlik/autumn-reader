@@ -396,6 +396,20 @@ function applyBookFont(): void {
   rendition?.themes.font(bookFontFamilies[bookFont]);
 }
 
+function standardizeEpubPage(contents: Contents): void {
+  if (epubBook?.packaging?.metadata?.layout === "pre-paginated") return;
+  contents.addStylesheetCss(`
+    html, body { margin-top: 0 !important; padding-top: 0 !important; }
+    body > :first-child,
+    body > :first-child > :first-child,
+    body > :first-child > :first-child > :first-child {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+    }
+    body :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0 !important; }
+  `, "autumn-page-layout");
+}
+
 function coverElement(book: StoredBook): HTMLElement {
   const cover = document.createElement("div");
   cover.className = "book-cover";
@@ -959,6 +973,7 @@ async function openBook(book: StoredBook): Promise<void> {
       epubBook = ePub(buffer);
       rendition = epubBook.renderTo(frame, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
       rendition.hooks.content.register((contents: Contents) => {
+        standardizeEpubPage(contents);
         addTapNavigation(contents.document, () => contents.window.getSelection());
         const selectedText = () => {
           const selection = contents.window.getSelection();
