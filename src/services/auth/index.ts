@@ -177,7 +177,8 @@ export const auth = {
     if (!email) throw new CloudError("session_expired");
     // This memory-only sign-in verifies the password even when the project's
     // optional current-password policy has not yet been enabled.
-    const verification = await temporaryAuthClient().auth.signInWithPassword({
+    const verifier = temporaryAuthClient();
+    const verification = await verifier.auth.signInWithPassword({
       email, password: currentPassword,
     });
     if (verification.error) {
@@ -186,7 +187,11 @@ export const auth = {
         throw new Error(t("currentPasswordWrong"));
       throw verification.error;
     }
-    if (verification.data.user?.id !== owner || auth.state.ownerId !== owner)
+    const verifiedOwner = verification.data.user?.id;
+    // Revoke the short-lived verification session. The primary reader client
+    // owns a separate session and remains signed in for updateUser below.
+    await verifier.auth.signOut({ scope: "local" }).catch(() => {});
+    if (verifiedOwner !== owner || auth.state.ownerId !== owner)
       throw new CloudError("session_expired");
     const { error } = await cloud().auth.updateUser({
       current_password: currentPassword,
