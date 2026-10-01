@@ -1,0 +1,9 @@
+# Desplazamiento sin barras visibles
+
+`src/style.css` oculta la representación nativa de las barras para `html`, `body` y todos los elementos de la aplicación. Usa `scrollbar-width: none` (Firefox y motores modernos) y `::-webkit-scrollbar` con `display: none` y tamaño cero (WebView2, Android WebView y WebKit). Ninguna regla cambia `overflow`, cancela eventos táctiles o bloquea la rueda. Los contenedores nuevos heredan este comportamiento sin añadir clases.
+
+Los EPUB se dibujan en documentos iframe aislados. `standardizeEpubPage()` inyecta una hoja `autumn-scrollbars` en cada capítulo, incluido el EPUB de vista previa de la animación. PDF.js usa los contenedores DOM de la aplicación y recibe la regla global. El PDF original conserva su desplazamiento horizontal/vertical dentro de `.reading-surface`; el PDF reflow y la paginación EPUB mantienen su navegación actual.
+
+Scroll intencional conservado: `.content-area` (Home, Library, Settings y Profile), `.reading-surface`, galerías `.recent-grid` y `.profile-grid`, búsqueda, diálogos de reseñas y confirmación, notas, fragmentos largos y otros paneles con `overflow: auto`. La galería de Home mantiene flechas y teclado en escritorio y swipe en móvil. Los controles nativos de selección pueden mostrar un menú del sistema fuera del DOM de la app; su barra, si aparece, pertenece al WebView/SO y no se estiliza con CSS de la página.
+
+La prueba `tests/global-scrollbars.spec.ts` comprueba que las barras están ocultas, que rueda/teclado/touch y el scroll de diálogos siguen funcionando, y que EPUB/PDF mantienen su superficie desplazable. También comprueba ausencia de desbordamiento horizontal no deseado en Home, Library (grid/list), Settings y Profile a 320, 390, 700, 768 y 1200 px. No se encontró un desbordamiento horizontal accidental en esos casos. El ancho extra del PDF original y de los carruseles es intencional y permanece contenido en sus respectivas superficies.

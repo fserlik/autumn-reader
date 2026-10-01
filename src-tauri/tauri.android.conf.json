@@ -1,5 +1,8 @@
 {
   "app": {
+    "security": {
+      "csp": "default-src 'self' blob: data:; connect-src 'self' ipc: http://ipc.localhost http://book-file.localhost https://book-file.localhost book-file: https://*.supabase.co https://*.r2.cloudflarestorage.com; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' blob: data: https://*.supabase.co http://book-file.localhost https://book-file.localhost book-file:; font-src 'self' blob: data:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
+    },
     "windows": [
       {
         "title": "Autumn Reader",

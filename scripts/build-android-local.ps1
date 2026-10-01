@@ -36,9 +36,9 @@ if (-not (Test-Path -LiteralPath $savedApk -PathType Leaf)) {
 $apkInfo = Get-Item -LiteralPath $savedApk
 if ($apkInfo.Length -eq 0) { throw 'El APK esta vacio; no se borro ningun archivo.' }
 
-# Conservar un único instalador local y liberar los compilados y cachés del proyecto.
+# Conservar el APK actual y el ejecutable portable de Windows.
 Get-ChildItem -LiteralPath $localBuilds -File | Where-Object {
-    $_.FullName -ne $apkInfo.FullName -and $_.Extension -in @('.apk', '.aab', '.exe', '.msi', '.msix', '.dmg', '.deb', '.AppImage')
+    $_.FullName -ne $apkInfo.FullName -and $_.Extension -in @('.apk', '.aab', '.msi', '.msix', '.dmg', '.deb', '.AppImage')
 } | Remove-Item -Force
 
 $generatedDirectories = @(

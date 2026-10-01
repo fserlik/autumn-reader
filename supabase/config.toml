@@ -1,0 +1,9 @@
+project_id = "autumn-reader"
+
+[functions.book-storage]
+# The handler calls auth.getUser(token), including asymmetric/publishable-key projects.
+verify_jwt = false
+
+[functions.translate-text]
+# Authentication is verified with auth.getUser(token) in the handler.
+verify_jwt = false

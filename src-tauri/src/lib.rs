@@ -1,357 +1,54 @@
-#[cfg(not(mobile))]
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-#[cfg(not(mobile))]
-use rand::RngCore;
-#[cfg(not(mobile))]
-use reqwest::{header, Client};
-#[cfg(not(mobile))]
-use serde::{Deserialize, Serialize};
-#[cfg(not(mobile))]
-use sha2::{Digest, Sha256};
-#[cfg(not(mobile))]
-use std::{
-    io::{Read, Write},
-    net::TcpListener,
-    sync::Mutex,
-    time::{Duration, Instant},
-};
-#[cfg(not(mobile))]
-use tauri::State;
-#[cfg(not(mobile))]
-use url::Url;
+#[cfg(target_os = "android")]
+use tauri::{Manager, State};
 
-#[cfg(not(mobile))]
-const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.appdata";
-#[cfg(not(mobile))]
-const BACKUP_NAME: &str = "autumn-reader-backup.zip";
-#[cfg(not(mobile))]
-const MAX_BACKUP_BYTES: usize = 250 * 1024 * 1024;
+#[cfg(target_os = "android")]
+const MAX_LOCAL_BOOK_BYTES: usize = 250 * 1024 * 1024;
+#[cfg(target_os = "android")]
+struct AndroidLocalLibrary(tauri::plugin::PluginHandle<tauri::Wry>);
+#[cfg(target_os = "android")]
+struct NativeBookFiles(std::path::PathBuf);
 
-#[cfg(not(mobile))]
-struct DriveSession(Mutex<Option<(String, Instant)>>);
-
-#[cfg(not(mobile))]
-#[derive(Deserialize)]
-struct TokenResponse {
-    access_token: String,
-    expires_in: u64,
-}
-
-#[cfg(not(mobile))]
-#[derive(Deserialize)]
-struct FileList {
-    files: Vec<DriveBackup>,
-}
-
-#[cfg(not(mobile))]
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DriveBackup {
-    id: String,
-    name: String,
-    modified_time: String,
-    size: Option<String>,
-}
-
-#[cfg(not(mobile))]
-fn random_url_safe() -> String {
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
-}
-
-#[cfg(not(mobile))]
-fn drive_client() -> Result<Client, String> {
-    Client::builder()
-        .timeout(Duration::from_secs(600))
-        .build()
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn native_list_books(
+    auth: State<'_, AndroidLocalLibrary>,
+) -> Result<serde_json::Value, String> {
+    auth.0
+        .run_mobile_plugin_async("nativeListBooks", ())
+        .await
         .map_err(|e| e.to_string())
 }
 
-#[cfg(not(mobile))]
-fn receive_authorization(listener: TcpListener, expected_state: &str, language: &str) -> Result<String, String> {
-    listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-    let deadline = Instant::now() + Duration::from_secs(180);
-    while Instant::now() < deadline {
-        match listener.accept() {
-            Ok((mut stream, _)) => {
-                stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-                let mut buffer = [0u8; 8192];
-                let count = stream.read(&mut buffer).map_err(|e| e.to_string())?;
-                let request = String::from_utf8_lossy(&buffer[..count]);
-                let path = request
-                    .split_whitespace()
-                    .nth(1)
-                    .ok_or("DRIVE_ERROR:invalid_oauth_response")?;
-                let callback = Url::parse(&format!("http://127.0.0.1{path}"))
-                    .map_err(|_| "DRIVE_ERROR:invalid_oauth_response")?;
-                let parameters: std::collections::HashMap<_, _> =
-                    callback.query_pairs().into_owned().collect();
-                let valid_state = parameters
-                    .get("state")
-                    .is_some_and(|state| state == expected_state);
-                let code = if valid_state {
-                    parameters.get("code").cloned()
-                } else {
-                    None
-                };
-                let html = match (language, code.is_some()) {
-                    ("es", true) => "<h1>Autumn Reader conectado</h1><p>Ya puedes cerrar esta pestaña y volver a la aplicación.</p>",
-                    ("es", false) => "<h1>No se pudo conectar</h1><p>Vuelve a Autumn Reader e inténtalo de nuevo.</p>",
-                    ("it", true) => "<h1>Autumn Reader connesso</h1><p>Puoi chiudere questa scheda e tornare all'app.</p>",
-                    ("it", false) => "<h1>Connessione non riuscita</h1><p>Torna ad Autumn Reader e riprova.</p>",
-                    ("fr", true) => "<h1>Autumn Reader connecté</h1><p>Vous pouvez fermer cet onglet et revenir à l'application.</p>",
-                    ("fr", false) => "<h1>Connexion impossible</h1><p>Revenez dans Autumn Reader et réessayez.</p>",
-                    (_, true) => "<h1>Autumn Reader connected</h1><p>You can close this tab and return to the app.</p>",
-                    (_, false) => "<h1>Could not connect</h1><p>Return to Autumn Reader and try again.</p>",
-                };
-                let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{html}", html.len());
-                let _ = stream.write_all(response.as_bytes());
-                if !valid_state {
-                    return Err("DRIVE_ERROR:state_mismatch".into());
-                }
-                if let Some(code) = code {
-                    return Ok(code);
-                }
-                return Err(format!(
-                    "DRIVE_ERROR:not_authorized:{}",
-                    parameters
-                        .get("error")
-                        .map(String::as_str)
-                        .unwrap_or("unknown")
-                ));
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(100))
-            }
-            Err(error) => return Err(error.to_string()),
-        }
-    }
-    Err("DRIVE_ERROR:timeout".into())
-}
-
-#[cfg(not(mobile))]
+#[cfg(target_os = "android")]
 #[tauri::command]
-async fn drive_connect(client_id: String, language: String, session: State<'_, DriveSession>) -> Result<String, String> {
-    if !client_id.ends_with(".apps.googleusercontent.com") || client_id.len() > 300 {
-        return Err("DRIVE_ERROR:invalid_client_id".into());
-    }
-    let client_secret = option_env!("AUTUMN_GOOGLE_CLIENT_SECRET")
-        .ok_or("DRIVE_ERROR:missing_oauth_config")?;
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
-    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-    let redirect_uri = format!("http://127.0.0.1:{port}");
-    let verifier = random_url_safe();
-    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
-    let state = random_url_safe();
-    let mut auth_url = Url::parse("https://accounts.google.com/o/oauth2/v2/auth").unwrap();
-    auth_url
-        .query_pairs_mut()
-        .append_pair("client_id", &client_id)
-        .append_pair("redirect_uri", &redirect_uri)
-        .append_pair("response_type", "code")
-        .append_pair("scope", DRIVE_SCOPE)
-        .append_pair("code_challenge", &challenge)
-        .append_pair("code_challenge_method", "S256")
-        .append_pair("state", &state);
-    webbrowser::open(auth_url.as_str())
-        .map_err(|e| format!("DRIVE_ERROR:browser_failed:{e}"))?;
-    let code =
-        tauri::async_runtime::spawn_blocking(move || receive_authorization(listener, &state, &language))
-            .await
-            .map_err(|e| e.to_string())??;
-    let client = drive_client()?;
-    let response = client
-        .post("https://oauth2.googleapis.com/token")
-        .form(&[
-            ("client_id", client_id.as_str()),
-            ("client_secret", client_secret),
-            ("code", code.as_str()),
-            ("code_verifier", verifier.as_str()),
-            ("redirect_uri", redirect_uri.as_str()),
-            ("grant_type", "authorization_code"),
-        ])
-        .send()
+async fn native_save_book(
+    record: serde_json::Value,
+    auth: State<'_, AndroidLocalLibrary>,
+) -> Result<(), String> {
+    auth.0
+        .run_mobile_plugin_async::<serde_json::Value>(
+            "nativeSaveBook",
+            serde_json::json!({"record": record.to_string()}),
+        )
         .await
         .map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        let status = response.status();
-        let details: serde_json::Value = response.json().await.unwrap_or_default();
-        let code = details
-            .get("error")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("unknown_error");
-        let description = details
-            .get("error_description")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("");
-        return Err(format!(
-            "DRIVE_ERROR:google_rejected:{status}: {code}. {description}"
-        ));
-    }
-    let token: TokenResponse = response.json().await.map_err(|e| e.to_string())?;
-    let expires = Instant::now() + Duration::from_secs(token.expires_in.saturating_sub(60));
-    *session.0.lock().map_err(|e| e.to_string())? = Some((token.access_token.clone(), expires));
-    Ok(token.access_token)
-}
-
-#[cfg(not(mobile))]
-fn access_token(session: &DriveSession) -> Result<String, String> {
-    let guard = session.0.lock().map_err(|e| e.to_string())?;
-    match guard.as_ref() {
-        Some((token, expires)) if Instant::now() < *expires => Ok(token.clone()),
-        _ => Err("DRIVE_ERROR:session_expired".into()),
-    }
-}
-
-#[cfg(not(mobile))]
-#[tauri::command]
-async fn drive_list_backups(session: State<'_, DriveSession>) -> Result<Vec<DriveBackup>, String> {
-    let token = access_token(&session)?;
-    let response = drive_client()?
-        .get("https://www.googleapis.com/drive/v3/files")
-        .bearer_auth(token)
-        .query(&[
-            ("spaces", "appDataFolder"),
-            ("q", "name = 'autumn-reader-backup.zip' and trashed = false"),
-            ("fields", "files(id,name,modifiedTime,size)"),
-            ("orderBy", "modifiedTime desc"),
-            ("pageSize", "100"),
-        ])
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "DRIVE_ERROR:list_failed:{}",
-            response.status()
-        ));
-    }
-    let list: FileList = response.json().await.map_err(|e| e.to_string())?;
-    Ok(list.files)
-}
-
-#[cfg(not(mobile))]
-#[tauri::command]
-async fn drive_save_backup(request: tauri::ipc::Request<'_>) -> Result<(), String> {
-    let bytes = match request.body() {
-        tauri::ipc::InvokeBody::Raw(bytes) => bytes.to_vec(),
-        tauri::ipc::InvokeBody::Json(value) => {
-            let Some(values) = value.as_array() else {
-                return Err("DRIVE_ERROR:invalid_backup_format".into());
-            };
-            if values.is_empty() || values.len() > MAX_BACKUP_BYTES {
-                return Err("DRIVE_ERROR:backup_size_limit".into());
-            }
-            values
-                .iter()
-                .map(|value| {
-                    value
-                        .as_u64()
-                        .filter(|byte| *byte <= u8::MAX as u64)
-                        .map(|byte| byte as u8)
-                        .ok_or_else(|| "DRIVE_ERROR:invalid_backup_data".to_string())
-                })
-                .collect::<Result<Vec<_>, _>>()?
-        }
-    };
-    if bytes.is_empty() || bytes.len() > MAX_BACKUP_BYTES {
-        return Err("DRIVE_ERROR:backup_size_limit".into());
-    }
-    let bytes = bytes.to_vec();
-    let token = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .filter(|value| !value.is_empty())
-        .ok_or("DRIVE_ERROR:session_expired")?
-        .to_string();
-    let client = drive_client()?;
-    let metadata = serde_json::json!({ "name": BACKUP_NAME, "parents": ["appDataFolder"], "mimeType": "application/zip" });
-    let response = client
-        .post("https://www.googleapis.com/upload/drive/v3/files")
-        .query(&[("uploadType", "resumable")])
-        .bearer_auth(&token)
-        .header(header::CONTENT_TYPE, "application/json; charset=UTF-8")
-        .header("X-Upload-Content-Type", "application/zip")
-        .header("X-Upload-Content-Length", bytes.len().to_string())
-        .json(&metadata)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "DRIVE_ERROR:upload_start_failed:{}",
-            response.status()
-        ));
-    }
-    let location = response
-        .headers()
-        .get(header::LOCATION)
-        .ok_or("DRIVE_ERROR:upload_location_missing")?
-        .to_str()
-        .map_err(|e| e.to_string())?
-        .to_string();
-    if !location.starts_with("https://www.googleapis.com/upload/drive/v3/files?") {
-        return Err("DRIVE_ERROR:upload_location_invalid".into());
-    }
-    let response = client
-        .put(location)
-        .header(header::CONTENT_LENGTH, bytes.len())
-        .body(bytes.clone())
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "DRIVE_ERROR:upload_failed:{}",
-            response.status()
-        ));
-    }
     Ok(())
 }
 
-#[cfg(not(mobile))]
+#[cfg(target_os = "android")]
 #[tauri::command]
-async fn drive_download_backup(
-    file_id: String,
-    session: State<'_, DriveSession>,
-) -> Result<tauri::ipc::Response, String> {
-    if file_id.is_empty()
-        || !file_id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err("DRIVE_ERROR:invalid_backup_id".into());
-    }
-    let token = access_token(&session)?;
-    let response = drive_client()?
-        .get(format!(
-            "https://www.googleapis.com/drive/v3/files/{file_id}"
-        ))
-        .query(&[("alt", "media")])
-        .bearer_auth(token)
-        .send()
+async fn native_delete_book(
+    id: String,
+    auth: State<'_, AndroidLocalLibrary>,
+) -> Result<(), String> {
+    auth.0
+        .run_mobile_plugin_async::<serde_json::Value>(
+            "nativeDeleteBook",
+            serde_json::json!({"id": id}),
+        )
         .await
         .map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "DRIVE_ERROR:download_failed:{}",
-            response.status()
-        ));
-    }
-    if response
-        .content_length()
-        .is_some_and(|length| length as usize > MAX_BACKUP_BYTES)
-    {
-        return Err("DRIVE_ERROR:backup_size_limit".into());
-    }
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
-    if bytes.len() > MAX_BACKUP_BYTES {
-        return Err("DRIVE_ERROR:backup_size_limit".into());
-    }
-    Ok(tauri::ipc::Response::new(bytes.to_vec()))
+    Ok(())
 }
 
 #[tauri::command]
@@ -362,18 +59,82 @@ fn restart_app(app: tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
-    #[cfg(not(mobile))]
-    let builder = builder
-        .manage(DriveSession(Mutex::new(None)))
-        .invoke_handler(tauri::generate_handler![
-            drive_connect,
-            drive_list_backups,
-            drive_save_backup,
-            drive_download_backup,
-            restart_app
-        ]);
-    #[cfg(mobile)]
+    #[cfg(not(target_os = "android"))]
     let builder = builder.invoke_handler(tauri::generate_handler![restart_app]);
+    #[cfg(target_os = "android")]
+    let builder = builder
+        .invoke_handler(tauri::generate_handler![
+            restart_app,
+            native_list_books,
+            native_save_book,
+            native_delete_book
+        ])
+        .setup(|app| {
+            // Keep the existing directory to preserve already-imported books.
+            app.manage(NativeBookFiles(
+                app.path()
+                    .app_data_dir()?
+                    .join("files/drive-library/objects"),
+            ));
+            Ok(())
+        })
+        .register_asynchronous_uri_scheme_protocol("book-file", |context, request, responder| {
+            let root = context.app_handle().state::<NativeBookFiles>().0.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let decoded =
+                    percent_encoding::percent_decode_str(request.uri().path()).decode_utf8_lossy();
+                let path = decoded.trim_start_matches('/');
+                let parts: Vec<_> = path.split('/').collect();
+                let valid = parts.len() == 3
+                    && parts[..2].iter().all(|part| {
+                        !part.is_empty()
+                            && part.len() <= 80
+                            && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                    })
+                    && matches!(parts[2], "data.bin" | "cover.bin");
+                let file = root.join(path);
+                let bounded = valid
+                    && std::fs::metadata(&file)
+                        .is_ok_and(|m| m.is_file() && m.len() <= MAX_LOCAL_BOOK_BYTES as u64);
+                let bytes = if bounded {
+                    std::fs::read(file).ok()
+                } else {
+                    None
+                };
+                let response = match bytes {
+                    Some(bytes) if bytes.len() <= MAX_LOCAL_BOOK_BYTES => {
+                        let mime = if bytes.starts_with(b"\x89PNG") {
+                            "image/png"
+                        } else if bytes.starts_with(b"\xff\xd8\xff") {
+                            "image/jpeg"
+                        } else {
+                            "application/octet-stream"
+                        };
+                        tauri::http::Response::builder()
+                            .status(200)
+                            .header("Content-Type", mime)
+                            .header("Access-Control-Allow-Origin", "*")
+                            .body(bytes)
+                            .unwrap()
+                    }
+                    _ => tauri::http::Response::builder()
+                        .status(404)
+                        .body(Vec::new())
+                        .unwrap(),
+                };
+                responder.respond(response);
+            });
+        })
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("local-library")
+                .setup(|app, api| {
+                    let handle = api
+                        .register_android_plugin("app.autumnreader.reader", "LocalLibraryPlugin")?;
+                    app.manage(AndroidLocalLibrary(handle));
+                    Ok(())
+                })
+                .build(),
+        );
     builder
         .run(tauri::generate_context!())
         .expect("Could not start Autumn Reader");

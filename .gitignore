@@ -1,9 +1,15 @@
 node_modules/
 dist/
 local-builds/
+test-results/
+playwright-report/
 src-tauri/target/
 *.log
 .env*
 !.env.example
+src-tauri/tauri.cloud.conf.json
+.supabase/
+supabase/.temp/
+**/.kotlin/
 src-tauri/gen/schemas/
 .DS_Store

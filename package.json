@@ -4,15 +4,23 @@
   "private": true,
   "description": "Desktop book reader",
   "scripts": {
+    "test": "vitest run",
+    "test:backend": "npx --yes deno test --allow-env --config supabase/functions/deno.json supabase/functions/book-storage/handler_test.ts supabase/functions/translate-text/handler_test.ts",
+    "check:backend": "npx --yes deno check --config supabase/functions/deno.json supabase/functions/book-storage/index.ts supabase/functions/translate-text/index.ts",
+    "cloud:csp": "node scripts/configure-cloud-csp.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test:reader": "playwright test",
     "android:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android-local.ps1",
+    "desktop:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-desktop-portable.ps1",
     "preview": "vite preview",
     "tauri": "tauri"
   },
   "license": "MIT",
   "type": "module",
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "@supabase/supabase-js": "^2.117.2",
     "@tauri-apps/api": "^2.11.1",
     "epubjs": "0.3.93",
     "jszip": "^3.10.2",
@@ -22,8 +30,12 @@
     "@xmldom/xmldom": "0.8.15"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "^2.8.5",
+    "fake-indexeddb": "^6.2.5",
     "typescript": "^5.9.2",
-    "vite": "^7.1.12"
+    "vite": "^7.1.12",
+    "vitest": "^5.0.2"
   }
 }

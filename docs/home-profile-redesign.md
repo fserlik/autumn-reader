@@ -1,0 +1,17 @@
+# Home y Profile — 30 de septiembre de 2026
+
+Home es una entrada rápida a la lectura. El hero muestra el último libro en curso con título, autor, portada y progreso del `StoredBook` real; su botón reabre el lector en la posición guardada. Debajo queda únicamente **Continuar leyendo**. La importación y la administración permanecen en Library. Si no hay libros en curso, el hero ofrece abrir Library.
+
+El estante de Home conserva `overflow-x: auto` y scroll nativo. Su scrollbar visual se oculta en Chromium/WebView y Firefox; en escritorio aparecen flechas discretas solo si hay desbordamiento, con desplazamiento suave y estado deshabilitado en los extremos. También se puede usar teclado, trackpad o Shift + rueda. En móvil se ocultan las flechas y el gesto táctil conserva el scroll y la inercia nativos. `src/ui/book-carousel.ts` concentra esa interacción, sin llamadas de red.
+
+Profile mantiene banner, avatar, bio, edición y estadísticas calculadas de la biblioteca cargada. Debajo solo muestra **Favoritos** y **Reseñas**. Los libros favoritos usan la tarjeta visual compartida de `src/ui/book-presentation.ts`; al pulsarlos se abre el libro propio mediante el flujo actual de caché/descarga autorizada. «Ver todos» abre Library filtrada por favoritos. Las reseñas proceden del servicio existente, con paginación, caché offline y borradores. Cada tarjeta presenta el libro, portada si existe, estrellas, texto y las acciones de edición propias ya existentes. No se añadieron consultas cloud para el carrusel ni para las estadísticas.
+
+Las secciones de lectura, completados y por leer siguen existiendo como estados y filtros de Library, y como contadores del encabezado de Profile; ya no se renderizan como estantes en Profile. Home tampoco muestra favoritos, recomendaciones ni botón de importación.
+
+Los dos temas usan los tokens actuales de `src/style.css`; las tarjetas y flechas mantienen contraste y foco visible. En móvil se conserva la navegación inferior y se respetan las áreas seguras. Los nuevos textos y etiquetas accesibles están traducidos en inglés, español, italiano y francés mediante `src/i18n-presentation.ts`.
+
+Pruebas: `tests/home-profile-presentation.spec.ts` cubre datos reales, apertura, ausencia de secciones, scroll y flechas, diseño móvil/escritorio, temas y estados vacíos. `tests/profile-settings.spec.ts` conserva las pruebas de identidad, favoritos locales/cloud y aislamiento de cuentas, con la nueva estructura. `tests/reviews.spec.ts` sigue verificando publicación, edición, borrado, paginación y lectura offline. `tests/unit/i18n.test.ts` valida las claves de los cuatro idiomas.
+
+Este cambio no requiere migrations, nuevas Edge Functions, variables de entorno ni despliegues cloud. Para revisar en Windows: abrir varios libros, marcar favoritos en Library, comprobar Home y Profile, flechas con muchos libros, edición y reseñas; repetir en claro/oscuro y con ventana angosta. En Android físico: comprobar swipe horizontal del estante, scroll de toda la página, navegación inferior, safe areas, favoritos y reseñas tras suspender/reanudar. Las pruebas automatizadas móviles usan emulación Chromium; Android WebView físico y macOS/Linux aún requieren comprobación manual.
+
+Las estadísticas de Profile se calculan sobre los libros ya cargados en IndexedDB. En bibliotecas cloud paginadas pueden aumentar al cargar páginas adicionales; se evitó una consulta nueva solo para contar libros.
