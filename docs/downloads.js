@@ -18,11 +18,11 @@ function updatePlatform(platform, assets, version) {
   const extension = primary.name.match(/\.(AppImage|exe|msi|dmg|pkg|deb|rpm)$/i)?.[0] ?? "";
 
   link.href = primary.browser_download_url;
-  link.textContent = `Descargar instalador ${extension}`;
+  link.textContent = `${window.autumnI18n?.lang === "es" ? "Descargar instalador" : "Download installer"} ${extension}`;
   link.hidden = false;
-  status.textContent = "Disponible";
+  status.textContent = window.autumnI18n?.lang === "es" ? "Disponible" : "Available";
   status.classList.remove("availability-pending");
-  versionLabel.textContent = `Versión ${version}`;
+  versionLabel.textContent = `${window.autumnI18n?.lang === "es" ? "Versión" : "Version"} ${version}`;
   versionLabel.hidden = false;
   if (pending) pending.hidden = true;
   card.classList.add("download-card-available");
@@ -75,3 +75,14 @@ async function loadLatestInstallers() {
 }
 
 loadLatestInstallers();
+
+function refreshDownloadLanguage() {
+  document.querySelectorAll("[data-platform]").forEach(card => {
+    const status=card.querySelector("[data-status]"); const version=card.querySelector("[data-version]"); const link=card.querySelector("[data-download]");
+    const es=window.autumnI18n?.lang === "es";
+    if(status) status.textContent = card.classList.contains("download-card-available") ? (es?"Disponible":"Available") : (es?"En preparación":"Coming soon");
+    if(version && version.textContent) version.textContent=version.textContent.replace(/^(Versión|Version)/,es?"Versión":"Version");
+    if(link && !link.hidden) { const ext=link.href.match(/\.(AppImage|exe|msi|dmg|pkg|deb|rpm)(?:$|\?)/i)?.[0]?.replace(/\?.*/,"") || ""; link.textContent=`${es?"Descargar instalador":"Download installer"} ${ext}`; }
+  });
+}
+document.addEventListener("autumn-language-change", refreshDownloadLanguage);
