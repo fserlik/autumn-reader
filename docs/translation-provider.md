@@ -18,6 +18,7 @@ El tratamiento/retención del texto depende del plan del proveedor; no se promet
 
 - `DEEPL_AUTH_KEY`: clave privada de API, nunca `VITE_*`.
 - `DEEPL_API_PLAN=developer`: endpoint `https://api.deepl.com/v2/translate` para Developer. `legacy-free` usa `https://api-free.deepl.com/v2/translate` únicamente si tienes ese plan existente. No se permite una URL arbitraria desde el cliente.
+- El valor debe corresponder a la clave real: una clave API Free en el endpoint Developer recibe HTTP 403 y Autumn Reader muestra «Translation is not configured yet». Para diagnosticar sin gastar caracteres, consulta `/v2/usage` en ambos hosts con la clave privada; configura `legacy-free` si solo responde `api-free.deepl.com`. Actualiza `DEEPL_API_PLAN` como secreto de Supabase y en `supabase/.env`; no copies la clave al frontend.
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_ORIGINS`: ya existentes.
 
 Aplicar la migration de cuotas, configurar secretos y desplegar `translate-text` es un paso manual opcional. Sin clave configurada, leer/buscar/resaltar continúa funcionando y la UI explica que la traducción aún no está configurada. Las pruebas usan respuestas simuladas, sin consumir crédito ni enviar texto real.

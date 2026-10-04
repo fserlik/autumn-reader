@@ -10,7 +10,7 @@ class NativeLibrary(private val root: File) {
   companion object {
     private val lock = Any()
     private val idPattern = Regex("[a-zA-Z0-9-]{1,80}")
-    private val colors = setOf("#cc5500", "#8b0000", "#996515", "#808000", "#b7410e", "#800020")
+    private val colorPattern = Regex("#[a-fA-F0-9]{6}")
   }
 
   private fun index(): JSONArray {
@@ -91,7 +91,7 @@ class NativeLibrary(private val root: File) {
   }
 
   private fun cleanRecord(record: JSONObject): JSONObject = JSONObject().apply {
-    for (key in listOf("id", "name", "format", "addedAt", "lastOpenedAt", "favorite", "page", "cfi", "fontSize", "pdfTextOffset", "hasCover", "notes")) {
+    for (key in listOf("id", "ownerId", "name", "format", "addedAt", "lastOpenedAt", "favorite", "page", "cfi", "fontSize", "pdfTextOffset", "hasCover", "notes")) {
       if (record.has(key)) put(key, record.get(key))
     }
   }
@@ -101,6 +101,7 @@ class NativeLibrary(private val root: File) {
     val format = record.optString("format")
     val page = number("page")
     val cfi = record.opt("cfi")
+    if (record.has("ownerId")) require(Regex("[a-fA-F0-9-]{36}").matches(record.optString("ownerId"))) { "LOCAL_LIBRARY_ERROR:invalid_owner" }
     require(record.opt("id") is String && idPattern.matches(record.optString("id"))
       && record.opt("name") is String && record.optString("name").length in 1..500
       && record.opt("format") is String && format in setOf("pdf", "epub") && number("addedAt").isFinite() && number("lastOpenedAt").isFinite()
@@ -117,7 +118,7 @@ class NativeLibrary(private val root: File) {
       require(note.opt("id") is String && idPattern.matches(note.optString("id"))
         && note.opt("quote") is String && note.optString("quote").length in 1..500
         && note.opt("text") is String && note.optString("text").length in 1..5000
-        && note.opt("color") is String && note.optString("color") in colors
+        && note.opt("color") is String && colorPattern.matches(note.optString("color"))
         && (note.opt("createdAt") as? Number)?.toDouble()?.isFinite() == true
         && note.optString("format") == format
         && if (format == "pdf") note.opt("page") is Number && note.opt("y") is Number && notePage >= 1 && notePage % 1 == 0.0 && note.optDouble("y", Double.NaN) in 0.0..1.0

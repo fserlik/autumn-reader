@@ -20,7 +20,7 @@ test("Home keeps the real reading hero and gallery without import or favorites",
   await expect(page.locator("#recent-list .presentation-progress")).toContainText("42%");
   await expect(page.locator("#view-home .favorite-grid, #view-home #favorite-list, #view-home .favorites-heading")).toHaveCount(0);
   await expect(page.locator("#view-home .book-status, #view-home .book-cloud-button, #view-home .book-menu, #view-home .favorite-button")).toHaveCount(0);
-  expect(cloud.downloads).toBe(0);
+  await expect.poll(() => cloud.downloads).toBe(1);
   await page.screenshot({ path: testInfo.outputPath("home-light.png"), fullPage: true });
   await page.setViewportSize({ width: 820, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -36,6 +36,18 @@ test("Continue reading hides its scrollbar but keeps every book reachable", asyn
   const cloud = await mockCloud(page);
   cloud.setBookState({ favorite: false, status: "reading" });
   await page.goto("/"); await login(page);
+  // Wait for cloud reconciliation and the new background metadata render before
+  // injecting extra carousel cards; either render would replace this fixture.
+  await expect(page.locator("#library-list .cloud-badge.state-cloud")).toHaveCount(1);
+  await expect.poll(() => cloud.downloads).toBe(1);
+  await expect.poll(() => page.evaluate(() => new Promise<boolean>(resolve => {
+    const open = indexedDB.open("autumn-reader");
+    open.onsuccess = () => {
+      const db = open.result, read = db.transaction("books").objectStore("books").getAll();
+      read.onsuccess = () => { resolve(read.result.some(book => book.contentMetadataVersion === 1)); db.close(); };
+    };
+  }))).toBe(true);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
   await page.locator('.nav-button[data-view="home"]').click();
   // Extra visual cards exercise overflow without changing the mocked cloud library.
   await page.evaluate(() => {
@@ -47,6 +59,8 @@ test("Continue reading hides its scrollbar but keeps every book reachable", asyn
   const track = page.locator("#recent-list");
   const controls = page.locator(".carousel-controls");
   expect(await track.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+  // The first resize can precede layout of cloned cards in WebView2.
+  await page.evaluate(() => window.dispatchEvent(new Event("resize")));
   expect(await track.evaluate(node => getComputedStyle(node).overflowX)).toBe("auto");
   expect(await track.evaluate(node => getComputedStyle(node).scrollbarWidth)).toBe("none");
   expect(await track.evaluate(node => getComputedStyle(node, "::-webkit-scrollbar").display)).toBe("none");

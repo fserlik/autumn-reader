@@ -7,6 +7,7 @@ import { newUuid } from "../platform/ids";
 import { reviews, SOCIAL_PAGE_SIZE } from ".";
 import type { Book, Review } from "../types";
 import type { StoredBook } from "../../storage";
+import { bookDisplayTitle } from "../books/display";
 
 export interface ReviewEntry { review: Review; book: Book; sourceLocalId?: string }
 export interface ReviewDraft {
@@ -60,7 +61,7 @@ export const personalReviews = {
     }
     const draft: ReviewDraft = old?.ownerId === owner ? old : {
       id, kind: "review-draft", ownerId: owner, bookId: book.cloudId ?? newUuid(),
-      title: book.displayTitle?.trim() || book.name.replace(/\.(pdf|epub)$/i, ""), author: book.author ?? "", format: book.format,
+      title: bookDisplayTitle(book), author: book.author ?? "", format: book.format,
       rating: 0, text: "", dirty: false, updatedAt: Date.now(), catalogExists: !!book.cloudId,
     };
     // Save the stable catalog ID before any HTTP request; retry cannot create another catalog entry.

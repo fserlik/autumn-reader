@@ -1,6 +1,9 @@
 #[cfg(target_os = "android")]
 use tauri::{Manager, State};
 
+#[cfg(target_os = "windows")]
+mod microsoft_store;
+
 #[cfg(target_os = "android")]
 const MAX_LOCAL_BOOK_BYTES: usize = 250 * 1024 * 1024;
 #[cfg(target_os = "android")]
@@ -51,23 +54,155 @@ async fn native_delete_book(
     Ok(())
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn native_tts_voices(
+    native: State<'_, AndroidLocalLibrary>,
+) -> Result<serde_json::Value, String> {
+    native
+        .0
+        .run_mobile_plugin_async("nativeTtsVoices", ())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn native_tts_speak(
+    text: String,
+    voice_uri: String,
+    language: String,
+    rate: f32,
+    native: State<'_, AndroidLocalLibrary>,
+) -> Result<serde_json::Value, String> {
+    if text.trim().is_empty() || text.chars().count() > 4_000 {
+        return Err("TTS_INVALID_TEXT".into());
+    }
+    if !(0.5..=2.0).contains(&rate) {
+        return Err("TTS_INVALID_RATE".into());
+    }
+    native
+        .0
+        .run_mobile_plugin_async(
+            "nativeTtsSpeak",
+            serde_json::json!({
+                "text": text,
+                "voiceUri": voice_uri,
+                "language": language,
+                "rate": rate
+            }),
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "android")]
+async fn native_tts_control(
+    command: &'static str,
+    native: State<'_, AndroidLocalLibrary>,
+) -> Result<(), String> {
+    native
+        .0
+        .run_mobile_plugin_async::<serde_json::Value>(command, ())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn native_tts_pause(native: State<'_, AndroidLocalLibrary>) -> Result<(), String> {
+    native_tts_control("nativeTtsPause", native).await
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn native_tts_resume(native: State<'_, AndroidLocalLibrary>) -> Result<(), String> {
+    native_tts_control("nativeTtsResume", native).await
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn native_tts_stop(native: State<'_, AndroidLocalLibrary>) -> Result<(), String> {
+    native_tts_control("nativeTtsStop", native).await
+}
+
 #[tauri::command]
 fn restart_app(app: tauri::AppHandle) {
     app.restart();
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn system_font_families() -> Vec<String> {
+    use std::collections::BTreeSet;
+    let mut families = BTreeSet::new();
+    for key in [
+        r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts",
+        r"HKCU\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts",
+    ] {
+        let Ok(output) = std::process::Command::new("reg.exe")
+            .args(["query", key])
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let Some((name, _)) = line
+                .split_once("REG_SZ")
+                .or_else(|| line.split_once("REG_EXPAND_SZ"))
+            else {
+                continue;
+            };
+            let family = name.trim().split('(').next().unwrap_or("").trim();
+            if !family.is_empty()
+                && family.len() <= 90
+                && family
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || " .-".contains(c))
+            {
+                families.insert(family.to_owned());
+            }
+        }
+    }
+    families.into_iter().collect()
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "android")))]
+#[tauri::command]
+fn system_font_families() -> Vec<String> {
+    Vec::new()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
-    #[cfg(not(target_os = "android"))]
-    let builder = builder.invoke_handler(tauri::generate_handler![restart_app]);
+    #[cfg(target_os = "windows")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        restart_app,
+        system_font_families,
+        microsoft_store::microsoft_store_products,
+        microsoft_store::microsoft_store_purchase,
+        microsoft_store::microsoft_store_customer_purchase_id
+    ]);
+    #[cfg(not(any(target_os = "windows", target_os = "android")))]
+    let builder =
+        builder.invoke_handler(tauri::generate_handler![restart_app, system_font_families]);
     #[cfg(target_os = "android")]
     let builder = builder
         .invoke_handler(tauri::generate_handler![
             restart_app,
             native_list_books,
             native_save_book,
-            native_delete_book
+            native_delete_book,
+            native_tts_voices,
+            native_tts_speak,
+            native_tts_pause,
+            native_tts_resume,
+            native_tts_stop
         ])
         .setup(|app| {
             // Keep the existing directory to preserve already-imported books.

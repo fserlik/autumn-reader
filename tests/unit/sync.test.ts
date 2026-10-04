@@ -14,6 +14,7 @@ import {
 } from "../../src/services/books/models";
 import { mergeRemoteBook } from "../../src/services/books/merge";
 import type { StoredBook } from "../../src/storage";
+vi.mock("../../src/services/auth", () => ({ auth: { state: { ownerId: "owner", status: "authenticated" }, requireUser: () => "owner" } }));
 const base = (): StoredBook => ({
   id: "cached",
   ownerId: "owner",

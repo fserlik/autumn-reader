@@ -55,3 +55,10 @@ test("account security and cloud management are translated in every supported la
       "manageCloudStorage", "cloudStorageUsage", "removeFromCloud", "removeCloudWithoutCopy"] as const)
       expect(extraTranslations[locale][key]?.trim(), `${locale}:${key}`).toBeTruthy();
 });
+test("plans and device management have all labels in every supported language", () => {
+  for (const locale of ["en", "es", "it", "fr"] as const)
+    for (const key of ["planSection", "planStorageUsage", "planOverQuota", "viewPlans",
+      "plansTitle", "planPerMonth", "planPerYear", "planTranslationVeryLimited",
+      "planTtsLimited", "deviceLimitReached", "manageDevices", "deviceRemoveConfirm"] as const)
+      expect(extraTranslations[locale][key]?.trim(), `${locale}:${key}`).toBeTruthy();
+});

@@ -15,6 +15,8 @@ export type CloudErrorCode =
   | "book_limit"
   | "storage_limit"
   | "pending_upload_limit"
+  | "device_limit"
+  | "device_revoked"
   | "upload_rate_limited"
   | "forbidden"
   | "not_configured"
@@ -35,6 +37,8 @@ const messages: Record<CloudErrorCode, TranslationKey> = {
   cloud_unavailable: "errorCloud", conflict: "errorConflict", quota_exceeded: "errorQuota",
   book_limit: "errorBookLimit", storage_limit: "errorStorageLimit",
   pending_upload_limit: "errorPendingUploadLimit", upload_rate_limited: "errorUploadRateLimit",
+  device_limit: "deviceLimitReached",
+  device_revoked: "deviceRevoked",
   forbidden: "errorForbidden", not_configured: "errorNotConfigured", cancelled: "errorCancelled",
 };
 export function errorMessage(error: unknown): string {

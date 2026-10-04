@@ -1,6 +1,7 @@
 import type { StoredBook } from "../storage";
 import { t } from "../i18n";
 import { prepareBookCover, privateCoverPath } from "../services/storage/book-covers";
+import { bookDisplayTitle } from "../services/books/display";
 
 export interface BookEditor { open(book: StoredBook): void; close(): void }
 export function mountBookEditor(
@@ -30,7 +31,7 @@ export function mountBookEditor(
   const ui: BookEditor = {
     open(book) {
       ++revision; current = book; selected = undefined; preparing = invalidImage = false; picker.value = ""; error.textContent = "";
-      title.value = book.displayTitle?.trim() || book.name.replace(/\.(epub|pdf)$/i, ""); author.value = book.author ?? "";
+      title.value = bookDisplayTitle(book); author.value = book.author ?? "";
       showPreview(book); dialog.showModal(); title.focus(); title.select();
     },
     close() { if (busy) return; ++revision; current = selected = undefined; if (dialog.open) dialog.close(); },

@@ -19,3 +19,8 @@ serde_json = "1"
 
 [target.'cfg(target_os = "android")'.dependencies]
 percent-encoding = "2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = ["Foundation", "Services_Store", "Win32_Foundation", "Win32_UI_Shell"] }
+windows-collections = "0.2"
+windows-future = "0.2"

@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { mockCloud, login } from "./helpers/cloud";
 
 import { samplePdf } from "./helpers/pdf";
+import { clickReaderOption, selectReaderOption } from "./helpers/reader-options";
 
 async function openPdf(page: Page) {
   await mockCloud(page, true);
@@ -12,7 +13,7 @@ async function openPdf(page: Page) {
 }
 
 async function largeText(page: Page) {
-  for (let i = 0; i < 8; i++) { await page.locator("#larger-button").click(); await expect(page.locator("#size-value")).toHaveText(`${110 + i * 10}%`); }
+  for (let i = 0; i < 8; i++) { await clickReaderOption(page, "#larger-button"); await expect(page.locator("#size-value")).toHaveText(`${110 + i * 10}%`); }
   await expect(page.locator(".pdf-reading-text")).toHaveCSS("font-size", "32.4px");
 }
 
@@ -67,7 +68,7 @@ test("keeps a note on its reading page and jumps back to its selected text", asy
   await page.screenshot({ path: testInfo.outputPath("note.png") });
   await page.locator("#next-button").click();
   await expect(page.locator(".note-marker")).toHaveCount(0);
-  await page.locator("#all-notes-button").click();
+  await clickReaderOption(page, "#all-notes-button");
   await page.locator(".notes-go-button").click();
   await expect(page.locator("#position-label")).toHaveText(savedPosition!);
   await expect(page.locator(".note-marker")).toHaveCount(1);
@@ -84,7 +85,7 @@ test("restores the text size and keeps the original view for graphic pages", asy
   await expect(page.locator("#size-value")).toHaveText("180%");
   await expect(page.locator(".pdf-reading-text")).toHaveCSS("font-size", "32.4px");
   await expect(page.locator("#position-label")).toHaveText(position!);
-  await page.locator("#pdf-reading-mode").selectOption("original");
+  await selectReaderOption(page, "#pdf-reading-mode", "original");
   await expect(page.locator(".pdf-page")).toBeVisible();
   await expect(page.locator(".size-controls")).toBeHidden();
   await page.locator("#next-button").click();

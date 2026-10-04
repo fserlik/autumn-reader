@@ -8,8 +8,9 @@ import { cloudLocalId } from "../services/books/models";
 import { hasLocalFile, type StoredBook } from "../storage";
 import type { CloudStorageBook, CloudUsage } from "../services/types";
 import { language, t } from "../i18n";
+import { accountIcon } from "./account-icons";
 
-const formatBytes = (bytes: number): string => {
+export const formatBytes = (bytes: number): string => {
   const mib = bytes / 1048576;
   return mib >= 1024
     ? `${new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(mib / 1024)} GB`
@@ -21,12 +22,10 @@ export function mountAccountStorage(
   cover: (book: StoredBook) => HTMLElement,
   onLibraryChanged: () => Promise<void>,
 ): void {
-  const section = document.createElement("section");
-  section.className = "account-feature cloud-storage-feature";
-  section.innerHTML = `<div class="settings-copy"><h3>${t("accountCloudStorage")}</h3><p>${t("accountCloudStorageHelp")}</p></div>
-    <div class="cloud-storage-summary"><p class="cloud-storage-bytes" role="status"></p><p class="cloud-storage-books"></p>
-      <progress class="cloud-storage-meter" max="100" value="0" aria-label="${t("accountCloudStorage")}"></progress></div>
-    <button class="secondary-button cloud-storage-manage" type="button">${t("manageCloudStorage")}</button>`;
+  const manage = document.createElement("button");
+  manage.className = "secondary-button cloud-storage-manage plan-action";
+  manage.type = "button";
+  manage.innerHTML = `${accountIcon("books")}<span>${t("manageCloudStorage")}</span>${accountIcon("arrow")}`;
   const dialog = document.createElement("dialog");
   dialog.className = "account-dialog cloud-storage-dialog";
   dialog.setAttribute("aria-labelledby", "cloud-storage-heading");
@@ -40,11 +39,9 @@ export function mountAccountStorage(
   confirm.setAttribute("aria-labelledby", "cloud-remove-heading");
   confirm.innerHTML = `<h2 id="cloud-remove-heading">${t("removeCloudTitle")}</h2><p class="cloud-remove-book"></p><p class="cloud-remove-warning"></p>
     <p class="cloud-remove-error" role="alert"></p><footer><button type="button" class="secondary-button cloud-remove-cancel">${t("cancel")}</button><button type="button" class="secondary-button cloud-remove-submit">${t("removeFromCloud")}</button></footer>`;
-  parent.append(section, dialog, confirm);
+  parent.append(manage);
+  document.body.append(dialog, confirm);
   const find = <T extends HTMLElement>(node: HTMLElement, selector: string): T => node.querySelector<T>(selector)!;
-  const bytesLabel = find<HTMLElement>(section, ".cloud-storage-bytes");
-  const booksLabel = find<HTMLElement>(section, ".cloud-storage-books");
-  const meter = find<HTMLProgressElement>(section, ".cloud-storage-meter");
   const usageLabel = find<HTMLElement>(dialog, ".cloud-storage-dialog-usage");
   const rows = find<HTMLElement>(dialog, ".cloud-storage-rows");
   const message = find<HTMLElement>(dialog, ".cloud-storage-message");
@@ -63,22 +60,18 @@ export function mountAccountStorage(
   let owner: string | null = null;
   const summary = (value: CloudUsage) => {
     usage = value;
-    bytesLabel.textContent = t("cloudStorageUsage", { used: formatBytes(value.used_bytes), limit: formatBytes(value.max_bytes) });
-    booksLabel.textContent = t("cloudStorageBooksUsage", { used: value.used_books, limit: value.max_books });
-    usageLabel.textContent = `${bytesLabel.textContent} · ${booksLabel.textContent}`;
-    meter.value = value.max_bytes ? Math.min(100, value.used_bytes / value.max_bytes * 100) : 0;
+    const bytes = t("cloudStorageUsage", { used: formatBytes(value.used_bytes), limit: formatBytes(value.max_bytes) });
+    const books = value.used_books === 1 ? t("cloudBookCountSingle") : t("cloudBooksCount", { count: value.used_books });
+    usageLabel.textContent = `${bytes} · ${books}`;
   };
   const refreshUsage = async () => {
     const current = auth.state.ownerId;
-    if (auth.state.status !== "authenticated" || !navigator.onLine) {
-      if (!usage) bytesLabel.textContent = t("quotaOffline");
-      return;
-    }
+    if (!dialog.open || auth.state.status !== "authenticated" || !navigator.onLine) return;
     try {
       const value = await library.quota();
       if (auth.state.ownerId === current) summary(value);
     } catch (reason: unknown) {
-      if (auth.state.ownerId === current && !usage) bytesLabel.textContent = errorMessage(reason);
+      if (auth.state.ownerId === current && !usage) usageLabel.textContent = errorMessage(reason);
     }
   };
   const render = async () => {
@@ -135,7 +128,7 @@ export function mountAccountStorage(
     } catch (reason: unknown) { if (token === generation) message.textContent = errorMessage(reason); }
     finally { loading = false; more.disabled = false; if (token === generation) await render(); }
   };
-  find<HTMLButtonElement>(section, ".cloud-storage-manage").addEventListener("click", () => {
+  manage.addEventListener("click", () => {
     dialog.showModal(); void refreshUsage(); void load(true);
   });
   find<HTMLButtonElement>(dialog, ".cloud-storage-close").addEventListener("click", () => dialog.close());

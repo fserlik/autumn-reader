@@ -7,6 +7,7 @@ const translationKeys: Record<string, TranslationKey> = {
   offline:"translationOffline", session_expired:"translationSession", text_too_long:"translationTooLong",
   invalid_text:"translationNoText", invalid_language:"translationBadLanguage", not_configured:"translationNotConfigured",
   quota_exceeded:"translationQuota", provider_unavailable:"translationProvider", forbidden:"translationForbidden",
+  device_revoked:"deviceRevoked",
 };
 export class TranslationError extends Error {
   constructor(readonly code:string){super(t(translationKeys[code] ?? "translationProvider"));}
@@ -23,7 +24,10 @@ export class SupabaseTranslationService implements TranslationService {
       const context:unknown="context"in error?error.context:undefined;
       if(context instanceof Response){
         const payload:unknown=await context.json().catch(()=>null);
-        if(payload&&typeof payload==="object"&&"code"in payload&&typeof payload.code==="string")throw new TranslationError(payload.code);
+        if(payload&&typeof payload==="object"&&"code"in payload&&typeof payload.code==="string"){
+          if(payload.code==="device_revoked")await auth.logout();
+          throw new TranslationError(payload.code);
+        }
       }
       throw new TranslationError("provider_unavailable");
     }

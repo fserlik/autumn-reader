@@ -1,7 +1,11 @@
 import { openDatabase, localAll } from "../local/database";
 import type { SyncOperation } from "./operations";
+import { auth } from "../auth";
 export async function queued(ownerId: string): Promise<SyncOperation[]> {
-  return (await localAll<SyncOperation>("pending_sync_operations")).filter(
+  if (!ownerId || auth.state.ownerId !== ownerId) return [];
+  const operations = await localAll<SyncOperation>("pending_sync_operations");
+  if (auth.state.ownerId !== ownerId) return [];
+  return operations.filter(
     (op) => op.ownerId === ownerId,
   );
 }
@@ -9,6 +13,7 @@ export async function settleOperation(
   op: SyncOperation,
   error?: string,
 ): Promise<void> {
+  if (auth.state.ownerId !== op.ownerId) return;
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction("pending_sync_operations", "readwrite"),
@@ -17,7 +22,7 @@ export async function settleOperation(
     get.onsuccess = () => {
       const current = get.result as SyncOperation | undefined;
       // A newer local edit must survive an acknowledgement of the previous in-flight value.
-      if (current?.version !== op.version) return;
+      if (auth.state.ownerId !== op.ownerId || current?.version !== op.version) return;
       if (!error) store.delete(op.id);
       else
         store.put({
@@ -40,8 +45,10 @@ export async function settleOperation(
   });
 }
 export async function resetRetry(ownerId: string): Promise<void> {
+  if (auth.state.ownerId !== ownerId) return;
   const db = await openDatabase();
   const ops = await queued(ownerId);
+  if (auth.state.ownerId !== ownerId) { db.close(); return; }
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction("pending_sync_operations", "readwrite"),
       store = tx.objectStore("pending_sync_operations");
@@ -49,7 +56,7 @@ export async function resetRetry(ownerId: string): Promise<void> {
       const read = store.get(op.id);
       read.onsuccess = () => {
         const current = read.result as SyncOperation | undefined;
-        if (current) store.put({ ...current, retryAt: 0 });
+        if (auth.state.ownerId === ownerId && current?.ownerId === ownerId) store.put({ ...current, retryAt: 0 });
       };
     }
     tx.oncomplete = () => {

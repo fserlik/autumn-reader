@@ -2,12 +2,15 @@ import { assertEquals, assert } from "jsr:@std/assert@1";
 import { handleTranslationRequest } from "./handler.ts";
 Deno.env.set("SUPABASE_URL","https://example.supabase.co");Deno.env.set("SUPABASE_SERVICE_ROLE_KEY","test-admin");Deno.env.set("DEEPL_AUTH_KEY","private-provider-key");Deno.env.set("DEEPL_API_PLAN","developer");Deno.env.set("ALLOWED_ORIGINS","http://127.0.0.1:1420");
 const owner="aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
-const request=(body:unknown,token=true,origin="http://127.0.0.1:1420")=>new Request("https://example.supabase.co/functions/v1/translate-text",{method:"POST",headers:{"Content-Type":"application/json",Origin:origin,...(token?{Authorization:"Bearer account-token"}:{})},body:JSON.stringify(body)});
-function mock(options:{auth?:boolean;status?:number;quota?:boolean}={}){
+const session="bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";
+const jwt=`header.${btoa(JSON.stringify({session_id:session}))}.signature`;
+const request=(body:unknown,token=true,origin="http://127.0.0.1:1420")=>new Request("https://example.supabase.co/functions/v1/translate-text",{method:"POST",headers:{"Content-Type":"application/json",Origin:origin,...(token?{Authorization:`Bearer ${jwt}`}:{})},body:JSON.stringify(body)});
+function mock(options:{auth?:boolean;device?:boolean;status?:number;quota?:boolean}={}){
   const original=globalThis.fetch,calls:{url:string;body:unknown;headers:Headers}[]=[];
   globalThis.fetch=async(input:RequestInfo|URL,init?:RequestInit)=>{
     const req=input instanceof Request?input:new Request(input,init);const body=req.method==="POST"?await req.json():undefined;calls.push({url:req.url,body,headers:req.headers});
     if(req.url.endsWith("/auth/v1/user"))return options.auth===false?Response.json({message:"expired"},{status:401}):Response.json({id:owner,aud:"authenticated",role:"authenticated"});
+    if(req.url.endsWith("/rpc/authorize_account_device"))return Response.json(options.device!==false);
     if(req.url.endsWith("/rpc/reserve_translation"))return options.quota?Response.json({message:"translation_quota"},{status:400}):new Response("null",{status:200,headers:{"Content-Type":"application/json"}});
     return Response.json({translations:[{text:"Ser o no ser",detected_source_language:"EN"}]},{status:options.status??200});
   };
@@ -20,7 +23,15 @@ Deno.test("translation verifies session and sends only the selected fragment/lan
     const provider=fake.calls.find(call=>call.url.startsWith("https://api.deepl.com"))!;
     assertEquals(provider.body,{text:["To be or not to be"],target_lang:"ES"});assertEquals(provider.headers.get("authorization"),"DeepL-Auth-Key private-provider-key");
     assertEquals(fake.calls.find(c=>c.url.endsWith("reserve_translation"))!.body,{p_user:owner,p_characters:18});
+    assertEquals(fake.calls.find(c=>c.url.endsWith("authorize_account_device"))!.body,{p_user:owner,p_session:session});
     assert(!JSON.stringify(provider).includes(owner));
+  }finally{fake.restore();}
+});
+Deno.test("a revoked device cannot spend translation quota or call the provider",async()=>{
+  const fake=mock({device:false});try{
+    const response=await handleTranslationRequest(request({text:"Hi",targetLanguage:"ES"}));
+    assertEquals(response.status,403);assertEquals(await response.json(),{code:"device_revoked"});
+    assertEquals(fake.calls.filter(call=>call.url.includes("reserve_translation")||call.url.includes("deepl.com")).length,0);
   }finally{fake.restore();}
 });
 Deno.test("translation rejects missing/expired auth, disallowed origin, empty/oversized text and invalid target",async()=>{
@@ -43,6 +54,19 @@ Deno.test("translation maps provider and database quotas without leaking provide
 });
 Deno.test("translation is unavailable without a backend-only key and does not reserve budget",async()=>{
   Deno.env.delete("DEEPL_AUTH_KEY");const fake=mock();try{
-    const response=await handleTranslationRequest(request({text:"Hi",targetLanguage:"ES"}));assertEquals(response.status,503);assertEquals(await response.json(),{code:"not_configured"});assertEquals(fake.calls.length,1);
+    const response=await handleTranslationRequest(request({text:"Hi",targetLanguage:"ES"}));assertEquals(response.status,503);assertEquals(await response.json(),{code:"not_configured"});assertEquals(fake.calls.length,2);
   }finally{Deno.env.set("DEEPL_AUTH_KEY","private-provider-key");fake.restore();}
+});
+Deno.test("an existing API Free key uses the Free endpoint; a provider 403 reports configuration error",async()=>{
+  Deno.env.set("DEEPL_API_PLAN","legacy-free");
+  const free=mock();try{
+    const response=await handleTranslationRequest(request({text:"Hello",targetLanguage:"ES"}));
+    assertEquals(response.status,200);
+    assertEquals(free.calls.filter(call=>call.url==="https://api-free.deepl.com/v2/translate").length,1);
+  }finally{free.restore();}
+  const rejected=mock({status:403});try{
+    const response=await handleTranslationRequest(request({text:"Hello",targetLanguage:"ES"}));
+    assertEquals(response.status,503);
+    assertEquals(await response.json(),{code:"not_configured"});
+  }finally{rejected.restore();Deno.env.set("DEEPL_API_PLAN","developer");}
 });

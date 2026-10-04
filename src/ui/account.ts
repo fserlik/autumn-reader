@@ -52,7 +52,7 @@ export function mountAccount(
   const accountSettings = document.createElement("section");
   accountSettings.className = "settings-session account-settings";
   accountSettings.innerHTML = `<button id="account-logout" class="secondary-button" type="button">${t("authLogout")}</button>`;
-  settings.prepend(accountSettings);
+  settings.append(accountSettings);
   const find = <T extends HTMLElement>(selector: string): T =>
     entry.querySelector<T>(selector)!;
   const form = find<HTMLFormElement>("#account-form");

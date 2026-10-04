@@ -12,3 +12,29 @@ test("short swipe snaps back and vertical scroll, selection, long press and syst
   gesture.begin(300,100,0,390);expect(gesture.move(220,100,500)).toBeUndefined();expect(gesture.finish(150,100,600).commit).toBe(false);
   expect(gesture.begin(10,100,0,390,true)).toBe(false);expect(gesture.finish(150,100,100).commit).toBe(false);
 });
+test("a rightward page turn stays locked after later vertical finger drift",()=>{
+  const gesture=new SwipeGesture();
+  gesture.begin(110,200,0,390);
+  expect(gesture.move(134,201,30)).toBe(24);
+  expect(gesture.move(152,251,80)).toBe(42);
+  expect(gesture.move(250,240,180)).toBe(140);
+  expect(gesture.finish(250,240,210)).toMatchObject({kind:"swipe",direction:-1,commit:true});
+});
+test("coarse touch commits a short intentional swipe in either direction while desktop keeps its threshold",()=>{
+  const mobile=new SwipeGesture(true), desktop=new SwipeGesture(false);
+  mobile.begin(250,100,0,390);expect(mobile.move(199,102,100)).toBe(-51);
+  expect(mobile.finish(199,102,180)).toMatchObject({direction:1,commit:true});
+  mobile.begin(100,100,0,390);expect(mobile.move(151,102,100)).toBe(51);
+  expect(mobile.finish(151,102,180)).toMatchObject({direction:-1,commit:true});
+  desktop.begin(250,100,0,390);desktop.move(199,102,100);
+  expect(desktop.finish(199,102,180).commit).toBe(false);
+});
+test("coarse touch does not convert vertical scrolling or selected text into a page turn",()=>{
+  const mobile=new SwipeGesture(true);
+  mobile.begin(250,100,0,390);expect(mobile.move(244,130,50)).toBeUndefined();
+  expect(mobile.finish(180,150,180).commit).toBe(false);
+  mobile.begin(250,100,0,390);expect(mobile.move(200,102,50,true)).toBeUndefined();
+  expect(mobile.finish(170,102,180).commit).toBe(false);
+  mobile.begin(250,100,0,390);mobile.move(224,100,60);
+  expect(mobile.finish(224,100,400).commit).toBe(false);
+});

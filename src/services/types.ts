@@ -33,9 +33,9 @@ export interface UserBook {
 }
 export interface CloudUsage {
   used_books: number;
-  max_books: number;
   used_bytes: number;
   max_bytes: number;
+  plan?: "free" | "plus" | "pro";
   active_pending_uploads?: number;
   reserved_bytes?: number;
 }
@@ -77,6 +77,7 @@ export interface Profile {
   username: string;
   display_name: string;
   avatar_url: string | null;
+  banner_url?: string | null;
   bio: string;
   created_at: string;
   updated_at: string;
@@ -178,13 +179,22 @@ export interface Database {
       };
       library_quota: {
         Args: Record<string, never>;
-        Returns: { used_books: number; max_books: number; used_bytes: number; max_bytes: number;
+        Returns: { used_books: number; used_bytes: number; max_bytes: number; plan: "free" | "plus" | "pro";
           active_pending_uploads?: number; reserved_bytes?: number; recent_unique_uploads?: number;
           expired_reservations?: number; max_pending_uploads?: number };
       };
+      plan_catalog: { Args: Record<string, never>; Returns: import("./plans").PlanDefinition[] };
+      account_plan: { Args: Record<string, never>; Returns: import("./plans").AccountPlan };
+      register_device: { Args: { p_device: string; p_platform: string; p_name: string }; Returns: import("./devices").DeviceAccess };
+      account_devices: { Args: Record<string, never>; Returns: import("./devices").AccountDevice[] };
+      remove_account_device: { Args: { p_device: string }; Returns: { removed: boolean } };
       cloud_storage_books: {
         Args: { p_offset?: number; p_limit?: number; p_sort?: string };
         Returns: CloudStorageBook[];
+      };
+      cloud_book_identities: {
+        Args: Record<string, never>;
+        Returns: { book_id: string; file_hash: string; format: "epub" | "pdf"; file_size: number }[];
       };
       sync_changes: {
         Args: { operations: unknown };

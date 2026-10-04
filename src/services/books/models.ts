@@ -69,7 +69,7 @@ export function fromCloudBook(
     cloudId: book.id,
     name: `${book.title}.${book.format}`,
     displayTitle: user.display_title ?? undefined,
-    author: user.display_author ?? book.author,
+    author: user.display_author ?? previous?.contentAuthor ?? book.author,
     coverPath: user.cover_path,
     customCover: Boolean(user.cover_path),
     coverUploadedPath: user.cover_path ?? undefined,

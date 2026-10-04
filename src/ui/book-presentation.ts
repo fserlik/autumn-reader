@@ -1,5 +1,6 @@
 import type { StoredBook } from "../storage";
 import { t } from "../i18n";
+import { bookDisplayTitle } from "../services/books/display";
 
 export function isReading(book: StoredBook): boolean {
   return book.status === "reading" || (!book.status && book.lastOpenedAt > 0);
@@ -32,7 +33,7 @@ export function bookProgress(book: StoredBook): number {
 }
 
 export function presentationCard(book: StoredBook, cover: (book: StoredBook) => HTMLElement, open: (book: StoredBook) => void, showProgress: boolean): HTMLElement {
-  const title = book.displayTitle?.trim() || book.name.replace(/\.(pdf|epub)$/i, "");
+  const title = bookDisplayTitle(book);
   const card = document.createElement("article");
   card.className = "presentation-card";
   const coverButton = document.createElement("button");

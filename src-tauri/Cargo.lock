@@ -91,6 +91,9 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "windows",
+ "windows-collections",
+ "windows-future",
 ]
 
 [[package]]

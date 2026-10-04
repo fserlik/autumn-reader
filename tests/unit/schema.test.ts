@@ -40,8 +40,24 @@ beforeAll(async () => {
   await db.exec(readFileSync("supabase/migrations/202609300001_private_book_metadata.sql","utf8"));
   await db.exec(readFileSync("supabase/migrations/202609300002_upload_quota_retries.sql","utf8"));
   await db.exec(readFileSync("supabase/migrations/202609300003_cloud_storage_management.sql","utf8"));
+  await db.exec(readFileSync("supabase/migrations/202610010001_cloud_book_identities.sql","utf8"));
+  await db.exec(readFileSync("supabase/migrations/202610010002_profile_banner.sql","utf8"));
   await db.exec(`insert into auth.users(id) values('${a}'),('${b}');`);
 }, 30000);
+test("profile banner writes are limited to the authenticated owner's fixed image path", async () => {
+  const bucket = await db.query<{ file_size_limit: number }>("select file_size_limit from storage.buckets where id='avatars'");
+  expect(Number(bucket.rows[0].file_size_limit)).toBe(1024 * 1024);
+  try {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${a}',false)`);
+    await db.exec(`insert into storage.objects(bucket_id,name) values('avatars','${a}/banner')`);
+    await expect(db.exec(`insert into storage.objects(bucket_id,name) values('avatars','${b}/banner')`)).rejects.toThrow();
+    await db.exec(`update public.profiles set banner_url='https://example.org/banner.webp' where id='${a}'`);
+    expect((await db.query<{ banner_url: string }>(`select banner_url from public.profiles where id='${a}'`)).rows[0].banner_url).toBe("https://example.org/banner.webp");
+    expect((await db.query(`update public.profiles set banner_url='https://example.org/other.webp' where id='${b}' returning id`)).rows).toHaveLength(0);
+  } finally {
+    await db.exec(`reset role; delete from storage.objects where bucket_id='avatars' and name='${a}/banner'; update public.profiles set banner_url=null where id='${a}'`);
+  }
+});
 test("physical deduplication requires an independent authorized library relation", async () => {
   const hash = "a".repeat(64);
   const first = await db.query<{ intent: { id: string } }>(
@@ -320,7 +336,7 @@ test("signup persists a normalized unique username and rejects invalid metadata 
 test("avatar storage permits only the account's fixed object, without cross-account mutation or listing", async () => {
   const bucket = await db.query<{ public:boolean; file_size_limit:number; allowed_mime_types:string[] }>("select public,file_size_limit,allowed_mime_types from storage.buckets where id='avatars'");
   expect(bucket.rows[0]).toMatchObject({public:true,allowed_mime_types:["image/webp","image/png"]});
-  expect(Number(bucket.rows[0].file_size_limit)).toBe(512*1024);
+  expect(Number(bucket.rows[0].file_size_limit)).toBe(1024*1024);
   await db.exec("create policy test_existing_avatar_rule on storage.objects for all to anon,authenticated using(bucket_id='avatars') with check(bucket_id='avatars')");
   try {
     await db.exec(`set role authenticated;select set_config('request.jwt.claim.sub','${a}',false)`);
@@ -381,6 +397,22 @@ test("folders are private, synchronized with independent LWW, and deletion never
   await expect(db.exec(`select private.sync_book_changes('[]')`)).rejects.toThrow();
   await db.exec("reset role; set role anon"); expect((await db.query("select * from public.library_folders").catch(() => ({rows:[]}))).rows).toHaveLength(0);
   await db.exec("reset role");
+});
+
+test("cloud hashes are visible only for the authenticated owner's active relation", async () => {
+  const fileHash = "e".repeat(64);
+  const created = await db.query<{id:string}>("insert into public.books(title,format) values('Identity test','epub') returning id");
+  const id = created.rows[0].id;
+  await db.query("insert into private.book_files(book_id,file_hash,format,file_size,r2_key) values($1,$2,'epub',123,$3)",[id,fileHash,`books/${fileHash}.epub`]);
+  await db.query("insert into public.user_books(user_id,book_id) values($1,$2)",[a,id]);
+  await db.exec(`set role authenticated;select set_config('request.jwt.claim.sub','${a}',false)`);
+  expect((await db.query<{file_hash:string}>("select file_hash from public.cloud_book_identities() where book_id=$1",[id])).rows).toEqual([{file_hash:fileHash}]);
+  await db.exec(`select set_config('request.jwt.claim.sub','${b}',false)`);
+  expect((await db.query("select * from public.cloud_book_identities() where book_id=$1",[id])).rows).toHaveLength(0);
+  await db.exec("reset role");
+  await expect(db.query("insert into public.user_books(user_id,book_id) values($1,$2)",[a,id])).rejects.toThrow();
+  await db.query("delete from public.user_books where user_id=$1 and book_id=$2",[a,id]);
+  await db.query("delete from public.books where id=$1",[id]);
 });
 
 test("private book metadata and cover paths stay with the owner, not the shared binary", async () => {

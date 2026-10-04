@@ -34,6 +34,7 @@ function queueMembership(tx: IDBTransaction, value: LocalMembership): void {
 }
 export const folders = {
   async snapshot(owner = auth.state.ownerId): Promise<{ folders: LibraryFolder[]; memberships: LocalMembership[] }> {
+    if (!owner || auth.state.ownerId !== owner) return { folders: [], memberships: [] };
     const [all, memberships] = await Promise.all([localAll<LibraryFolder>("library_folders"), localAll<LocalMembership>("folder_memberships")]);
     return { folders: all.filter(f => f.user_id === owner && !f.deleted_at).sort((a,b) => a.name.localeCompare(b.name)), memberships: memberships.filter(m => m.ownerId === owner) };
   },
@@ -69,7 +70,7 @@ export const folders = {
   },
   async move(book: StoredBook, folderId: string | null): Promise<void> {
     const owner = auth.state.ownerId;
-    if (!owner || (book.ownerId && book.ownerId !== owner)) throw new Error(t("bookOtherAccount"));
+    if (!owner || book.ownerId !== owner) throw new Error(t("bookOtherAccount"));
     await transaction(tx => {
       const assign = (): void => {
         const read = tx.objectStore("folder_memberships").get(key(owner, book.id));
@@ -94,7 +95,13 @@ export const folders = {
       const read = tx.objectStore("folder_memberships").get(key(owner, original.id));
       read.onsuccess = () => {
         const old = read.result as LocalMembership | undefined;
-        if (old) queueMembership(tx, { ...old, id: key(owner, clone.id), bookLocalId: clone.id, cloudId: clone.cloudId });
+        if (!old) return;
+        const target = tx.objectStore("folder_memberships").get(key(owner, clone.id));
+        target.onsuccess = () => {
+          const current = target.result as LocalMembership | undefined;
+          if (!current || current.updatedAt < old.updatedAt)
+            queueMembership(tx, { ...old, id: key(owner, clone.id), bookLocalId: clone.id, cloudId: clone.cloudId });
+        };
       };
     });
   },

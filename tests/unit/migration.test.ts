@@ -7,11 +7,11 @@ import {
 } from "../../src/services/local/database";
 import type { StoredBook } from "../../src/storage";
 const owner = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
-test("migration selects legacy and current-account local books, excluding other accounts and cloud books", async () => {
+test("migration selects only owned local books, excluding unclaimed, other accounts and cloud books", async () => {
   const { migrationRemaining } = await import("../../src/services/sync/migration");
   const local: StoredBook = { id: "selection-legacy", name: "Book.pdf", format: "pdf", data: new Blob(["%PDF"]), addedAt: 1, lastOpenedAt: 0, page: 1, cfi: null, fontSize: 100 };
   const selected = await migrationRemaining(owner, [local, {...local,id:"selection-own",ownerId:owner}, {...local,id:"selection-other",ownerId:"other"}, {...local,id:"selection-cloud",ownerId:owner,cloudId:"cloud"}]);
-  expect(selected.map(b => b.id)).toEqual(["selection-legacy","selection-own"]);
+  expect(selected.map(b => b.id)).toEqual(["selection-own"]);
 });
 vi.mock("../../src/services/auth", () => ({
   auth: {
@@ -68,6 +68,7 @@ test("migration resumes at the failed book, retains original bytes and preserves
     ],
   });
   const originals = [book("first"), book("second")];
+  for (const original of originals) original.ownerId = owner;
   for (const b of originals) await localPut("books", b);
   let fail = true;
   const upload = vi
@@ -136,4 +137,30 @@ test("manual retry resumes quota-failed uploads once while automatic resume wait
   expect(await migration.retryApprovedMigrations()).toBeNull();
   expect(upload).toHaveBeenCalledTimes(1);
   vi.restoreAllMocks(); vi.unstubAllGlobals();
+});
+
+test("sync all recognizes an already-owned cloud hash without staging, and repeat is idempotent", async () => {
+  vi.stubGlobal("window", Object.assign(new EventTarget(), { __TAURI_INTERNALS__: undefined }));
+  vi.stubGlobal("navigator", { userAgent: "", onLine: true });
+  const storage = await import("../../src/services/storage");
+  const { hashBlob } = await import("../../src/services/storage/hash");
+  const { library } = await import("../../src/services/books");
+  const migration = await import("../../src/services/sync/migration");
+  const bookId = "99999999-9999-4999-8999-999999999999";
+  const original: StoredBook = { id:"already-owned",name:"Renamed.pdf",format:"pdf",
+    data:new Blob(["%PDF-1.4\n%%EOF"]),ownerId:owner,addedAt:10,lastOpenedAt:20,
+    page:9,cfi:null,fontSize:100,favorite:true };
+  original.fileHash = await hashBlob(original.data); original.fileSize = original.data.size;
+  await localPut("books",original);
+  const identities = vi.spyOn(library,"identities").mockResolvedValue([{book_id:bookId,file_hash:original.fileHash,format:"pdf",file_size:original.fileSize}]);
+  const upload = vi.spyOn(storage.bookStorage,"upload");
+  expect(await migration.migrateLibrary([original],new AbortController().signal,()=>{})).toEqual({done:1,failed:0});
+  expect(upload).not.toHaveBeenCalled();
+  const visible = (await import("../../src/storage")).listBooks(owner);
+  expect((await visible).filter(book=>book.fileHash===original.fileHash)).toHaveLength(1);
+  expect((await localGet<StoredBook>("books",`cloud-${owner}-${bookId}`))?.page).toBe(9);
+  expect(await migration.migrateLibrary([original],new AbortController().signal,()=>{})).toEqual({done:0,failed:0});
+  expect(identities).toHaveBeenCalledTimes(2);
+  expect(upload).not.toHaveBeenCalled();
+  vi.restoreAllMocks();vi.unstubAllGlobals();
 });

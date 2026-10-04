@@ -35,6 +35,8 @@ export function checkError(
   if (!error) return;
   if (error.code === "PGRST301" || error.code === "PGRST303")
     throw new CloudError("session_expired");
+  if (error.message.includes("device_limit")) throw new CloudError("device_limit");
+  if (error.message.includes("device_revoked")) throw new CloudError("device_revoked");
   if (error.code === "42501") throw new CloudError("forbidden");
   if (error.code === "23505")
     throw new Error(t("duplicateName"));

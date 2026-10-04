@@ -5,8 +5,8 @@
   "description": "Desktop book reader",
   "scripts": {
     "test": "vitest run",
-    "test:backend": "npx --yes deno test --allow-env --config supabase/functions/deno.json supabase/functions/book-storage/handler_test.ts supabase/functions/translate-text/handler_test.ts",
-    "check:backend": "npx --yes deno check --config supabase/functions/deno.json supabase/functions/book-storage/index.ts supabase/functions/translate-text/index.ts",
+    "test:backend": "npx --yes deno test --allow-env --config supabase/functions/deno.json supabase/functions/book-storage/handler_test.ts supabase/functions/translate-text/handler_test.ts supabase/functions/microsoft-store-subscriptions/handler_test.ts",
+    "check:backend": "npx --yes deno check --config supabase/functions/deno.json supabase/functions/book-storage/index.ts supabase/functions/translate-text/index.ts supabase/functions/microsoft-store-subscriptions/index.ts",
     "cloud:csp": "node scripts/configure-cloud-csp.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

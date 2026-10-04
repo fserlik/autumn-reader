@@ -1,6 +1,6 @@
 import { t } from "../../i18n";
 export const DB_NAME = "autumn-reader";
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 export const stores = [
   "books",
   "pending_sync_operations",
@@ -17,6 +17,10 @@ export function openDatabase(): Promise<IDBDatabase> {
       for (const store of stores)
         if (!request.result.objectStoreNames.contains(store))
           request.result.createObjectStore(store, { keyPath: "id" });
+      const books = request.transaction!.objectStore("books");
+      if (!books.indexNames.contains("by_owner")) books.createIndex("by_owner", "ownerId");
+      if (!books.indexNames.contains("by_owner_hash"))
+        books.createIndex("by_owner_hash", ["ownerId", "fileHash"]);
     };
     request.onsuccess = () => {
       const db = request.result;

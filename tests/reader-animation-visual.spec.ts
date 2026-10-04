@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { mockCloud, login, epubFixture, multiChapterFixture } from "./helpers/cloud";
 import { samplePdf } from "./helpers/pdf";
+import { selectReaderOption } from "./helpers/reader-options";
 
 // A CSS class alone does not prove that a reader page visibly moves. Sample
 // compositor transforms during the turn, including the adjacent rendered page.
@@ -10,7 +11,7 @@ for (const mode of ["epub", "pdf-text", "pdf-original"] as const) test(`${mode} 
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:`Frames.${format}`,mimeType:format === "epub" ? "application/epub+zip" : "application/pdf",buffer:format === "epub" ? await epubFixture() : samplePdf()});
   await expect(page.locator(format === "epub" ? ".epub-frame iframe" : ".pdf-reading-text")).toBeVisible();
-  if (mode === "pdf-original") await page.locator("#pdf-reading-mode").selectOption("original");
+  if (mode === "pdf-original") await selectReaderOption(page, "#pdf-reading-mode", "original");
   await page.evaluate(() => {
     const samples: { t:number; currentX:number; adjacentX:number; animated:boolean; adjacentVisible:boolean }[] = [];
     (window as Window & { turnSamples?: typeof samples }).turnSamples = samples;

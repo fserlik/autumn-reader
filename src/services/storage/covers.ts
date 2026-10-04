@@ -1,4 +1,4 @@
-export async function optimizeCover(blob: Blob, maxSide = 512): Promise<Blob> {
+export async function optimizeCover(blob: Blob, maxSide = 512, maxBytes = 512 * 1024): Promise<Blob> {
   if (blob.size > 20 * 1024 * 1024) throw new Error(t("coverTooLarge"));
   const url = URL.createObjectURL(blob);
   try {
@@ -20,7 +20,7 @@ export async function optimizeCover(blob: Blob, maxSide = 512): Promise<Blob> {
     const cover = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/webp", 0.8),
     );
-    if (!cover || cover.size > 512 * 1024)
+    if (!cover || cover.size > maxBytes)
       throw new Error(t("coverTooLarge"));
     return cover;
   } finally {

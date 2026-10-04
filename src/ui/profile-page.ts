@@ -6,7 +6,8 @@ import type { Profile } from "../services/types";
 import { listBooks, type StoredBook } from "../storage";
 import { t } from "../i18n";
 import { createProfileEditor } from "./profile";
-import { ownAvatar } from "../services/profiles/avatar";
+import { ownAvatar, prepareAvatar } from "../services/profiles/avatar";
+import { ownBanner, prepareBanner, updateBanner } from "../services/profiles/banner";
 import { mountOwnReviews, type ReviewComposer } from "./reviews";
 import type { ReviewEntry } from "../services/reviews/personal";
 import { readingStats } from "./book-presentation";
@@ -27,9 +28,9 @@ export function mountProfile(
 ): ProfileUI {
   parent.innerHTML = `
     <header class="profile-summary">
-      <div class="profile-banner" aria-hidden="true"><span></span></div>
+      <div class="profile-banner"><img id="profile-banner-image" class="profile-banner-image" alt="" hidden /><button id="profile-banner-change" class="profile-image-action" type="button" aria-label="${t("profileChangeBanner")}">${t("profileChangeBanner")}</button><input id="profile-banner-file" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden /></div>
       <div class="profile-heading">
-        <div class="profile-avatar"><span id="profile-initials" aria-hidden="true"></span><img id="profile-photo" alt="" hidden /></div>
+        <div class="profile-avatar"><span id="profile-initials" aria-hidden="true"></span><img id="profile-photo" alt="" hidden /><button id="profile-avatar-change" class="profile-image-action" type="button" aria-label="${t("profileChangeAvatar")}" title="${t("profileChangeAvatar")}">✎</button><input id="profile-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden /></div>
         <div class="profile-identity"><h2 id="profile-name">${t("profile")}</h2><p id="profile-username"></p><p id="profile-description"></p></div>
         <button id="profile-edit" type="button" class="secondary-button">${t("editProfile")}</button>
       </div>
@@ -50,6 +51,11 @@ export function mountProfile(
     <section id="profile-review-section" class="profile-shelf" aria-label="${t("profileReviews")}"></section>`;
   const find = <T extends HTMLElement>(selector: string): T => parent.querySelector<T>(selector)!;
   const photo = find<HTMLImageElement>("#profile-photo");
+  const bannerImage = find<HTMLImageElement>("#profile-banner-image");
+  const avatarChange = find<HTMLButtonElement>("#profile-avatar-change");
+  const bannerChange = find<HTMLButtonElement>("#profile-banner-change");
+  const avatarFile = find<HTMLInputElement>("#profile-avatar-file");
+  const bannerFile = find<HTMLInputElement>("#profile-banner-file");
   const editor = find("#profile-editor");
   const edit = find<HTMLButtonElement>("#profile-edit");
   const ownReviews = mountOwnReviews(find("#profile-review-section"), reviewComposer, confirmReviewDelete, reviewBookVisual);
@@ -67,6 +73,8 @@ export function mountProfile(
   let localTimer: number | undefined;
   let photoSequence = 0;
   let photoUrl: string | undefined;
+  let bannerUrl: string | undefined;
+  let bannerSequence = 0;
   const valid = (token: number, owner: string): boolean =>
     active && token === generation && owner === auth.state.ownerId;
 
@@ -74,6 +82,9 @@ export function mountProfile(
     const photoToken = ++photoSequence;
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     photoUrl = undefined;
+    const bannerToken = ++bannerSequence;
+    if (bannerUrl) URL.revokeObjectURL(bannerUrl);
+    bannerUrl = undefined;
     currentProfile = profile;
     const name = profile?.display_name || profile?.username || t("profile");
     find("#profile-name").textContent = name;
@@ -81,6 +92,19 @@ export function mountProfile(
     find("#profile-description").textContent = profile?.bio || t("profileNoDescription");
     find("#profile-initials").textContent = name.split(/\s+/).slice(0, 2).map(word => word[0]).join("").toUpperCase();
     photo.hidden = true;
+    bannerImage.hidden = true;
+    bannerImage.removeAttribute("src");
+    if (profile?.banner_url?.startsWith("https://") && navigator.onLine) {
+      bannerImage.referrerPolicy = "no-referrer";
+      bannerImage.src = profile.banner_url;
+      bannerImage.hidden = false;
+    }
+    if (profile) void ownBanner(profile).then(blob => {
+      if (!blob || bannerToken !== bannerSequence || profile.id !== auth.state.ownerId) return;
+      bannerUrl = URL.createObjectURL(blob);
+      bannerImage.src = bannerUrl;
+      bannerImage.hidden = false;
+    }).catch(() => {});
     if (profile?.avatar_url?.startsWith("https://") && navigator.onLine) {
       photo.alt = `${t("profilePhoto")} · ${name}`;
       photo.referrerPolicy = "no-referrer";
@@ -93,8 +117,40 @@ export function mountProfile(
       photo.src = photoUrl; photo.hidden = false;
     }).catch(() => { /* Keep the remote image or initials when caching is unavailable. */ });
     edit.disabled = !profile || auth.state.status !== "authenticated" || !navigator.onLine;
+    avatarChange.disabled = bannerChange.disabled = edit.disabled;
   }
   photo.addEventListener("error", () => { photo.hidden = true; });
+  bannerImage.addEventListener("error", () => { bannerImage.hidden = true; });
+  avatarChange.addEventListener("click", () => avatarFile.click());
+  bannerChange.addEventListener("click", () => bannerFile.click());
+  avatarFile.addEventListener("change", () => {
+    const file = avatarFile.files?.[0], profile = currentProfile;
+    avatarFile.value = "";
+    if (!file || !profile || profile.id !== auth.state.ownerId) return;
+    avatarChange.disabled = true;
+    find("#profile-message").textContent = t("profileImagePreparing");
+    void prepareAvatar(file).then(blob => {
+      find("#profile-message").textContent = t("profileImageUploading");
+      return profiles.update({
+      username: profile.username, display_name: profile.display_name, bio: profile.bio,
+      avatar_url: profile.avatar_url,
+    }, blob);
+    }).then(() => profiles.cachedOwn()).then(updated => {
+      if (updated && active && updated.id === auth.state.ownerId) { identity(updated); find("#profile-message").textContent = t("profileSaved"); }
+    }).catch(error => { find("#profile-message").textContent = errorMessage(error); })
+      .finally(() => { avatarChange.disabled = !currentProfile || !navigator.onLine; });
+  });
+  bannerFile.addEventListener("change", () => {
+    const file = bannerFile.files?.[0], profile = currentProfile;
+    bannerFile.value = "";
+    if (!file || !profile || profile.id !== auth.state.ownerId) return;
+    bannerChange.disabled = true;
+    find("#profile-message").textContent = t("profileBannerUploading");
+    void prepareBanner(file).then(blob => updateBanner(profile, blob)).then(() => profiles.cachedOwn()).then(updated => {
+      if (updated && active && updated.id === auth.state.ownerId) { identity(updated); find("#profile-message").textContent = t("profileSaved"); }
+    }).catch(error => { find("#profile-message").textContent = errorMessage(error); })
+      .finally(() => { bannerChange.disabled = !currentProfile || !navigator.onLine; });
+  });
 
   async function collections(token: number, owner: string): Promise<void> {
     const revision = ++collectionRevision;
@@ -216,6 +272,7 @@ export function mountProfile(
   window.addEventListener("offline", () => {
     if (!active) return;
     edit.disabled = true;
+    avatarChange.disabled = bannerChange.disabled = true;
     favoriteShelf.more.hidden = true;
     find("#profile-message").textContent = t("profileOffline");
   });
@@ -227,6 +284,8 @@ export function mountProfile(
       window.clearTimeout(localTimer);
       if (photoUrl) URL.revokeObjectURL(photoUrl);
       photoUrl = undefined;
+      if (bannerUrl) URL.revokeObjectURL(bannerUrl);
+      bannerUrl = undefined;
     },
   };
 }

@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js";
 import { translationRequest } from "../../../shared/translation.ts";
-type BackendDatabase={public:{Tables:Record<string,never>;Views:Record<string,never>;Enums:Record<string,never>;CompositeTypes:Record<string,never>;Functions:{reserve_translation:{Args:{p_user:string;p_characters:number};Returns:undefined}}}};
+type BackendDatabase={public:{Tables:Record<string,never>;Views:Record<string,never>;Enums:Record<string,never>;CompositeTypes:Record<string,never>;Functions:{reserve_translation:{Args:{p_user:string;p_characters:number};Returns:undefined};authorize_account_device:{Args:{p_user:string;p_session:string};Returns:boolean}}}};
 const env=(key:string):string=>{const value=Deno.env.get(key);if(!value)throw new Error("not_configured");return value;};
 async function boundedJson(request:Request):Promise<unknown>{
   if(Number(request.headers.get("Content-Length"))>16384||!request.body)throw new Error("text_too_long");
@@ -19,6 +19,17 @@ export async function handleTranslationRequest(request:Request):Promise<Response
   try{
     const admin=createClient<BackendDatabase>(env("SUPABASE_URL"),env("SUPABASE_SERVICE_ROLE_KEY"),{auth:{persistSession:false,autoRefreshToken:false}});
     const {data:{user},error:authError}=await admin.auth.getUser(token);if(authError||!user)return reply({code:"session_expired"},401);
+    // Auth verifies the JWT; its session claim is then checked against the
+    // server-side device registry before any paid provider call or quota write.
+    let sessionId: string|undefined;
+    try {
+      const payload=JSON.parse(atob(token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))) as {session_id?:unknown};
+      if(typeof payload.session_id==="string"&&/^[0-9a-f-]{36}$/i.test(payload.session_id))sessionId=payload.session_id;
+    } catch { /* A malformed token cannot authorize a device. */ }
+    if(!sessionId)return reply({code:"device_revoked"},403);
+    const {data:allowed,error:deviceError}=await admin.rpc("authorize_account_device",{p_user:user.id,p_session:sessionId});
+    if(deviceError)throw new Error("provider_unavailable");
+    if(!allowed)return reply({code:"device_revoked"},403);
     const value=translationRequest(await boundedJson(request));
     const key=env("DEEPL_AUTH_KEY"),plan=Deno.env.get("DEEPL_API_PLAN")??"developer";
     if(!["developer","legacy-free"].includes(plan))throw new Error("not_configured");

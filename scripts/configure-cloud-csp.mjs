@@ -26,7 +26,7 @@ if (
   !(url.hostname === "127.0.0.1" || url.hostname === "localhost")
 )
   throw new Error("Supabase debe usar HTTPS fuera de localhost.");
-const csp = `default-src 'self' blob: data:; connect-src 'self' ipc: http://ipc.localhost http://book-file.localhost https://book-file.localhost book-file: ${url.origin} https://${env.VITE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' blob: data: http://book-file.localhost https://book-file.localhost book-file: ${url.origin}; font-src 'self' blob: data:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'`;
+const csp = `default-src 'self' blob: data:; connect-src 'self' ipc: http://ipc.localhost http://book-file.localhost https://book-file.localhost book-file: ${url.origin} https://${env.VITE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com https://*.wiktionary.org https://*.wikipedia.org; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' blob: data: http://book-file.localhost https://book-file.localhost book-file: ${url.origin}; font-src 'self' blob: data:; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'`;
 writeFileSync(
   new URL("../src-tauri/tauri.cloud.conf.json", import.meta.url),
   JSON.stringify({ app: { security: { csp } } }, null, 2) + "\n",

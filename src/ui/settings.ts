@@ -8,6 +8,13 @@ export function mountSettings(parent: HTMLElement): void {
       item.tabIndex = selected ? 0 : -1;
     }
     for (const panel of panels) panel.hidden = panel.id !== tab.getAttribute("aria-controls");
+    const strip = tab.closest<HTMLElement>('[role="tablist"]');
+    if (strip) {
+      const tabRect = tab.getBoundingClientRect();
+      const stripRect = strip.getBoundingClientRect();
+      if (tabRect.left < stripRect.left || tabRect.right > stripRect.right)
+        strip.scrollLeft += tabRect.left - stripRect.left - (stripRect.width - tabRect.width) / 2;
+    }
   };
   for (const [index, tab] of tabs.entries()) {
     tab.addEventListener("click", () => select(tab));

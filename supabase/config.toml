@@ -7,3 +7,7 @@ verify_jwt = false
 [functions.translate-text]
 # Authentication is verified with auth.getUser(token) in the handler.
 verify_jwt = false
+
+[functions.microsoft-store-subscriptions]
+# Authentication is verified with auth.getUser(token) in the handler.
+verify_jwt = false

@@ -114,7 +114,7 @@ Si aplicaste migrations anteriores manualmente desde SQL Editor, revisa primero 
 La traducción es opcional. Para habilitarla:
 
 1. Revisar el documento del proveedor y obtener personalmente una clave de API apropiada; no habilitar un plan de pago por defecto.
-2. Completar `DEEPL_AUTH_KEY` y `DEEPL_API_PLAN=developer` en `supabase/.env` ignorado; `legacy-free` solo para una cuenta API Free existente. Mantener ALLOWED_ORIGINS exactos. No introducir secretos en el `.env` frontend.
+2. Completar `DEEPL_AUTH_KEY` en `supabase/.env` ignorado y elegir el endpoint que corresponde a esa clave: `DEEPL_API_PLAN=developer` para API Developer, o `DEEPL_API_PLAN=legacy-free` para una cuenta API Free existente. Una clave Free contra el endpoint Developer responde 403 y la UI indica que la traducción no está configurada. Mantener ALLOWED_ORIGINS exactos. No introducir secretos en el `.env` frontend.
 3. Publicar manualmente los secretos del backend y la función. SUPABASE_URL/SERVICE_ROLE son inyectados por Supabase y no se deben agregar al archivo de secretos del CLI.
 
 ```powershell

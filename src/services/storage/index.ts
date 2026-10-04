@@ -1,7 +1,8 @@
 import { auth } from "../auth";
+import { devices } from "../devices";
 import { cloud } from "../client";
 import { CloudError, requireOnline, type CloudErrorCode } from "../errors";
-import { localGet, localPut, openDatabase } from "../local/database";
+import { localGet, openDatabase } from "../local/database";
 import { hashBlob } from "./hash";
 import {
   hasLocalFile,
@@ -16,6 +17,8 @@ import {
 import { withTimeout } from "../platform/network";
 import { t } from "../../i18n";
 import type { CloudUsage } from "../types";
+import { ensureBookContentMetadata } from "../books/content-metadata";
+import { bookDisplayTitle } from "../books/display";
 
 export type UploadStage =
   "hashing" | "checking" | "uploading" | "saving" | "synced";
@@ -31,10 +34,26 @@ export interface BookCache {
   read(book: StoredBook): Promise<Blob>;
 }
 export const bookCache: BookCache = {
-  get: (id) => localGet<StoredBook>("books", id),
+  async get(id) {
+    const owner = auth.state.ownerId;
+    if (!owner) return undefined;
+    const book = await localGet<StoredBook>("books", id);
+    return auth.state.ownerId === owner && book?.ownerId === owner ? book : undefined;
+  },
   async put(book) {
+    if (!book.ownerId || auth.state.ownerId !== book.ownerId) throw new CloudError("forbidden");
     try {
-      await localPut("books", book);
+      const db = await openDatabase();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("books", "readwrite"), store = tx.objectStore("books"), read = store.get(book.id);
+        read.onsuccess = () => {
+          const previous = read.result as StoredBook | undefined;
+          if (auth.state.ownerId !== book.ownerId || (previous && previous.ownerId !== book.ownerId)) { tx.abort(); return; }
+          store.put(book);
+        };
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onabort = tx.onerror = () => { db.close(); reject(tx.error ?? new CloudError("forbidden")); };
+      });
     } catch (error) {
       if (error instanceof DOMException && error.name === "QuotaExceededError")
         throw new CloudError(
@@ -73,6 +92,7 @@ const codes: CloudErrorCode[] = [
   "storage_limit",
   "pending_upload_limit",
   "upload_rate_limited",
+  "device_limit",
   "forbidden",
   "not_configured",
   "cancelled",
@@ -83,6 +103,7 @@ async function backend<T>(
 ): Promise<T> {
   requireOnline();
   auth.requireUser();
+  await devices.requireAccess();
   const { data, error } = await cloud().functions.invoke<T>("book-storage", {
     body,
     signal,
@@ -165,6 +186,9 @@ export const bookStorage = {
     const blob = await bookCache.read(book);
     if (!blob.size || blob.size > MAX_CLOUD_BOOK_BYTES)
       throw new CloudError("too_large");
+    // Populate the catalog from the actual EPUB/PDF before prepare-upload.
+    // This changes metadata only; the file and its SHA-256 stay untouched.
+    Object.assign(book, await ensureBookContentMetadata(book, blob));
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const format = identifyBookFile(bytes);
     if (!format) {
@@ -178,7 +202,10 @@ export const bookStorage = {
     // their metadata without changing the file bytes used for deduplication.
     if (book.format !== format) { book.format = format; await saveBook(book); }
     stage("hashing");
-    const hash = await hashBlob(blob, signal);
+    // Imported and verified cached files already have an immutable content
+    // identity. The backend still verifies staged bytes before commit.
+    const hash = /^[a-f0-9]{64}$/.test(book.fileHash ?? "") && book.fileSize === blob.size
+      ? book.fileHash! : await hashBlob(blob, signal);
     stage("checking");
     const prepared = await backend<{
       bookId?: string;
@@ -191,7 +218,7 @@ export const bookStorage = {
         hash,
         format,
         size: blob.size,
-        title: book.displayTitle?.trim() || book.name.replace(/\.(epub|pdf)$/i, ""),
+        title: bookDisplayTitle(book),
         author: book.author ?? "",
       },
       signal,
@@ -220,11 +247,11 @@ export const bookStorage = {
     return { bookId, hash, format };
   },
   async getBook(book: StoredBook): Promise<StoredBook> {
-    if (book.ownerId && auth.state.ownerId !== book.ownerId)
+    if (!book.ownerId || auth.state.ownerId !== book.ownerId)
       throw new CloudError("forbidden");
     if (hasLocalFile(book)) return book;
     const cached = await bookCache.get(book.id);
-    if (cached && hasLocalFile(cached)) return cached;
+    if (cached?.ownerId === book.ownerId && hasLocalFile(cached)) return cached;
     const user = auth.requireUser();
     if (!book.cloudId || book.ownerId !== user)
       throw new CloudError("forbidden");
@@ -248,6 +275,7 @@ export const bookStorage = {
         "conflict",
         t("errorDownloadMismatch"),
       );
+    if (import.meta.env.DEV) console.info("[CLOUD BOOK] downloaded", download.format, blob.size);
     if (auth.state.ownerId !== user) throw new CloudError("session_expired");
     // Download can finish after a local note/page edit. Commit only file fields against the latest row.
     const db = await openDatabase();
@@ -257,6 +285,7 @@ export const bookStorage = {
         read = store.get(book.id);
       let updated: StoredBook;
       read.onsuccess = () => {
+        if (auth.state.ownerId !== user || (read.result && (read.result as StoredBook).ownerId !== user)) { tx.abort(); return; }
         updated = {
           ...book,
           ...(read.result as StoredBook | undefined),

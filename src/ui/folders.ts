@@ -4,7 +4,9 @@ import { bookColors, colorName, folderInk, hexColor } from "../book-colors";
 import { language, t } from "../i18n";
 import type { LibraryFolder } from "../services/types";
 import type { StoredBook } from "../storage";
+import { bookDisplayTitle } from "../services/books/display";
 export interface FolderUI {
+  reset(): void;
   reload(): Promise<void>;
   update(books: StoredBook[], query: string, visibleBookCount: number): { hideEmpty: boolean; emptyMessage?: string };
   includes(book: StoredBook, query: string): boolean;
@@ -70,6 +72,10 @@ export function mountFolders(parent: HTMLElement, render: () => void, report: (m
     (id === null ? create : back).focus({ preventScroll: true });
   };
   const ui: FolderUI = {
+    reset() {
+      owner = null; items = []; memberships = []; assignments.clear(); currentFolder = null;
+      editing = undefined; form.hidden = true; updateActions(); render();
+    },
     async reload() {
       const nextOwner = auth.state.ownerId;
       if (owner !== nextOwner) { owner = nextOwner; currentFolder = null; form.hidden = true; }
@@ -125,7 +131,7 @@ export function mountFolders(parent: HTMLElement, render: () => void, report: (m
     },
     control(book) {
       const select = document.createElement("select"); select.className = "book-folder";
-      select.setAttribute("aria-label", t("folderOfBook", { title: book.displayTitle?.trim() || book.name.replace(/\.(pdf|epub)$/i, "") }));
+      select.setAttribute("aria-label", t("folderOfBook", { title: bookDisplayTitle(book) }));
       select.replaceChildren(new Option(t("noFolder"), ""), ...items.map(f => new Option(f.name, f.id)));
       select.value = activeFolder(book) ?? "";
       select.addEventListener("change", () => {

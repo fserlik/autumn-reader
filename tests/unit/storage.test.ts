@@ -55,7 +55,8 @@ test("additive v1 upgrade keeps legacy Blob, progress, favorites and notes", asy
   });
   const db = await openDatabase();
   expect([...db.objectStoreNames]).toContain("pending_sync_operations");
-  expect(db.version).toBe(3);
+  expect(db.version).toBe(4);
+  expect([...db.transaction("books").objectStore("books").indexNames]).toEqual(["by_owner", "by_owner_hash"]);
   expect([...db.objectStoreNames]).toContain("library_folders");
   expect([...db.objectStoreNames]).toContain("folder_memberships");
   db.close();
@@ -71,7 +72,7 @@ test("additive v1 upgrade keeps legacy Blob, progress, favorites and notes", asy
   expect(books[0].notes).toHaveLength(1);
 });
 
-test("v2 to v3 keeps cloud cache, pending sync and migration checkpoints", async () => {
+test("v2 to v4 keeps cloud cache, pending sync and migration checkpoints", async () => {
   // Only fake-indexeddb's isolated in-memory database is reset to create a v2 fixture.
   await new Promise<void>((resolve, reject) => { const req=indexedDB.deleteDatabase("autumn-reader");req.onsuccess=()=>resolve();req.onerror=()=>reject(req.error); });
   await new Promise<void>((resolve, reject) => {
@@ -86,7 +87,7 @@ test("v2 to v3 keeps cloud cache, pending sync and migration checkpoints", async
       tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);
     };req.onerror=()=>reject(req.error);
   });
-  const db=await openDatabase();expect(db.version).toBe(3);db.close();
+  const db=await openDatabase();expect(db.version).toBe(4);db.close();
   const books=await localAll<{data:Blob;page:number;favorite:boolean;notes:unknown[]}>("books");
   expect(await books[0].data.text()).toBe("cached-book");expect(books[0]).toMatchObject({page:187,favorite:true});expect(books[0].notes).toHaveLength(1);
   expect(await localAll("pending_sync_operations")).toEqual([{id:"pending",version:"in-flight",payload:{page:187}}]);

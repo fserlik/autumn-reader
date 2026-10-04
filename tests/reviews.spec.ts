@@ -4,7 +4,7 @@ test.beforeEach(async ({page}) => { await page.addInitScript(() => localStorage.
 test.afterEach(async({page})=>{await page.unrouteAll({behavior:"wait"});});
 test("local book reviews publish only metadata, appear in profile, edit/delete and survive offline",async({page,context},info)=>{
   const cloud=await mockCloud(page,true);await page.goto("/");await login(page);
-  await page.locator("#file-input").setInputFiles({name:"Local philosophy.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
+  await page.locator("#file-input").setInputFiles({name:"Local philosophy.epub",mimeType:"application/epub+zip",buffer:await epubFixture("philosophy", "Local philosophy")});
   await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.locator("#back-button").click();await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator("#folder-filter")).toHaveCount(0);
   await page.locator("#library-list .book-menu summary").click();await page.locator("#library-list .book-menu-options").getByRole("button",{name:"Reseñar",exact:true}).click();await expect(page.locator("#review-dialog")).toBeVisible();
@@ -36,7 +36,8 @@ test("offline/error drafts persist, public reviews are readable and another acco
   await expect(page.locator("#profile-reviews .profile-review")).toHaveCount(0);await expect(page.locator("#profile-review-drafts button")).toHaveCount(0);
   await page.evaluate(id=>{location.hash=`/books/${id}`;},bookId);await expect(page.locator("#view-details")).toContainText("Mi borrador protegido.");
   await expect(page.locator("#view-details").getByRole("button",{name:"Guardar reseña",exact:true})).toHaveCount(0);await expect(page.locator("#view-details").getByRole("button",{name:"Borrar reseña",exact:true})).toHaveCount(0);
-  expect([...cloud.reviewRows.values()][0].user_id).not.toBe(b);expect(cloud.downloads).toBe(0);
+  expect([...cloud.reviewRows.values()][0].user_id).not.toBe(b);
+  await expect.poll(() => cloud.downloads).toBe(1);
 });
 test("profile paginates reviews independently of the file library and caches loaded pages offline",async({page,context})=>{
   const cloud=await mockCloud(page,true),stamp=new Date().toISOString();

@@ -34,7 +34,8 @@ export async function markPrivateCoverUploaded(id: string, path: string): Promis
     const tx = db.transaction("books", "readwrite"), store = tx.objectStore("books"), read = store.get(id);
     read.onsuccess = () => {
       const current = read.result as StoredBook | undefined;
-      if (current?.coverPath === path) store.put({ ...current, coverUploadedPath: path });
+      if (current?.ownerId && current.ownerId === auth.state.ownerId && current.coverPath === path)
+        store.put({ ...current, coverUploadedPath: path });
     };
     tx.oncomplete = () => { db.close(); resolve(); };
     tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };

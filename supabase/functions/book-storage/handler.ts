@@ -48,6 +48,10 @@ type BackendDatabase = {
         Args: { p_user: string; p_book: string };
         Returns: Json;
       };
+      authorize_account_device: {
+        Args: { p_user: string; p_session: string };
+        Returns: boolean;
+      };
     };
   };
 };
@@ -97,7 +101,7 @@ const uuid = (value: unknown): value is string =>
   typeof value === "string" &&
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const checked = <T>(value: Json): T => value as T;
-const quotaCodes = ["book_limit", "storage_limit", "pending_upload_limit", "upload_rate_limited", "quota_exceeded"] as const;
+const quotaCodes = ["storage_limit", "pending_upload_limit", "upload_rate_limited", "quota_exceeded"] as const;
 function databaseErrorCode(message: string): string {
   return quotaCodes.find((code) => message.includes(code)) ?? "cloud_unavailable";
 }
@@ -106,7 +110,7 @@ function logQuotaDecision(code: string, details: string | null | undefined): voi
   let snapshot: Record<string, unknown> = {};
   try { snapshot = JSON.parse(details ?? "") as Record<string, unknown>; } catch { /* Earlier migrations have no detail. */ }
   const counts = Object.fromEntries(
-    ["used_books", "active_pending_uploads", "expired_reservations", "used_bytes", "reserved_bytes", "recent_unique_uploads", "requested_bytes", "max_books", "max_bytes", "max_pending_uploads"]
+    ["used_books", "active_pending_uploads", "expired_reservations", "used_bytes", "reserved_bytes", "recent_unique_uploads", "requested_bytes", "max_bytes", "max_pending_uploads"]
       .filter((key) => typeof snapshot[key] === "number")
       .map((key) => [key, snapshot[key]]),
   );
@@ -197,6 +201,21 @@ export async function handleRequest(request: Request): Promise<Response> {
     const { data: identity, error: authError } = await db.auth.getUser(token);
     if (authError || !identity.user)
       return reply({ code: "session_expired" }, 401);
+    // getUser verified the JWT; its session claim is now safe to compare with
+    // the server-side active device registry. No device ID comes from the client.
+    let sessionId: string | undefined;
+    try {
+      const payload = token.split(".")[1];
+      const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { session_id?: unknown };
+      if (typeof decoded.session_id === "string" && uuid(decoded.session_id)) sessionId = decoded.session_id;
+    } catch { /* An invalid JWT cannot identify an approved device. */ }
+    if (!sessionId) return reply({ code: "device_limit" }, 403);
+    const { data: allowedDevice, error: deviceError } = await db.rpc("authorize_account_device", {
+      p_user: identity.user.id,
+      p_session: sessionId,
+    });
+    if (deviceError) throw new Error("cloud_unavailable");
+    if (!allowedDevice) return reply({ code: "device_limit" }, 403);
     // Bound actual JSON bytes, including chunked bodies.
     const reader = request.body?.getReader();
     if (!reader) throw new Error("invalid_format");
@@ -359,15 +378,15 @@ export async function handleRequest(request: Request): Promise<Response> {
       "storage_unavailable",
       "cloud_unavailable",
       "quota_exceeded",
-      "book_limit",
       "storage_limit",
       "pending_upload_limit",
       "upload_rate_limited",
+      "device_limit",
     ];
     const safe = allowed.includes(code) ? code : "cloud_unavailable";
     return reply(
       { code: safe },
-      safe === "forbidden"
+      safe === "forbidden" || safe === "device_limit"
         ? 403
         : quotaCodes.some((value) => value === safe)
           ? 429

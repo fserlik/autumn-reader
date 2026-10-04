@@ -3,12 +3,32 @@ import { epubFixture, login, mockCloud } from "./helpers/cloud";
 
 test.beforeEach(async ({ page }) => { await page.addInitScript(() => localStorage.setItem("autumn-language", "es")); });
 
+test("desktop library uses a larger readable type scale without changing mobile typography", async ({ page }, info) => {
+  if (info.project.name === "desktop") await page.setViewportSize({ width: 1600, height: 900 });
+  await page.addInitScript(() => localStorage.setItem("autumn-theme", "dark"));
+  await mockCloud(page, true); await page.goto("/"); await login(page);
+  await page.locator("#file-input").setInputFiles({ name: "Readable.epub", mimeType: "application/epub+zip", buffer: await epubFixture() });
+  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#back-button").click();
+  await page.locator('.nav-button[data-view="library"]').click();
+  const card = page.locator("#library-list .library-book-card").first();
+  const sizes = await card.evaluate((element) => ({
+    title: getComputedStyle(element.querySelector(".book-title")!).fontSize,
+    author: getComputedStyle(element.querySelector(".library-book-author")!).fontSize,
+    badge: getComputedStyle(element.querySelector(".reading-badge")!).fontSize,
+    progress: getComputedStyle(element.querySelector(".library-book-progress")!).fontSize,
+    select: getComputedStyle(element.querySelector("select")!).fontSize,
+  }));
+  expect(sizes).toEqual(info.project.name === "desktop"
+    ? { title: "17px", author: "13px", badge: "13px", progress: "13px", select: "14px" }
+    : { title: "16px", author: "11px", badge: "10px", progress: "10px", select: "11px" });
+  await page.screenshot({ path: info.outputPath(`library-readable-${info.project.name}.png`), fullPage: true });
+});
+
 test("desktop library grid/list, sorting, cloud state and folder drag persist offline", async ({ page, context }, info) => {
   test.skip(info.project.name !== "desktop", "Desktop pointer drag");
   const cloud = await mockCloud(page, true);
   await page.goto("/"); await login(page);
-  const bytes = await epubFixture();
-  await page.locator("#file-input").setInputFiles(["Zeta.epub", "Alpha.epub"].map(name => ({ name, mimeType: "", buffer: bytes })));
+  await page.locator("#file-input").setInputFiles(await Promise.all(["Zeta.epub", "Alpha.epub"].map(async name => ({ name, mimeType: "", buffer: await epubFixture(name, name.replace(/\.epub$/, "")) }))));
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
   await page.locator("#back-button").click();
   await page.locator('.nav-button[data-view="library"]').click();
@@ -17,6 +37,7 @@ test("desktop library grid/list, sorting, cloud state and folder drag persist of
   await expect(page.locator("#folder-books-heading")).toContainText("(2)");
   await page.locator("#library-list-button").click();
   await expect(page.locator("#library-list")).toHaveAttribute("data-layout", "list");
+  await page.screenshot({ path: info.outputPath("library-list.png"), fullPage: true });
   await page.locator("#library-grid-button").click();
   await page.locator("#library-sort").selectOption("title-asc");
   await expect(page.locator("#library-list .book-title").first()).toHaveText("Alpha");
@@ -86,7 +107,7 @@ test("a corrupt historical EPUB reports a specific error and retains its local r
   test.skip(info.project.name !== "desktop", "Cloud regression is covered on desktop");
   const cloud = await mockCloud(page, true);
   await page.goto("/"); await login(page);
-  await page.locator("#file-input").setInputFiles({ name: "Damaged.epub", mimeType: "application/epub+zip", buffer: await epubFixture() });
+  await page.locator("#file-input").setInputFiles({ name: "Damaged.epub", mimeType: "application/epub+zip", buffer: await epubFixture("damaged", "Damaged") });
   await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#back-button").click();
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open("autumn-reader"); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });

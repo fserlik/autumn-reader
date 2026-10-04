@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { epubFixture, login, mockCloud } from "./helpers/cloud";
 import { samplePdf } from "./helpers/pdf";
+import { selectReaderOption } from "./helpers/reader-options";
 
 async function hiddenScrollbar(page: Page, selector: string): Promise<void> {
   const node = page.locator(selector);
@@ -62,7 +63,7 @@ test("EPUB iframe, PDF surface and long dialogs retain scroll without native bar
   await page.locator("#file-input").setInputFiles({ name: "Scroll fixture.pdf", mimeType: "application/pdf", buffer: samplePdf() });
   await expect(page.locator(".pdf-reading-text")).toBeVisible();
   await hiddenScrollbar(page, "#reading-surface");
-  await page.locator("#pdf-reading-mode").selectOption("original");
+  await selectReaderOption(page, "#pdf-reading-mode", "original");
   await expect(page.locator(".pdf-page")).toBeVisible();
   expect(await page.locator("#reading-surface").evaluate(element => getComputedStyle(element).overflowY)).toBe("auto");
 

@@ -27,5 +27,17 @@ export async function slide(element: HTMLElement,x:number,duration:number,sheet?
   // The old curve travelled most of a page in the first few frames, making the
   // turn look instantaneous on a 60 Hz WebView even though WAAPI was running.
   const animation=element.animate(frames,{duration,easing:"cubic-bezier(.42,0,.28,1)",fill:"forwards"});
-  await animation.finished.catch(()=>{});element.style.transform=`translate3d(${x}px,0,0)`;animation.cancel();
+  let fallback: number | undefined;
+  try {
+    // Some Android WebViews stop delivering Animation.finished after a touch
+    // target is removed or the app is suspended. Finish the sheet regardless.
+    await Promise.race([
+      animation.finished.catch(()=>{}),
+      new Promise<void>(resolve=>{fallback=window.setTimeout(resolve,duration+250);}),
+    ]);
+  } finally {
+    window.clearTimeout(fallback);
+    element.style.transform=`translate3d(${x}px,0,0)`;
+    animation.cancel();
+  }
 }

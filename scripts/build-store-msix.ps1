@@ -27,18 +27,6 @@ if (Test-Path -LiteralPath $cargoBin) {
 }
 
 if (-not $SkipBuild) {
-  $envFile = Join-Path $projectRoot '.env'
-  if (-not $env:AUTUMN_GOOGLE_CLIENT_SECRET -and (Test-Path -LiteralPath $envFile)) {
-    $secretLine = Get-Content -LiteralPath $envFile -Encoding UTF8 |
-      Where-Object { $_ -match '^\s*AUTUMN_GOOGLE_CLIENT_SECRET\s*=' } |
-      Select-Object -Last 1
-    if ($secretLine) {
-      $env:AUTUMN_GOOGLE_CLIENT_SECRET = ($secretLine -replace '^\s*AUTUMN_GOOGLE_CLIENT_SECRET\s*=\s*', '').Trim().Trim('"', "'")
-    }
-  }
-  if (-not $env:AUTUMN_GOOGLE_CLIENT_SECRET) {
-    throw 'Falta AUTUMN_GOOGLE_CLIENT_SECRET para compilar la conexión con Google Drive.'
-  }
   Push-Location $projectRoot
   try {
     & npm run tauri -- build --no-bundle

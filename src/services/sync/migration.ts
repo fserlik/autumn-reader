@@ -14,6 +14,8 @@ import { errorMessage, CloudError } from "../errors";
 import { sync } from "./index";
 import { t } from "../../i18n";
 import { privateCoverPath } from "../storage/book-covers";
+import { ensureBookHash, mergeBookIdentity, reconcileLocalLibrary } from "../books/identity";
+import { library } from "../books";
 export interface MigrationState {
   id: string;
   ownerId: string;
@@ -33,10 +35,11 @@ export async function migrationRemaining(
   owner: string,
   books: StoredBook[],
 ): Promise<StoredBook[]> {
+  if (auth.state.ownerId !== owner) return [];
   const states = await localAll<MigrationState>("migration_state");
   return books.filter(
     (book) =>
-      !book.cloudId && (!book.ownerId || book.ownerId === owner) &&
+      !book.cloudId && book.ownerId === owner &&
       !states.some(
         (s) =>
           s.ownerId === owner &&
@@ -66,7 +69,9 @@ export async function migrateLibrary(
   externalSignal.addEventListener("abort", abort, { once: true });
   if (externalSignal.aborted) abort();
   signal = activeController.signal;
+  let operationOwner: string | null = null;
   const notifyProgress = (progress: UploadProgress) => {
+    if (signal.aborted || auth.state.ownerId !== operationOwner) return;
     onProgress(progress);
     window.dispatchEvent(
       new CustomEvent("autumn-upload-progress", { detail: progress }),
@@ -76,9 +81,16 @@ export async function migrateLibrary(
     failed = 0;
   try {
     const owner = auth.requireUser();
-    const candidates = await migrationRemaining(owner, books);
+    operationOwner = owner;
+    const requested = new Set(books.map(book => book.id));
+    const candidates = await migrationRemaining(owner,
+      (await reconcileLocalLibrary(owner)).filter(book => requested.has(book.id)));
+    if (auth.state.ownerId !== owner || signal.aborted) throw new CloudError("session_expired");
+    const identities = await library.identities().catch(() => []);
+    const cloudByHash = new Map(identities.map(identity => [identity.file_hash, identity]));
     // Record consent for every selected book before network work, so a suspended app can resume it.
     for (const original of candidates) {
+      if (signal.aborted || auth.state.ownerId !== owner) break;
       const id = migrationKey(owner, original.id);
       const previous = await localGet<MigrationState>("migration_state", id);
       if (!previous || previous.phase === "cancelled")
@@ -92,15 +104,19 @@ export async function migrateLibrary(
         });
     }
     for (const original of candidates) {
-      if (signal.aborted) break;
+      if (signal.aborted || auth.state.ownerId !== owner) break;
       const id = migrationKey(owner, original.id);
       let state = await localGet<MigrationState>("migration_state", id);
       try {
         if (!state?.bookId) {
-          const upload = await bookStorage.upload(original, {
-            signal,
-            onProgress: notifyProgress,
-          });
+          const hash = await ensureBookHash(original);
+          const owned = hash && cloudByHash.get(hash);
+          const upload = owned
+            ? { bookId: owned.book_id, hash: owned.file_hash, format: owned.format }
+            : await bookStorage.upload(original, { signal, onProgress: notifyProgress });
+          if (signal.aborted || auth.state.ownerId !== owner) throw new CloudError("session_expired");
+          cloudByHash.set(upload.hash, { book_id: upload.bookId, file_hash: upload.hash,
+            format: upload.format, file_size: original.fileSize ?? original.data.size });
           state = {
             id,
             ownerId: owner,
@@ -113,7 +129,7 @@ export async function migrateLibrary(
           };
           await localPut("migration_state", state);
         }
-        if (auth.state.ownerId !== owner)
+        if (signal.aborted || auth.state.ownerId !== owner)
           throw new CloudError("session_expired");
         const cloneId = cloudLocalId(owner, state.bookId!);
         const existing = await bookCache.get(cloneId);
@@ -131,6 +147,11 @@ export async function migrateLibrary(
             coverUploadedPath: undefined,
             userUpdatedAt: Date.now(),
           }, { preserveTimestamps: true });
+        } else if (!existing?.migrationSources?.includes(original.id) && existing) {
+          const local = (await bookCache.get(original.id)) ?? original;
+          await mergeBookIdentity(local.customCover
+            ? { ...local, coverPath: privateCoverPath(owner, state.bookId!), coverUploadedPath: undefined }
+            : local, existing, owner);
         } else if (!existing?.migrationSources?.includes(original.id)) {
           const local = (await bookCache.get(original.id)) ?? original;
           const clone: StoredBook = {
@@ -194,7 +215,7 @@ export async function migrateLibrary(
         });
         done++;
       } catch (error: unknown) {
-        if (signal.aborted) break;
+        if (signal.aborted || auth.state.ownerId !== owner) break;
         failed++;
         window.dispatchEvent(new CustomEvent("autumn-migration-error", { detail: { book: original.name, bookId: original.id, message: errorMessage(error) } }));
         await localPut("migration_state", {
@@ -221,7 +242,7 @@ export async function migrateLibrary(
           });
       }
     }
-    await sync.flush(true);
+    if (auth.state.ownerId === owner) await sync.flush(true);
     return { done, failed };
   } finally {
     running = false;

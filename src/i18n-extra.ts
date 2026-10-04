@@ -4,11 +4,15 @@ import { presentationTranslations, type PresentationKey } from "./i18n-presentat
 import { editBookTranslations, type EditBookKey } from "./i18n-edit-book";
 import { uploadQuotaTranslations, type UploadQuotaKey } from "./i18n-upload-quota";
 import { accountStorageTranslations, type AccountStorageKey } from "./i18n-account-storage";
+import { dedupTranslations, type DedupKey } from "./i18n-dedup";
+import { ownershipTranslations, type OwnershipKey } from "./i18n-ownership";
+import { planTranslations, type PlanKey } from "./i18n-plans";
+import { readerTranslations, type ReaderKey } from "./i18n-reader";
 const en = {
   lineSpacing: "Line spacing", lineSpacingHelp: "For reflowable EPUB and PDF text view.",
   paragraphSpacing: "Paragraph spacing", paragraphSpacingHelp: "Saved on this device and available offline.",
   compact: "Compact", wide: "Spacious", resetSpacing: "Reset spacing",
-  searchInBook: "Search in book", closeSearch: "Close search", close: "Close", wordOrPhrase: "Word or phrase",
+  readingOptions: "Reading options", searchInBook: "Search in book", closeSearch: "Close search", close: "Close", wordOrPhrase: "Word or phrase",
   previous: "Previous", next: "Next", resultIndex: "{current} of {total}", searchPrompt: "Enter a word or phrase.",
   searching: "Searching…", searchProgress: "Searching… {done}/{total}", searchResults: "{count} results",
   noSearchableText: "No searchable text was found in this document.", searchFailed: "Could not search this book. Try again.", resultOpenFailed: "Could not open this result.",
@@ -72,7 +76,7 @@ const es: Set = {
   lineSpacing: "Espaciado entre líneas", lineSpacingHelp: "Para EPUB adaptables y el modo de texto del PDF.",
   paragraphSpacing: "Espaciado entre párrafos", paragraphSpacingHelp: "Se guarda en este dispositivo y funciona sin conexión.",
   compact: "Compacto", wide: "Amplio", resetSpacing: "Restaurar espaciados",
-  searchInBook: "Buscar en el libro", closeSearch: "Cerrar búsqueda", close: "Cerrar", wordOrPhrase: "Palabra o frase",
+  readingOptions: "Opciones de lectura", searchInBook: "Buscar en el libro", closeSearch: "Cerrar búsqueda", close: "Cerrar", wordOrPhrase: "Palabra o frase",
   previous: "Anterior", next: "Siguiente", resultIndex: "{current} de {total}", searchPrompt: "Escribe una palabra o frase.",
   searching: "Buscando…", searchProgress: "Buscando… {done}/{total}", searchResults: "{count} resultados",
   noSearchableText: "No se encontró texto buscable en este documento.", searchFailed: "No se pudo buscar en este libro. Inténtalo de nuevo.", resultOpenFailed: "No se pudo abrir el resultado.",
@@ -134,7 +138,7 @@ const it: Set = {
   lineSpacing: "Interlinea", lineSpacingHelp: "Per EPUB adattabili e vista testuale dei PDF.",
   paragraphSpacing: "Spaziatura tra paragrafi", paragraphSpacingHelp: "Salvata su questo dispositivo e disponibile offline.",
   compact: "Compatto", wide: "Ampio", resetSpacing: "Ripristina spaziatura",
-  searchInBook: "Cerca nel libro", closeSearch: "Chiudi ricerca", close: "Chiudi", wordOrPhrase: "Parola o frase",
+  readingOptions: "Opzioni di lettura", searchInBook: "Cerca nel libro", closeSearch: "Chiudi ricerca", close: "Chiudi", wordOrPhrase: "Parola o frase",
   previous: "Precedente", next: "Successivo", resultIndex: "{current} di {total}", searchPrompt: "Inserisci una parola o frase.",
   searching: "Ricerca…", searchProgress: "Ricerca… {done}/{total}", searchResults: "{count} risultati",
   noSearchableText: "Nessun testo ricercabile in questo documento.", searchFailed: "Impossibile cercare in questo libro. Riprova.", resultOpenFailed: "Impossibile aprire il risultato.",
@@ -196,7 +200,7 @@ const fr: Set = {
   lineSpacing: "Interligne", lineSpacingHelp: "Pour les EPUB adaptables et l'affichage texte des PDF.",
   paragraphSpacing: "Espacement des paragraphes", paragraphSpacingHelp: "Enregistré sur cet appareil et disponible hors ligne.",
   compact: "Compact", wide: "Aéré", resetSpacing: "Rétablir les espacements",
-  searchInBook: "Rechercher dans le livre", closeSearch: "Fermer la recherche", close: "Fermer", wordOrPhrase: "Mot ou expression",
+  readingOptions: "Options de lecture", searchInBook: "Rechercher dans le livre", closeSearch: "Fermer la recherche", close: "Fermer", wordOrPhrase: "Mot ou expression",
   previous: "Précédent", next: "Suivant", resultIndex: "{current} sur {total}", searchPrompt: "Saisissez un mot ou une expression.",
   searching: "Recherche…", searchProgress: "Recherche… {done}/{total}", searchResults: "{count} résultats",
   noSearchableText: "Aucun texte consultable dans ce document.", searchFailed: "Impossible de chercher dans ce livre. Réessayez.", resultOpenFailed: "Impossible d'ouvrir ce résultat.",
@@ -254,8 +258,8 @@ const fr: Set = {
   openPdfReference: "Ouvrir cette référence du livre", cacheUpgradeBlocked: "Fermez les autres fenêtres d'Autumn Reader pour mettre à jour le cache.",
   searchPositionUnavailable: "Ce résultat de recherche n'est plus disponible.", pdfReferenceInvalid: "Cette référence PDF n'a pas de destination valide.", pdfReferencePageMissing: "Cette référence pointe vers une page inexistante.",
 };
-export type ExtraKey = CoreKey | MoreKey | PresentationKey | EditBookKey | UploadQuotaKey | AccountStorageKey;
+export type ExtraKey = CoreKey | MoreKey | PresentationKey | EditBookKey | UploadQuotaKey | AccountStorageKey | DedupKey | OwnershipKey | PlanKey | ReaderKey;
 export const extraTranslations: Record<"en" | "es" | "it" | "fr", Record<ExtraKey, string>> = {
-  en: { ...en, ...moreTranslations.en, ...presentationTranslations.en, ...editBookTranslations.en, ...uploadQuotaTranslations.en, ...accountStorageTranslations.en }, es: { ...es, ...moreTranslations.es, ...presentationTranslations.es, ...editBookTranslations.es, ...uploadQuotaTranslations.es, ...accountStorageTranslations.es },
-  it: { ...it, ...moreTranslations.it, ...presentationTranslations.it, ...editBookTranslations.it, ...uploadQuotaTranslations.it, ...accountStorageTranslations.it }, fr: { ...fr, ...moreTranslations.fr, ...presentationTranslations.fr, ...editBookTranslations.fr, ...uploadQuotaTranslations.fr, ...accountStorageTranslations.fr },
+  en: { ...en, ...moreTranslations.en, ...presentationTranslations.en, ...editBookTranslations.en, ...uploadQuotaTranslations.en, ...accountStorageTranslations.en, ...dedupTranslations.en, ...ownershipTranslations.en, ...planTranslations.en, ...readerTranslations.en }, es: { ...es, ...moreTranslations.es, ...presentationTranslations.es, ...editBookTranslations.es, ...uploadQuotaTranslations.es, ...accountStorageTranslations.es, ...dedupTranslations.es, ...ownershipTranslations.es, ...planTranslations.es, ...readerTranslations.es },
+  it: { ...it, ...moreTranslations.it, ...presentationTranslations.it, ...editBookTranslations.it, ...uploadQuotaTranslations.it, ...accountStorageTranslations.it, ...dedupTranslations.it, ...ownershipTranslations.it, ...planTranslations.it, ...readerTranslations.it }, fr: { ...fr, ...moreTranslations.fr, ...presentationTranslations.fr, ...editBookTranslations.fr, ...uploadQuotaTranslations.fr, ...accountStorageTranslations.fr, ...dedupTranslations.fr, ...ownershipTranslations.fr, ...planTranslations.fr, ...readerTranslations.fr },
 };

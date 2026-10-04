@@ -63,9 +63,12 @@ export class PdfTextView {
     this.flow.style.fontSize = `${fontSize}px`;
     this.flow.style.lineHeight = String(spacing.lineHeight);
     this.flow.style.fontFamily = fontFamily || 'Georgia, "Times New Roman", serif';
+    this.flow.style.wordSpacing = `${spacing.wordSpacing}em`;
+    this.flow.style.letterSpacing = `${spacing.letterSpacing}em`;
     for (const block of blocks) {
       const paragraph = document.createElement(block.heading ? "h2" : "p");
       if (!block.heading) paragraph.style.marginBlockEnd = `${spacing.paragraphSpacing}em`;
+      if (!block.heading && spacing.textIndent !== "default") paragraph.style.textIndent = `${spacing.textIndent === "none" ? 0 : spacing.indentSize}em`;
       for (let i = 0; i < block.lines.length; i++) {
         const line = block.lines[i];
         const span = document.createElement("span");
@@ -166,6 +169,25 @@ export class PdfTextView {
     const rect = this.viewport.getBoundingClientRect();
     const spans = [...this.flow.querySelectorAll<HTMLElement>("[data-source-y]")];
     const total = spans.reduce((sum, span) => sum + (span.textContent?.length ?? 0), 0);
+    const document = this.flow.ownerDocument as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    };
+    // Use a character near the visual center as the semantic position. Anchoring
+    // the first visible character can move backward after a small height change.
+    for (const fraction of [.5, .35, .65, .2, .8]) {
+      const x = rect.left + rect.width / 2, y = rect.top + rect.height * fraction;
+      const range = document.caretRangeFromPoint?.(x, y);
+      const caret = range ? { node: range.startContainer, offset: range.startOffset }
+        : document.caretPositionFromPoint?.(x, y) ? { node: document.caretPositionFromPoint!(x, y)!.offsetNode, offset: document.caretPositionFromPoint!(x, y)!.offset } : undefined;
+      const element = caret?.node.nodeType === Node.ELEMENT_NODE ? caret.node as Element : caret?.node.parentElement;
+      const activeSpan = element?.closest<HTMLElement>("[data-source-y]");
+      if (activeSpan && this.flow.contains(activeSpan)) {
+        let preceding = 0;
+        for (const span of spans) { if (span === activeSpan) break; preceding += span.textContent?.length ?? 0; }
+        return (preceding + Math.max(0, Math.min(activeSpan.textContent?.length ?? 0, caret!.offset)) + .25) / Math.max(1, total);
+      }
+    }
     let prefix = 0;
     for (const span of spans) {
       const length = span.textContent?.length ?? 0;
@@ -184,6 +206,15 @@ export class PdfTextView {
       prefix += length;
     }
     return 0;
+  }
+
+  visibleText(): string {
+    const bounds = this.viewport.getBoundingClientRect();
+    return [...this.flow.querySelectorAll<HTMLElement>("[data-source-y]")]
+      .filter(span => [...span.getClientRects()].some(rect => rect.right > bounds.left + 1 && rect.left < bounds.right - 1
+        && rect.bottom > bounds.top + 1 && rect.top < bounds.bottom - 1))
+      .map(span => span.textContent ?? "")
+      .join(" ").replace(/\s+/g, " ").trim();
   }
 
   markerRect(y: number, quote?: string): DOMRect | undefined {

@@ -3,11 +3,14 @@ import type { StoredBook } from "../../storage";
 import type { SyncOperation } from "../sync/operations";
 import type { Note } from "../types";
 import { noteCloudId, toLocalNote } from "./models";
+import { auth } from "../auth";
+import { t } from "../../i18n";
 /** Apply a remote snapshot atomically against local edits and their outbox. */
 export async function mergeRemoteBook(
   remote: StoredBook,
   remoteNotes?: Note[],
 ): Promise<StoredBook> {
+  if (!remote.ownerId || auth.state.ownerId !== remote.ownerId) throw new Error(t("bookOtherAccount"));
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(
@@ -21,17 +24,24 @@ export async function mergeRemoteBook(
     let ready = 0;
     const merge = () => {
       if (++ready !== 2) return;
+      if (auth.state.ownerId !== remote.ownerId) { tx.abort(); return; }
       const local = read.result as StoredBook | undefined;
+      if (local && local.ownerId !== remote.ownerId) { tx.abort(); return; }
       const pending = (readOps.result as SyncOperation[]).filter(
         (op) => op.ownerId === remote.ownerId && op.bookId === remote.cloudId,
       );
       if (local) {
-        remote.data = local.data;
+        const sameFile = !remote.fileHash || !local.fileHash || remote.fileHash === local.fileHash;
+        if (sameFile) remote.data = local.data;
+        else { remote.data = new Blob(); remote.nativeDataPath = undefined; }
         if (!remote.coverPath || remote.coverPath === local.coverPath) remote.cover = local.cover;
-        remote.nativeDataPath = local.nativeDataPath;
+        remote.contentTitle = local.contentTitle;
+        remote.contentAuthor = local.contentAuthor;
+        remote.contentMetadataVersion = local.contentMetadataVersion;
+        if (sameFile) remote.nativeDataPath = local.nativeDataPath;
         remote.nativeCoverPath = local.nativeCoverPath;
-        remote.fileHash = local.fileHash;
-        remote.fileSize = local.fileSize;
+        if (sameFile) { remote.fileHash ??= local.fileHash; remote.fileSize ??= local.fileSize; }
+        remote.migrationSources = local.migrationSources;
         if (remote.coverPath === local.coverPath) remote.coverUploadedPath = local.coverUploadedPath;
         remote.updatedAt = local.updatedAt;
         if (!remoteNotes) remote.notes = local.notes;

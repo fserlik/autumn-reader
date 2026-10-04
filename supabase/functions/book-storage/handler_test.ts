@@ -12,6 +12,8 @@ const { handleRequest } = await import("./handler.ts");
 const owner = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa",
   book = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb",
   intentId = "cccccccc-cccc-4ccc-cccc-cccccccccccc";
+const session = "dddddddd-dddd-4ddd-dddd-dddddddddddd";
+const accessToken = `test.${btoa(JSON.stringify({session_id:session}))}.signature`;
 const file = new TextEncoder().encode("%PDF-1.4\nfixture\n%%EOF");
 const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", file))]
   .map((n) => n.toString(16).padStart(2, "0"))
@@ -22,7 +24,7 @@ const request = (body: unknown, token = true) =>
     headers: {
       "Content-Type": "application/json",
       Origin: "http://127.0.0.1:1420",
-      ...(token ? { Authorization: "Bearer test-user-token" } : {}),
+      ...(token ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -33,8 +35,9 @@ function mock(
     completed?: boolean;
     hash?: string;
     format?: "epub" | "pdf";
-    quotaReason?: "book_limit" | "storage_limit" | "pending_upload_limit" | "upload_rate_limited";
+    quotaReason?: "storage_limit" | "pending_upload_limit" | "upload_rate_limited";
     removeDenied?: boolean;
+    deviceDenied?: boolean;
   } = {},
 ) {
   const previous = globalThis.fetch;
@@ -50,6 +53,10 @@ function mock(
         role: "authenticated",
         email: "test@example.org",
       });
+    if (url.pathname.endsWith("authorize_account_device")) {
+      const input = await req.json() as {p_user:string;p_session:string};
+      return Response.json(!overrides.deviceDenied && input.p_user===owner && input.p_session===session);
+    }
     if (url.pathname.endsWith("reserve_book_upload") && overrides.quotaReason)
       return Response.json({ code: "P0001", message: overrides.quotaReason,
         details: JSON.stringify({used_books:14,active_pending_uploads:0,used_bytes:19600000,reserved_bytes:0}) }, {status:400});
@@ -94,7 +101,7 @@ function mock(
         return Response.json({ message: "forbidden" }, { status: 400 });
       return Response.json({ removed: true, remaining_references: 1,
         cancelled_staging_keys: [`staging/${owner}/${intentId}`],
-        usage: { used_books: 13, max_books: 50, used_bytes: 15000000, max_bytes: 1073741824 } });
+        usage: { used_books: 13, used_bytes: 15000000, max_bytes: 1073741824 } });
     }
     if (url.hostname.endsWith("r2.cloudflarestorage.com")) {
       if (req.method === "GET") {
@@ -125,6 +132,15 @@ Deno.test("requires authentication and exact Origin", async () => {
     { method: "POST", headers: { Origin: "https://evil.test" }, body: "{}" },
   );
   assertEquals((await handleRequest(bad)).status, 403);
+});
+Deno.test("a signed-in third device cannot prepare or download private book files", async () => {
+  const m = mock({ authorized: true, deviceDenied: true });
+  try {
+    const denied = await handleRequest(request({ action: "download", bookId: book }));
+    assertEquals(denied.status, 403);
+    assertEquals(await denied.json(), { code: "device_limit" });
+    assertEquals(m.calls.filter(c => c.url.includes("r2.cloudflarestorage.com")).length, 0);
+  } finally { m.restore(); }
 });
 Deno.test(
   "signed upload fixes length, type, object and immutable condition",
@@ -251,8 +267,8 @@ Deno.test("complete accepts a valid EPUB with mimetype after the first ZIP membe
   } finally { m.restore(); }
 });
 
-Deno.test("prepare keeps four server-side quota reasons distinct without signing R2", async () => {
-  for (const reason of ["book_limit", "storage_limit", "pending_upload_limit", "upload_rate_limited"] as const) {
+Deno.test("prepare distinguishes storage and technical upload limits without signing R2", async () => {
+  for (const reason of ["storage_limit", "pending_upload_limit", "upload_rate_limited"] as const) {
     const m=mock({quotaReason:reason});
     try {
       const response=await handleRequest(request({action:"prepare",hash,format:"pdf",size:file.length,title:"Quota"}));

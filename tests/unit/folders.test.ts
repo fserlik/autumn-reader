@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({ ownerId: "owner-a", status: "expired" }));
 vi.mock("../../src/services/auth", () => ({ auth: { state } }));
 vi.stubGlobal("window", new EventTarget());
 test("offline folder create/rename/move/delete is atomic, scoped, and preserves book bytes", async () => {
-  const book: StoredBook = { id: "local-pdf", name: "Test.pdf", format: "pdf", data: new Blob(["original"]), page: 187, cfi: null, fontSize: 100, addedAt: 1, lastOpenedAt: 1 };
+  const book: StoredBook = { id: "local-pdf", ownerId: "owner-a", name: "Test.pdf", format: "pdf", data: new Blob(["original"]), page: 187, cfi: null, fontSize: 100, addedAt: 1, lastOpenedAt: 1 };
   await localPut("books", book);
   const folder = await folders.create("Philosophy");
   await folders.move(book, folder.id);
@@ -31,7 +31,7 @@ test("offline folder create/rename/move/delete is atomic, scoped, and preserves 
 });
 test("upload migration keeps folder assignment and coalesces cloud moves independently", async () => {
   const folder = await folders.create("Fiction");
-  const book = { id: "fiction", name: "Book.epub", format: "epub", data: new Blob(), page: 1, cfi: null, fontSize: 100, addedAt: 1, lastOpenedAt: 0 } satisfies StoredBook;
+  const book = { id: "fiction", ownerId: "owner-a", name: "Book.epub", format: "epub", data: new Blob(), page: 1, cfi: null, fontSize: 100, addedAt: 1, lastOpenedAt: 0 } satisfies StoredBook;
   await folders.move(book, folder.id);
   const clone = { ...book, id: "cloud-copy", ownerId: "owner-a", cloudId: "cloud-book" };
   await folders.migrateMembership(book, clone);
