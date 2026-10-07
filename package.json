@@ -5,8 +5,8 @@
   "description": "Desktop book reader",
   "scripts": {
     "test": "vitest run",
-    "test:backend": "npx --yes deno test --allow-env --config supabase/functions/deno.json supabase/functions/book-storage/handler_test.ts supabase/functions/translate-text/handler_test.ts supabase/functions/microsoft-store-subscriptions/handler_test.ts",
-    "check:backend": "npx --yes deno check --config supabase/functions/deno.json supabase/functions/book-storage/index.ts supabase/functions/translate-text/index.ts supabase/functions/microsoft-store-subscriptions/index.ts",
+    "test:backend": "npx --yes deno test --allow-env --config supabase/functions/deno.json supabase/functions/book-storage/handler_test.ts supabase/functions/translate-text/handler_test.ts supabase/functions/billing-checkout/handler_test.ts supabase/functions/billing-portal/handler_test.ts supabase/functions/lemonsqueezy-webhook/handler_test.ts",
+    "check:backend": "npx --yes deno check --config supabase/functions/deno.json supabase/functions/book-storage/index.ts supabase/functions/translate-text/index.ts supabase/functions/billing-checkout/index.ts supabase/functions/billing-portal/index.ts supabase/functions/lemonsqueezy-webhook/index.ts",
     "cloud:csp": "node scripts/configure-cloud-csp.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -22,6 +22,7 @@
     "@noble/hashes": "^2.4.0",
     "@supabase/supabase-js": "^2.117.2",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-opener": "2.5.3",
     "epubjs": "0.3.93",
     "jszip": "^3.10.2",
     "pdfjs-dist": "^6.3.289"

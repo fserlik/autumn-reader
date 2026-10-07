@@ -331,11 +331,15 @@ export async function saveBooks(books: StoredBook[]): Promise<void> {
   });
 }
 
-export async function deleteBook(id: string): Promise<undefined> {
+export async function deleteBook(id: string, options: { permanent?: boolean } = {}): Promise<undefined> {
   const existing=await runRequest("readonly",(store)=>store.get(id)) as StoredBook|undefined;
   if (!existing) return undefined;
   assertBookOwner(existing);
-  if(existing?.ownerId&&existing.cloudId) { existing.deletedAt=Date.now();await saveBook(existing);return undefined; }
+  if(existing?.ownerId&&existing.cloudId) {
+    existing.deletedAt=Date.now();
+    await saveBook(existing);
+    if (!options.permanent) return undefined;
+  }
   const owner = existing.ownerId!;
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {

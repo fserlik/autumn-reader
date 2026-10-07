@@ -6,7 +6,8 @@ import type {
   RenderTask,
 } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { loadPdfEngine } from "./readers/pdf-engine";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { pdfTextBlocks, PdfTextView, type PdfTextBlock } from "./pdf-text";
 import { countText, language, saveLanguage, t, type Language } from "./i18n";
 import leafUrl from "./assets/autumn-leaf.png";
@@ -46,7 +47,8 @@ import { folders } from "./services/folders";
 import { localAll } from "./services/local/database";
 import type { MigrationState } from "./services/sync/migration";
 import { bookColors, colorName, hexColor } from "./book-colors";
-import { loadPagePreferences, savePagePreferences, defaultPagePreferences, pageSpacingCss, columnCount, resolvePagePreferences, loadBookPageOverrides, saveBookPageOverrides, type BookPageOverrides } from "./services/preferences/page";
+import { loadPagePreferences, savePagePreferences, defaultPagePreferences, pageSpacingCss, columnCount, resolvePagePreferences, pagePreferencesEqual, loadBookPageOverrides, saveBookPageOverrides, type BookPageOverrides } from "./services/preferences/page";
+import { loadDesktopGeneralPreferences, saveDesktopGeneralPreferences, type DesktopGeneralPreferences } from "./services/preferences/general";
 import { availableSystemFonts, fontCss } from "./services/preferences/fonts";
 import { dictionaryService, type DictionarySource } from "./services/dictionary";
 import { loadTtsPreferences, localDeviceVoices, nativeDeviceVoices, nativePause, nativeResume, nativeSpeak, nativeStop, preferredVoice, refreshDeviceVoices, saveTtsPreferences, usesNativeTts, type TtsPreferences, type TtsVoice } from "./services/tts";
@@ -80,6 +82,7 @@ const icons = {
   nextTrack: '<path d="M18 5v14M6 6l9 6-9 6V6z"/>',
   refresh: '<path d="M20 7v5h-5M4 17v-5h5M6.1 8A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 11.9-2"/>',
   bookLayout: '<path d="M3 5.5A4.5 4.5 0 0 1 7.5 4H11v16H7.5A4.5 4.5 0 0 0 3 21.5v-16zM21 5.5A4.5 4.5 0 0 0 16.5 4H13v16h3.5a4.5 4.5 0 0 1 4.5 1.5v-16z"/>',
+  more: '<circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.2" fill="currentColor" stroke="none"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
   cloud: '<path d="M7 19h11a4 4 0 0 0 .4-8A6.5 6.5 0 0 0 6 9a5 5 0 0 0 1 10z"/>',
 };
@@ -140,16 +143,31 @@ app.innerHTML = `
 
         <section id="view-settings" class="view settings-view" hidden>
           <div class="settings-tabs" role="tablist" aria-label="${t("settings")}">
-            <button id="settings-account-tab" type="button" role="tab" aria-controls="settings-account-panel" aria-selected="true">${t("accountSettings")}</button>
+            ${isAndroid ? "" : `<button id="settings-general-tab" type="button" role="tab" aria-controls="settings-general-panel" aria-selected="true">${t("generalSettings")}</button>`}
+            <button id="settings-account-tab" type="button" role="tab" aria-controls="settings-account-panel" aria-selected="${String(isAndroid)}"${isAndroid ? "" : ' tabindex="-1"'}>${t("accountSettings")}</button>
             <button id="settings-page-tab" type="button" role="tab" aria-controls="settings-page-panel" aria-selected="false" tabindex="-1">${({ en: "Font and Layout", es: "Fuente y diseño", it: "Carattere e layout", fr: "Police et mise en page" } as Record<Language, string>)[language]}</button>
             <button id="settings-tts-tab" type="button" role="tab" aria-controls="settings-tts-panel" aria-selected="false" tabindex="-1">${t("ttsTab")}</button>
             <button id="settings-interface-tab" type="button" role="tab" aria-controls="settings-interface-panel" aria-selected="false" tabindex="-1">${t("interfaceSettings")}</button>
           </div>
-          <section id="settings-account-panel" class="settings-section" role="tabpanel" aria-labelledby="settings-account-tab" tabindex="0">
+          ${isAndroid ? "" : `<section id="settings-general-panel" class="settings-section general-settings" role="tabpanel" aria-labelledby="settings-general-tab" tabindex="0">
+            <div class="settings-section-heading"><h2>${t("generalSettings")}</h2><p>${t("generalSettingsHelp")}</p></div>
+            <div class="general-settings-sheet">
+              <label class="general-setting-row" for="general-disable-trash"><span class="settings-copy"><strong>${t("disableTrashBin")}</strong><small>${t("disableTrashBinHelp")}</small></span><span class="general-switch"><input id="general-disable-trash" type="checkbox" data-general-setting="disableTrashBin" /><span aria-hidden="true"></span></span></label>
+              <label class="general-setting-row" for="general-delete-folder-books"><span class="settings-copy"><strong>${t("deleteBooksWithFolder")}</strong><small>${t("deleteBooksWithFolderHelp")}</small></span><span class="general-switch"><input id="general-delete-folder-books" type="checkbox" data-general-setting="deleteBooksWithFolder" /><span aria-hidden="true"></span></span></label>
+              <label class="general-setting-row" for="general-screen-awake"><span class="settings-copy"><strong>${t("preventScreenBlanking")}</strong><small>${t("preventScreenBlankingHelp")}</small></span><span class="general-switch"><input id="general-screen-awake" type="checkbox" data-general-setting="preventScreenBlanking" /><span aria-hidden="true"></span></span></label>
+              <label class="general-setting-row" for="general-auto-maximize"><span class="settings-copy"><strong>${t("autoMaximize")}</strong><small>${t("autoMaximizeHelp")}</small></span><span class="general-switch"><input id="general-auto-maximize" type="checkbox" data-general-setting="autoMaximize" /><span aria-hidden="true"></span></span></label>
+              <label class="general-setting-row" for="general-launch-startup"><span class="settings-copy"><strong>${t("launchOnStartup")}</strong><small>${t("launchOnStartupHelp")}</small></span><span class="general-switch"><input id="general-launch-startup" type="checkbox" data-general-setting="launchOnStartup" /><span aria-hidden="true"></span></span></label>
+              <label class="general-setting-row" for="general-minimize-tray"><span class="settings-copy"><strong>${t("minimizeToTrayOnClose")}</strong><small>${t("minimizeToTrayOnCloseHelp")}</small></span><span class="general-switch"><input id="general-minimize-tray" type="checkbox" data-general-setting="minimizeToTrayOnClose" /><span aria-hidden="true"></span></span></label>
+              <div class="general-setting-row general-language-row"><label class="settings-copy" for="app-language"><strong>${t("language")}</strong><small>${t("languageHelp")}</small></label><select id="app-language" aria-label="${t("languageLabel")}"><option value="en">English</option><option value="es">Español</option><option value="it">Italiano</option><option value="fr">Français</option></select></div>
+            </div>
+            <p id="general-settings-status" class="general-settings-status" role="status" aria-live="polite"></p>
+          </section>`}
+          <section id="settings-account-panel" class="settings-section" role="tabpanel" aria-labelledby="settings-account-tab" tabindex="0"${isAndroid ? "" : " hidden"}>
             <div class="settings-section-heading"><h2>${t("accountSettings")}</h2><p>${t("accountSettingsHelp")}</p></div>
-            <div id="settings-plan"></div>
-            <div id="settings-security"></div>
-          <div class="settings-note"><img src="${leafUrl}" alt="" /><div><h3>${t("booksYours")}</h3><p>${t("localStorageHelp")}</p><span id="storage-count">${countText(0, "bookInLibrary", "booksInLibrary")}</span></div></div>
+            <div id="settings-account-sheet" class="account-settings-sheet">
+              <div id="settings-plan"></div>
+              <div id="settings-security"></div>
+            </div>
           </section>
           <section id="settings-page-panel" class="settings-section" role="tabpanel" aria-labelledby="settings-page-tab" tabindex="0" hidden>
 
@@ -182,27 +200,58 @@ app.innerHTML = `
           </section>
           <section id="settings-interface-panel" class="settings-section" role="tabpanel" aria-labelledby="settings-interface-tab" tabindex="0" hidden>
             <div class="settings-section-heading"><h2>${t("interfaceSettings")}</h2><p>${t("interfaceSettingsHelp")}</p></div>
-          <div class="settings-group"><div class="settings-copy"><h3>${t("appearance")}</h3><p>${t("appearanceHelp")}</p></div><div class="theme-options" role="group" aria-label="${t("appTheme")}"><button type="button" data-theme-choice="light" class="theme-choice"><span class="theme-preview theme-light"></span>${t("light")}</button><button type="button" data-theme-choice="dark" class="theme-choice"><span class="theme-preview theme-dark"></span>${t("dark")}</button></div></div>
-          <div class="settings-group"><div class="settings-copy"><h3>${t("noteStyle")}</h3><p>${t("noteStyleHelp")}</p></div><div class="note-style-options" role="group" aria-label="${t("noteStyleLabel")}"><button type="button" class="note-style-choice" data-note-style="highlight" aria-pressed="false"><span class="note-style-preview" aria-hidden="true">Aa</span><span>${t("noteStyleHighlight")}</span></button><button type="button" class="note-style-choice" data-note-style="underline" aria-pressed="false"><span class="note-style-preview" aria-hidden="true">Aa</span><span>${t("noteStyleUnderline")}</span></button><button type="button" class="note-style-choice" data-note-style="strikethrough" aria-pressed="false"><span class="note-style-preview" aria-hidden="true">Aa</span><span>${t("noteStyleStrikethrough")}</span></button><button type="button" class="note-style-choice" data-note-style="wavy" aria-pressed="false"><span class="note-style-preview" aria-hidden="true">Aa</span><span>${t("noteStyleWavy")}</span></button></div></div>
-          <div class="settings-group"><div class="settings-copy"><h3>${t("pageTurnAnimation")}</h3><p id="page-turn-animation-help">${t("pageTurnAnimationHelp")}</p></div><label class="settings-switch"><input id="page-turn-animation" type="checkbox" aria-label="${t("pageTurnAnimation")}" aria-describedby="page-turn-animation-help" /><span class="switch-track" aria-hidden="true"><span></span></span><span id="page-turn-animation-status"></span></label></div>
-          <div class="settings-group"><div class="settings-copy"><h3>${t("language")}</h3><p>${t("languageHelp")}</p></div><select id="app-language" aria-label="${t("languageLabel")}"><option value="en">English</option><option value="es">Español</option><option value="it">Italiano</option><option value="fr">Français</option></select></div>
+            <div class="interface-settings-sheet">
+              <div class="settings-group"><div class="settings-copy"><h3>${t("appearance")}</h3><p>${t("appearanceHelp")}</p></div><div class="theme-options" role="group" aria-label="${t("appTheme")}"><button type="button" data-theme-choice="light" class="theme-choice"><span class="theme-preview theme-light"></span>${t("light")}</button><button type="button" data-theme-choice="dark" class="theme-choice"><span class="theme-preview theme-dark"></span>${t("dark")}</button></div></div>
+              <div class="settings-group"><div class="settings-copy"><h3>${t("noteStyle")}</h3><p>${t("noteStyleHelp")}</p></div><div class="note-style-options" role="group" aria-label="${t("noteStyleLabel")}"><button type="button" class="note-style-choice" data-note-style="highlight" aria-pressed="false"><span class="note-style-preview" aria-hidden="true">Aa</span><span>${t("noteStyleHighlight")}</span></button><button type="button" class="note-style-choice" data-note-style="underline" aria-pressed="false"><span class="note-style-preview" aria-hidden="true">Aa</span><span>${t("noteStyleUnderline")}</span></button><button type="button" class="note-style-choice" data-note-style="strikethrough" aria-pressed="false"><span class="note-style-preview" aria-hidden="true">Aa</span><span>${t("noteStyleStrikethrough")}</span></button><button type="button" class="note-style-choice" data-note-style="wavy" aria-pressed="false"><span class="note-style-preview" aria-hidden="true">Aa</span><span>${t("noteStyleWavy")}</span></button></div></div>
+              <div class="settings-group"><div class="settings-copy"><h3>${t("pageTurnAnimation")}</h3><p id="page-turn-animation-help">${t("pageTurnAnimationHelp")}</p></div><label class="settings-switch"><input id="page-turn-animation" type="checkbox" aria-label="${t("pageTurnAnimation")}" aria-describedby="page-turn-animation-help" /><span class="switch-track" aria-hidden="true"><span></span></span><span id="page-turn-animation-status"></span></label></div>
+              ${isAndroid ? `<div class="settings-group"><div class="settings-copy"><h3>${t("language")}</h3><p>${t("languageHelp")}</p></div><select id="app-language" aria-label="${t("languageLabel")}"><option value="en">English</option><option value="es">Español</option><option value="it">Italiano</option><option value="fr">Français</option></select></div>` : ""}
+            </div>
           </section>
         </section>
 
         <section id="view-profile" class="view profile-view" hidden></section>
         <section id="view-details" class="view details-view" hidden></section>
         <section id="view-reader" class="view reader-view" hidden>
+          <aside id="reader-sidebar" class="reader-sidebar" aria-label="${t("readerSidebar")}">
+            <div class="reader-book-summary">
+              <button id="desktop-reader-back" class="reader-sidebar-back" type="button" aria-label="${t("readerBackToLibrary")}">${svg("back", 18)}</button>
+              <div id="reader-book-cover" class="reader-book-cover" aria-hidden="true"></div>
+              <div class="reader-book-copy"><h2 id="reader-book-title"></h2><p id="reader-book-author"></p></div>
+            </div>
+            <div class="reader-sidebar-tabs" role="tablist" aria-label="${t("readerSidebar")}">
+              <button id="reader-contents-tab" class="reader-sidebar-tab" type="button" role="tab" aria-selected="true" aria-controls="reader-sidebar-contents">${svg("bookLayout", 18)}<span>${t("readerContents")}</span></button>
+              <button id="reader-notes-tab" class="reader-sidebar-tab" type="button" role="tab" aria-selected="false" aria-controls="reader-sidebar-notes">${svg("notes", 18)}<span>${t("readerNotes")}</span><span id="sidebar-notes-count" class="reader-sidebar-count">0</span></button>
+              <button id="reader-tts-tab" class="reader-sidebar-tab" type="button" role="tab" aria-selected="false" aria-controls="reader-sidebar-tts" hidden>${svg("speech", 18)}<span>${t("ttsTab")}</span></button>
+            </div>
+            <section id="reader-sidebar-contents" class="reader-sidebar-panel" role="tabpanel" aria-labelledby="reader-contents-tab">
+              <h3>${t("readerContents")}</h3>
+              <nav id="reader-toc-list" class="reader-toc-list" aria-label="${t("tableOfContents")}"></nav>
+            </section>
+            <section id="reader-sidebar-notes" class="reader-sidebar-panel" role="tabpanel" aria-labelledby="reader-notes-tab" hidden>
+              <h3>${t("readerNotes")}</h3>
+              <div id="reader-sidebar-notes-list" class="reader-sidebar-notes-list"></div>
+            </section>
+            <section id="reader-sidebar-tts" class="reader-sidebar-panel reader-sidebar-tts" role="tabpanel" aria-labelledby="reader-tts-tab" hidden>
+              <h3>${t("textToSpeech")}</h3>
+              <div id="reader-sidebar-tts-body"></div>
+            </section>
+          </aside>
           <div class="reader-toolbar">
             <button id="back-button" class="back-button" type="button">${svg("back", 18)}<span>${t("back")}</span></button>
             <div class="reader-tool-strip" role="toolbar" aria-label="${t("readingOptions")}">
-              <button id="brightness-toggle" class="reader-tool-button" data-reader-options-trigger type="button" title="${t("brightness")}" aria-label="${t("brightness")}" aria-controls="brightness-panel" aria-expanded="false">${svg("brightness", 18)}</button>
-              <button id="size-toggle" class="reader-tool-button" data-reader-options-trigger type="button" title="${t("text")}" aria-label="${t("text")}" aria-controls="size-panel" aria-expanded="false">${svg("textSize", 19)}</button>
-              <button id="speech-toggle" class="reader-tool-button" data-reader-options-trigger type="button" title="${t("textToSpeech")}" aria-label="${t("textToSpeech")}" aria-controls="speech-panel" aria-expanded="false" hidden>${svg("speech", 19)}</button>
-              <button id="layout-toggle" class="reader-tool-button" data-reader-options-trigger type="button" title="${t("layoutOptions")}" aria-label="${t("layoutOptions")}" aria-controls="layout-panel" aria-expanded="false">${svg("bookLayout", 19)}</button>
-              <button id="all-notes-button" class="reader-notes-button" type="button" aria-haspopup="dialog" aria-controls="all-notes-dialog">${svg("notes", 17)}<span>${t("notes")}</span><span id="notes-count" class="notes-count">0</span></button>
+              <button id="brightness-toggle" class="reader-tool-button reader-mobile-tool" data-reader-options-trigger type="button" title="${t("brightness")}" aria-label="${t("brightness")}" aria-controls="brightness-panel" aria-expanded="false">${svg("brightness", 18)}</button>
+              <button id="size-toggle" class="reader-tool-button reader-mobile-tool" data-reader-options-trigger type="button" title="${t("text")}" aria-label="${t("text")}" aria-controls="size-panel" aria-expanded="false">${svg("textSize", 19)}</button>
+              <button id="speech-toggle" class="reader-tool-button reader-mobile-tool" data-reader-options-trigger type="button" title="${t("textToSpeech")}" aria-label="${t("textToSpeech")}" aria-controls="speech-panel" aria-expanded="false" hidden>${svg("speech", 19)}</button>
+              <button id="layout-toggle" class="reader-tool-button reader-mobile-tool" data-reader-options-trigger type="button" title="${t("layoutOptions")}" aria-label="${t("layoutOptions")}" aria-controls="layout-panel" aria-expanded="false">${svg("bookLayout", 19)}</button>
+              <button id="all-notes-button" class="reader-notes-button reader-mobile-tool" type="button" aria-haspopup="dialog" aria-controls="all-notes-dialog">${svg("notes", 17)}<span>${t("notes")}</span><span id="notes-count" class="notes-count">0</span></button>
               <button id="book-search-button" class="reader-tool-button" type="button" title="${t("searchInBook")}" aria-label="${t("searchInBook")}" aria-controls="book-search-panel">${svg("search", 18)}</button>
+              <button id="reader-settings-toggle" class="reader-tool-button reader-desktop-tool" type="button" title="${t("readerBookSettings")}" aria-label="${t("readerBookSettings")}" aria-controls="reader-options" aria-expanded="false">${svg("more", 21)}</button>
             </div>
-            <div id="reader-options" class="reader-options" role="dialog" aria-label="${t("readingOptions")}" hidden>
+            <div id="reader-options" class="reader-options" role="dialog" aria-label="${t("readerBookSettings")}" hidden>
+              <div class="reader-settings-tabs" role="tablist" aria-label="${t("readerBookSettings")}">
+                <button id="reader-settings-layout-tab" type="button" role="tab" aria-selected="false">${t("layoutOptions")}</button>
+                <button id="reader-settings-appearance-tab" type="button" role="tab" aria-selected="true">${t("readerAppearance")}</button>
+              </div>
               <section id="brightness-panel" class="reader-option-panel" data-reader-panel="brightness" hidden>
                 <div class="reader-panel-heading"><span>${svg("brightness", 18)}</span><h3>${t("brightness")}</h3><output id="brightness-value">100%</output></div>
                 <label class="reader-option-line"><span>${t("brightness")}</span><input id="reader-brightness" type="range" min="55" max="130" value="100" aria-label="${t("brightness")}" /></label>
@@ -221,6 +270,15 @@ app.innerHTML = `
                 <div class="reader-panel-heading"><span>${svg("bookLayout", 18)}</span><h3>${t("bookLayout")}</h3></div>
                 <select id="pdf-reading-mode" class="pdf-reading-mode" aria-label="${t("readingMode")}" hidden><option value="text">${t("adjustableText")}</option><option value="original">${t("originalPage")}</option></select>
                 <div id="book-layout-details" class="book-layout-details"><div id="book-layout-fields" class="layout-fields"></div></div>
+              </section>
+              <section id="book-theme-panel" class="reader-option-panel book-theme-panel" data-reader-panel="theme" hidden>
+                <div class="reader-panel-heading"><span>${svg("brightness", 18)}</span><h3>${t("readerTheme")}</h3></div>
+                <div class="book-theme-options" role="group" aria-label="${t("readerTheme")}">
+                  <button type="button" data-book-theme="system"><span class="book-theme-swatch theme-system"></span>${t("readerThemeSystem")}</button>
+                  <button type="button" data-book-theme="light"><span class="book-theme-swatch theme-paper"></span>${t("readerThemeLight")}</button>
+                  <button type="button" data-book-theme="sepia"><span class="book-theme-swatch theme-sepia"></span>${t("readerThemeSepia")}</button>
+                  <button type="button" data-book-theme="dark"><span class="book-theme-swatch theme-night"></span>${t("readerThemeDark")}</button>
+                </div>
               </section>
             </div>
           </div>
@@ -306,6 +364,7 @@ let pageTurnAnimationEnabled = localStorage.getItem(pageTurnAnimationKey) !== "o
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const animatePageTurn = (): boolean => pageTurnAnimationEnabled && !reducedMotion.matches;
 let globalPagePreferences = loadPagePreferences();
+let desktopGeneralPreferences = loadDesktopGeneralPreferences();
 let ttsPreferences: TtsPreferences = loadTtsPreferences();
 let ttsVoices: TtsVoice[] = [];
 let ttsState: "idle" | "playing" | "paused" = "idle";
@@ -340,6 +399,9 @@ let readerPositionRevision = 0;
 let restoringRemotePosition = false;
 let toastTimer: number | undefined;
 let theme: "light" | "dark" = localStorage.getItem("autumn-theme") === "dark" ? "dark" : "light";
+type BookReaderTheme = "system" | "light" | "sepia" | "dark";
+let bookReaderTheme: BookReaderTheme = "system";
+let readerBrightness = 100;
 let bookFont = pagePreferences.font;
 let layoutRevision = 0;
 let layoutBusy = false;
@@ -461,8 +523,106 @@ function applyTheme(): void {
     button.classList.toggle("selected", selected);
     button.setAttribute("aria-pressed", String(selected));
   }
-  rendition?.themes.default({ body: { color: theme === "light" ? "#342a26" : "#ece4d8", background: theme === "light" ? "#fffdf8" : "#292322" } });
+  applyBookReaderTheme();
   applyPageSpacing();
+}
+
+async function applyNativeGeneralSetting(key: keyof DesktopGeneralPreferences, enabled: boolean): Promise<void> {
+  if (!isTauri() || isAndroid) return;
+  if (key === "preventScreenBlanking") await invoke("set_prevent_screen_blanking", { enabled });
+  else if (key === "launchOnStartup") await invoke("set_launch_on_startup", { enabled });
+  else if (key === "minimizeToTrayOnClose") await invoke("set_tray_enabled", { enabled });
+  else if (key === "autoMaximize" && enabled) await getCurrentWindow().maximize();
+}
+
+let desktopCloseListenerMounted = false;
+async function mountDesktopGeneralSettings(): Promise<void> {
+  const panel = document.querySelector<HTMLElement>("#settings-general-panel");
+  if (!panel) return;
+  const status = $<HTMLElement>("#general-settings-status");
+  for (const input of panel.querySelectorAll<HTMLInputElement>("[data-general-setting]")) {
+    const key = input.dataset.generalSetting as keyof DesktopGeneralPreferences;
+    input.checked = desktopGeneralPreferences[key];
+    input.addEventListener("change", () => {
+      const previous = desktopGeneralPreferences;
+      desktopGeneralPreferences = saveDesktopGeneralPreferences({ ...desktopGeneralPreferences, [key]: input.checked });
+      status.textContent = "";
+      input.disabled = true;
+      void applyNativeGeneralSetting(key, input.checked).catch(error => {
+        console.error(error);
+        desktopGeneralPreferences = saveDesktopGeneralPreferences(previous);
+        input.checked = previous[key];
+        status.textContent = t("generalSettingFailed");
+      }).finally(() => { input.disabled = false; });
+    });
+  }
+  if (!isTauri() || isAndroid) return;
+  await Promise.allSettled([
+    applyNativeGeneralSetting("preventScreenBlanking", desktopGeneralPreferences.preventScreenBlanking),
+    applyNativeGeneralSetting("launchOnStartup", desktopGeneralPreferences.launchOnStartup),
+    applyNativeGeneralSetting("minimizeToTrayOnClose", desktopGeneralPreferences.minimizeToTrayOnClose),
+    applyNativeGeneralSetting("autoMaximize", desktopGeneralPreferences.autoMaximize),
+  ]);
+  if (!desktopCloseListenerMounted) {
+    desktopCloseListenerMounted = true;
+    await getCurrentWindow().onCloseRequested(async event => {
+      event.preventDefault();
+      if (desktopGeneralPreferences.minimizeToTrayOnClose) {
+        await invoke("set_tray_enabled", { enabled: true }).catch(() => {});
+        await getCurrentWindow().hide();
+        return;
+      }
+      await invoke("set_tray_enabled", { enabled: false }).catch(() => {});
+      await invoke("exit_app").catch(async () => {
+        await getCurrentWindow().destroy().catch(() => {});
+      });
+    });
+  }
+}
+
+function readerPreferenceKey(kind: "theme" | "brightness", book = currentBook): string | null {
+  if (!book) return null;
+  return `autumn-reader-${kind}:${book.ownerId ?? auth.state.ownerId ?? "local"}:${book.id}`;
+}
+
+function effectiveBookReaderTheme(): Exclude<BookReaderTheme, "system"> {
+  return bookReaderTheme === "system" ? theme : bookReaderTheme;
+}
+
+function bookReaderColors(): { color: string; background: string } {
+  const effective = effectiveBookReaderTheme();
+  return effective === "dark" ? { color: "#f1e8dc", background: "#241f1d" }
+    : effective === "sepia" ? { color: "#3c2f27", background: "#f1e1c5" }
+      : { color: "#342a26", background: "#fffdf8" };
+}
+
+function applyBookReaderTheme(): void {
+  const effective = effectiveBookReaderTheme();
+  const colors = bookReaderColors();
+  $<HTMLElement>("#view-reader").dataset.bookTheme = effective;
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-book-theme]")) {
+    const selected = button.dataset.bookTheme === bookReaderTheme;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
+  readingSurface.style.background = colors.background;
+  readerContent.style.background = colors.background;
+  readerContent.style.color = colors.color;
+  rendition?.themes.default({ body: colors });
+}
+
+function loadReaderBookAppearance(book: StoredBook): void {
+  const themeKey = readerPreferenceKey("theme", book);
+  const storedTheme = themeKey ? localStorage.getItem(themeKey) : null;
+  bookReaderTheme = storedTheme === "light" || storedTheme === "sepia" || storedTheme === "dark" ? storedTheme : "system";
+  const brightnessKey = readerPreferenceKey("brightness", book);
+  const storedBrightness = Number(brightnessKey ? localStorage.getItem(brightnessKey) : "");
+  readerBrightness = Number.isFinite(storedBrightness) && storedBrightness >= 55 && storedBrightness <= 130 ? storedBrightness : 100;
+  const brightness = $<HTMLInputElement>("#reader-brightness");
+  brightness.value = String(readerBrightness);
+  $<HTMLOutputElement>("#brightness-value").textContent = `${readerBrightness}%`;
+  readingSurface.style.filter = `brightness(${readerBrightness}%)`;
+  applyBookReaderTheme();
 }
 function applyPageSpacing(): void {
   if (epubBook?.packaging?.metadata?.layout === "pre-paginated") return;
@@ -487,6 +647,19 @@ function updateEffectivePagePreferences(): void {
   applyPageSpacing(); applyBookFont();
 }
 
+function epubViewportSize(frame: HTMLElement): { width: number; height: number } {
+  const style = getComputedStyle(frame);
+  const horizontalPadding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+  const verticalPadding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+  // EPUB.js' initial 100% stage is sized against the frame's content box.
+  // clientWidth/clientHeight include padding, so passing them to resize grows
+  // the stage underneath the paper gutter and clips the final lines.
+  return {
+    width: Math.max(1, frame.clientWidth - horizontalPadding),
+    height: Math.max(1, frame.clientHeight - verticalPadding),
+  };
+}
+
 async function relayoutReader(): Promise<void> {
   if (view !== "reader" || !currentBook || pageTurn) return;
   const revision = ++layoutRevision;
@@ -504,10 +677,11 @@ async function relayoutReader(): Promise<void> {
   if (!rendition || !anchor) return;
   const frame = readerContent.querySelector<HTMLElement>(".epub-frame");
   if (!frame) return;
+  const viewport = epubViewportSize(frame);
   layoutBusy = true;
   try {
-    rendition.spread(columnCount(pagePreferences.columns, frame.clientWidth, frame.clientHeight) === 2 ? "always" : "none", 0);
-    rendition.resize(frame.clientWidth, frame.clientHeight);
+    rendition.spread(columnCount(pagePreferences.columns, viewport.width, viewport.height) === 2 ? "always" : "none", 0);
+    rendition.resize(viewport.width, viewport.height);
     if (revision !== layoutRevision) return;
     await rendition.display(anchor);
     if (revision !== layoutRevision) return;
@@ -580,6 +754,38 @@ function coverElement(book: StoredBook): HTMLElement {
     coverObserver.observe(cover);
   }
   return cover;
+}
+
+function renderReaderBookSummary(book: StoredBook): void {
+  $<HTMLElement>("#reader-book-cover").replaceChildren(coverElement(book));
+  $<HTMLElement>("#reader-book-title").textContent = titleOf(book);
+  $<HTMLElement>("#reader-book-author").textContent = book.author?.trim() || t("authorUnknown");
+}
+
+function resetReaderToc(): HTMLSelectElement {
+  const select = $<HTMLSelectElement>("#reader-toc");
+  select.replaceChildren(new Option(t("tableOfContents"), ""));
+  const empty = document.createElement("p");
+  empty.className = "reader-sidebar-empty";
+  empty.textContent = t("readerContentsEmpty");
+  $<HTMLElement>("#reader-toc-list").replaceChildren(empty);
+  return select;
+}
+
+function addReaderTocEntry(select: HTMLSelectElement, label: string, value: string, depth = 0): void {
+  select.add(new Option(`${"– ".repeat(depth)}${label}`, value));
+  const list = $<HTMLElement>("#reader-toc-list");
+  if (list.querySelector(".reader-sidebar-empty")) list.replaceChildren();
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "reader-toc-entry";
+  button.style.setProperty("--toc-depth", String(Math.min(depth, 5)));
+  button.textContent = label;
+  button.addEventListener("click", () => {
+    void (currentBook?.format === "pdf" ? jumpToPdfReference(pdfOutlineDestinations.get(value)) : jumpToContents(value))
+      .catch(error => showToast(errorMessage(error)));
+  });
+  list.append(button);
 }
 const coverLoading = new Set<string>();
 const coverObserver = new IntersectionObserver(entries => {
@@ -741,7 +947,6 @@ function renderCollections(): void {
   heroAction.onclick = () => featured ? void openBook(featured) : setView("library");
 
   $<HTMLElement>("#library-count-line").textContent = countText(books.length, "savedBook", "savedBooks");
-  $<HTMLElement>("#storage-count").textContent = countText(books.length, "bookInLibrary", "booksInLibrary");
   if (view === "library") setView("library");
   const query = $<HTMLInputElement>("#library-search").value.trim().toLocaleLowerCase();
   const matches = sortedLibraryBooks([...books].filter((book) => {
@@ -777,7 +982,7 @@ async function removeBook(book: StoredBook): Promise<void> {
     tone: "remove",
   })) return;
   try {
-    await deleteBook(book.id);
+    await deleteBook(book.id, { permanent: desktopGeneralPreferences.disableTrashBin });
     books = books.filter((item) => item.id !== book.id);
     if (currentBook?.id === book.id) {
       ++loadSequence;
@@ -854,6 +1059,7 @@ function updateHistory(): void {
   $("#reading-return").hidden = $("#reading-adopt").hidden = !readerHistory.temporary;
   $<HTMLButtonElement>("#reading-return").disabled = $<HTMLButtonElement>("#reading-adopt").disabled = readerJumpBusy;
   $<HTMLSelectElement>("#reader-toc").disabled = readerJumpBusy;
+  document.querySelectorAll<HTMLButtonElement>(".reader-toc-entry").forEach(button => { button.disabled = readerJumpBusy; });
   $("#reading-return").textContent = origin?.format === "pdf" ? t("returnToPage", { page: origin.page }) : `${t("returnToReading")}${origin?.label ? ` · ${origin.label}` : ""}`;
   if (searchUI?.opened) { const toolbar = $(".reader-toolbar"); $("#book-search-panel").style.top = `${toolbar.offsetTop + toolbar.offsetHeight + 8}px`; }
 }
@@ -1041,7 +1247,10 @@ async function deleteNote(): Promise<void> {
 }
 
 function updateNotesCount(): void {
-  $<HTMLSpanElement>("#notes-count").textContent = String(currentBook?.notes?.length ?? 0);
+  const count = String(currentBook?.notes?.length ?? 0);
+  $<HTMLSpanElement>("#notes-count").textContent = count;
+  $<HTMLSpanElement>("#sidebar-notes-count").textContent = count;
+  renderSidebarNotes();
 }
 
 function epubNoteSection(note: BookNote): number | null {
@@ -1067,46 +1276,59 @@ function epubNoteOnVisiblePage(note: BookNote): boolean {
   } catch { return false; }
 }
 
-function renderAllNotes(): void {
-  const list = $<HTMLDivElement>("#all-notes-list");
-  const notes = [...(currentBook?.notes ?? [])].sort((a, b) => {
+function sortedCurrentNotes(): BookNote[] {
+  return [...(currentBook?.notes ?? [])].sort((a, b) => {
     if (a.format === "pdf" && b.format === "pdf") return a.page - b.page || a.y - b.y || a.createdAt - b.createdAt;
     if (a.format === "epub" && b.format === "epub") return (epubNoteSection(a) ?? 0) - (epubNoteSection(b) ?? 0) || a.createdAt - b.createdAt;
     return a.createdAt - b.createdAt;
   });
+}
+
+function noteEntry(note: BookNote, compact = false): HTMLElement {
+  const card = document.createElement("article");
+  card.className = compact ? "notes-entry reader-sidebar-note" : "notes-entry";
+  const header = document.createElement("div");
+  header.className = "notes-entry-header";
+  const color = document.createElement("span");
+  color.className = "notes-entry-color";
+  color.style.backgroundColor = note.color;
+  color.setAttribute("aria-hidden", "true");
+  const location = document.createElement("span");
+  location.textContent = noteLocation(note);
+  header.append(color, location);
+  const quote = document.createElement("p");
+  quote.className = "notes-entry-quote";
+  quote.textContent = note.quote;
+  const body = document.createElement("p");
+  body.className = "notes-entry-text";
+  body.textContent = note.text;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "notes-go-button";
+  button.textContent = `${t("goToNote")} →`;
+  button.addEventListener("click", () => void goToNote(note));
+  card.append(header, quote, body, button);
+  return card;
+}
+
+function renderNotesList(list: HTMLElement, compact = false): void {
+  const notes = sortedCurrentNotes();
   if (!notes.length) {
     const empty = document.createElement("p");
-    empty.className = "notes-empty";
-    empty.textContent = t("notesEmpty");
+    empty.className = compact ? "reader-sidebar-empty" : "notes-empty";
+    empty.textContent = compact ? t("readerNotesEmpty") : t("notesEmpty");
     list.replaceChildren(empty);
     return;
   }
-  list.replaceChildren(...notes.map((note) => {
-    const card = document.createElement("article");
-    card.className = "notes-entry";
-    const header = document.createElement("div");
-    header.className = "notes-entry-header";
-    const color = document.createElement("span");
-    color.className = "notes-entry-color";
-    color.style.backgroundColor = note.color;
-    color.setAttribute("aria-hidden", "true");
-    const location = document.createElement("span");
-    location.textContent = noteLocation(note);
-    header.append(color, location);
-    const quote = document.createElement("p");
-    quote.className = "notes-entry-quote";
-    quote.textContent = note.quote;
-    const body = document.createElement("p");
-    body.className = "notes-entry-text";
-    body.textContent = note.text;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "notes-go-button";
-    button.textContent = `${t("goToNote")} →`;
-    button.addEventListener("click", () => void goToNote(note));
-    card.append(header, quote, body, button);
-    return card;
-  }));
+  list.replaceChildren(...notes.map(note => noteEntry(note, compact)));
+}
+
+function renderSidebarNotes(): void {
+  renderNotesList($<HTMLDivElement>("#reader-sidebar-notes-list"), true);
+}
+
+function renderAllNotes(): void {
+  renderNotesList($<HTMLDivElement>("#all-notes-list"));
 }
 
 function openAllNotes(): void {
@@ -1248,7 +1470,7 @@ async function clearReader(): Promise<void> {
   ++pdfNavigationToken; pdfNavigationBusy = false;
   pageTurn?.snapshot.remove(); pageTurn?.preview?.destroy(); if(pageTurn?.live !== readerContent)pageTurn?.live.remove(); pageTurn = undefined; pagePreviewActive = false; resetPageTransform();
   searchUI?.close(); searchUI?.setSource(); readerHistory.commit(); updateHistory();
-  searchHighlight = undefined; $("#reader-toc").hidden = true; pdfOutlineDestinations.clear();
+  searchHighlight = undefined; $("#reader-toc").hidden = true; resetReaderToc(); pdfOutlineDestinations.clear();
   hideNoteMenu();
   closeNoteDialog();
   closeAllNotes();
@@ -1409,6 +1631,10 @@ async function openBook(book: StoredBook): Promise<void> {
   stableLayoutAnchor = null; stableLayoutPercentage = null;
   bookPageOverrides = loadBookPageOverrides(book.ownerId ?? auth.state.ownerId ?? "local", book.id);
   updateEffectivePagePreferences();
+  loadReaderBookAppearance(book);
+  renderReaderBookSummary(book);
+  setReaderSidebarTab("contents");
+  resetReaderToc();
   bookLayoutUI?.refresh();
   pdfReadingMode = localStorage.getItem(`autumn-pdf-mode-${book.id}`) === "original" ? "original" : "text";
   pdfZoom = Number(localStorage.getItem(`autumn-pdf-zoom-${book.id}`)) || 100;
@@ -1440,12 +1666,12 @@ async function openBook(book: StoredBook): Promise<void> {
       if (sequence !== loadSequence) return;
       await renderPdfPage();
       searchUI?.setSource(pdfSearch(pdfDocument));
-      const outline = await pdfDocument.getOutline(), toc = $<HTMLSelectElement>("#reader-toc"); toc.replaceChildren(new Option(t("tableOfContents"), ""));
+      const outline = await pdfDocument.getOutline(), toc = resetReaderToc();
       const addOutline = (items: NonNullable<typeof outline>, depth = 0): void => {
         if (depth > 8) return;
         for (const item of items) {
           if (pdfOutlineDestinations.size >= 1000) return;
-          if (item.dest) { const id = `pdf:${pdfOutlineDestinations.size}`; pdfOutlineDestinations.set(id, item.dest); toc.add(new Option(`${"– ".repeat(depth)}${item.title}`, id)); }
+          if (item.dest) { const id = `pdf:${pdfOutlineDestinations.size}`; pdfOutlineDestinations.set(id, item.dest); addReaderTocEntry(toc, item.title, id, depth); }
           if (item.items) addOutline(item.items, depth + 1);
         }
       };
@@ -1455,7 +1681,8 @@ async function openBook(book: StoredBook): Promise<void> {
       frame.className = "epub-frame";
       readerContent.replaceChildren(frame);
       epubBook = ePub(buffer);
-      rendition = epubBook.renderTo(frame, { width: "100%", height: "100%", flow: "paginated", spread: columnCount(pagePreferences.columns, frame.clientWidth, frame.clientHeight) === 2 ? "always" : "none" });
+      const viewport = epubViewportSize(frame);
+      rendition = epubBook.renderTo(frame, { width: "100%", height: "100%", flow: "paginated", spread: columnCount(pagePreferences.columns, viewport.width, viewport.height) === 2 ? "always" : "none" });
       rendition.hooks.content.register((contents: Contents) => {
         standardizeEpubPage(contents);
         addTapNavigation(contents.document, () => contents.window.getSelection());
@@ -1486,6 +1713,7 @@ async function openBook(book: StoredBook): Promise<void> {
         });
         contents.document.addEventListener("selectionchange", () => scheduleTouchNote(selectedText));
         contents.document.addEventListener("keydown", handleReaderKeydown);
+        contents.document.addEventListener("wheel", handleReaderWheel, { passive: false });
         contents.document.addEventListener("click", event => {
           const link = (event.target as Element | null)?.closest("a[href]");
           const href = link?.getAttribute("href");
@@ -1508,13 +1736,14 @@ async function openBook(book: StoredBook): Promise<void> {
       await rendition.display(book.cfi || undefined);
       searchUI?.setSource(epubSearch(epubBook));
       const navigation = await epubBook.loaded.navigation;
-      const toc = $<HTMLSelectElement>("#reader-toc"); toc.replaceChildren(new Option(t("tableOfContents"), ""));
-      const addToc = (entries: typeof navigation.toc): void => { for (const entry of entries) { toc.add(new Option(entry.label.trim(), entry.href)); if (entry.subitems) addToc(entry.subitems); } };
+      const toc = resetReaderToc();
+      const addToc = (entries: typeof navigation.toc, depth = 0): void => { for (const entry of entries) { addReaderTocEntry(toc, entry.label.trim(), entry.href, depth); if (entry.subitems) addToc(entry.subitems, depth + 1); } };
       addToc(navigation.toc); toc.hidden = toc.options.length <= 1;
       window.requestAnimationFrame(renderNoteMarkers);
     }
     await persistCurrent();
     updatePosition();
+    renderSidebarNotes();
     if (book.contentMetadataVersion !== 1) void refreshBookContent(book);
     if (cached && remotePosition) void remotePosition.then(async (remote) => {
       if (sequence !== loadSequence || currentBook !== book) return;
@@ -1550,7 +1779,7 @@ async function refreshBookContent(book: StoredBook): Promise<void> {
     const visible = books.find(item => item.id === book.id);
     if (!visible || updated.contentMetadataVersion !== 1) return;
     Object.assign(visible, updated);
-    if (currentBook?.id === visible.id) Object.assign(currentBook, updated);
+    if (currentBook?.id === visible.id) { Object.assign(currentBook, updated); renderReaderBookSummary(currentBook); }
     const openMenu = view === "library" ? document.querySelector<HTMLDetailsElement>(".book-menu[open]") : null;
     if (openMenu) {
       // Keep an open administration menu attached while background extraction finishes.
@@ -1683,10 +1912,13 @@ function beginPageTurn(direction: -1|1, preloadOnly = false): void {
     adjacent.classList.add("page-turn-preview"); const rect = readerContent.getBoundingClientRect(), bounds = readingSurface.getBoundingClientRect();
     adjacent.style.cssText = `position:absolute;left:${rect.left-bounds.left}px;top:${rect.top-bounds.top}px;width:${rect.width}px;height:${rect.height}px;min-height:0;z-index:4;pointer-events:none;will-change:transform`;
     const frame = document.createElement("div"); frame.className="epub-frame"; adjacent.append(frame); readingSurface.append(adjacent); turn.live=adjacent;
-    const preview = epubBook.renderTo(frame,{width:"100%",height:"100%",flow:"paginated",spread:columnCount(pagePreferences.columns,frame.clientWidth,frame.clientHeight)===2?"always":"none"}); epubBook.rendition=rendition; turn.preview=preview;
+    const viewport = epubViewportSize(frame);
+    const preview = epubBook.renderTo(frame,{width:"100%",height:"100%",flow:"paginated",spread:columnCount(pagePreferences.columns,viewport.width,viewport.height)===2?"always":"none"}); epubBook.rendition=rendition; turn.preview=preview;
     preview.hooks.content.register((contents: Contents)=>standardizeEpubPage(contents));
     preview.themes.fontSize(`${currentBook.fontSize}%`); preview.themes.font(fontCss(bookFont));
-    preview.themes.default({body:{color:theme==="light"?"#342a26":"#ece4d8",background:theme==="light"?"#fffdf8":"#292322"}});
+    const previewColors = bookReaderColors();
+    adjacent.style.background = previewColors.background; frame.style.background = previewColors.background;
+    preview.themes.default({ body: previewColors });
     adjacent.style.visibility="hidden";adjacent.style.transform=`translate3d(${direction*turn.width}px,0,0)`;
     turn.ready=(async()=>{await preview.display((turn.origin as Extract<ReaderPosition,{format:"epub"}>).cfi);const before=await preview.currentLocation() as unknown as Location;await(direction<0?preview.prev():preview.next());const after=await preview.currentLocation() as unknown as Location;turn.previewChanged=before?.start.cfi!==after?.start.cfi;})();
   } else {
@@ -1819,6 +2051,23 @@ function addTapNavigation(target: Document | HTMLElement, getSelection: () => Se
 
 addTapNavigation(readingSurface, () => window.getSelection());
 
+// Desktop mouse wheel page navigation. EPUB content is rendered inside an iframe,
+// so attach the same handler to the outer surface and each EPUB document.
+let readerWheelLocked = false;
+let readerWheelUnlockTimer: number | undefined;
+function handleReaderWheel(event: WheelEvent): void {
+  if (view !== "reader" || !currentBook || readerJumpBusy || pdfNavigationBusy || pageTurn) return;
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+  if (Math.abs(event.deltaY) < 4) return;
+  event.preventDefault();
+  if (readerWheelLocked) return;
+  readerWheelLocked = true;
+  window.clearTimeout(readerWheelUnlockTimer);
+  void turnPage(event.deltaY > 0 ? 1 : -1);
+  readerWheelUnlockTimer = window.setTimeout(() => { readerWheelLocked = false; }, 320);
+}
+readingSurface.addEventListener("wheel", handleReaderWheel, { passive: false });
+
 function changeSize(direction: -1 | 1): void {
   if (!currentBook) return;
   ++readerPositionRevision; restoringRemotePosition = false;
@@ -1861,22 +2110,90 @@ libraryView.addEventListener("drop", event => {
 homeCarousel = mountBookCarousel($<HTMLDivElement>("#recent-list"), $<HTMLButtonElement>("#recent-previous"), $<HTMLButtonElement>("#recent-next"));
 const readerOptions = $<HTMLDivElement>("#reader-options");
 const readerOptionTriggers = [...document.querySelectorAll<HTMLButtonElement>("[data-reader-options-trigger]")];
+const desktopReaderMedia = window.matchMedia("(min-width: 901px) and (pointer: fine)");
 let activeReaderOptionsTrigger: HTMLButtonElement | null = null;
 let readerOptionsHistory = false;
+type ReaderSidebarTab = "contents" | "notes" | "tts";
+let activeReaderSidebarTab: ReaderSidebarTab = "contents";
+
+function placeSpeechPanel(): void {
+  const panel = $<HTMLElement>("#speech-panel");
+  const destination = desktopReaderMedia.matches ? $<HTMLElement>("#reader-sidebar-tts-body") : readerOptions;
+  if (panel.parentElement !== destination) destination.append(panel);
+}
+
+function setReaderSidebarTab(tab: ReaderSidebarTab): void {
+  if (tab === "tts" && $<HTMLButtonElement>("#reader-tts-tab").hidden) tab = "contents";
+  closeReaderOptions();
+  searchUI?.close();
+  translationUI?.close();
+  activeReaderSidebarTab = tab;
+  for (const name of ["contents", "notes", "tts"] as const) {
+    const button = $<HTMLButtonElement>(`#reader-${name}-tab`);
+    const selected = name === tab;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    $<HTMLElement>(`#reader-sidebar-${name}`).hidden = !selected;
+  }
+  if (tab === "notes") renderSidebarNotes();
+  if (tab === "tts") {
+    placeSpeechPanel();
+    $<HTMLElement>("#speech-panel").hidden = false;
+    updateTtsPlayer();
+    void refreshTtsVoices(false);
+  } else if (desktopReaderMedia.matches) $<HTMLElement>("#speech-panel").hidden = true;
+}
+
+function showDesktopSettingsTab(tab: "layout" | "appearance"): void {
+  const layout = tab === "layout";
+  $<HTMLButtonElement>("#reader-settings-layout-tab").setAttribute("aria-selected", String(layout));
+  $<HTMLButtonElement>("#reader-settings-appearance-tab").setAttribute("aria-selected", String(!layout));
+  $<HTMLElement>("#layout-panel").hidden = !layout;
+  $<HTMLElement>("#brightness-panel").hidden = layout;
+  $<HTMLElement>("#size-panel").hidden = layout;
+  $<HTMLElement>("#book-theme-panel").hidden = layout;
+}
+
+function openDesktopReaderSettings(tab: "layout" | "appearance" = "appearance"): void {
+  if (readerOptions.classList.contains("is-open") && activeReaderOptionsTrigger === $<HTMLButtonElement>("#reader-settings-toggle")) {
+    closeReaderOptions();
+    return;
+  }
+  if (!desktopReaderMedia.matches) return;
+  searchUI?.close();
+  translationUI?.close();
+  placeSpeechPanel();
+  showDesktopSettingsTab(tab);
+  readerOptions.hidden = false;
+  readerOptions.classList.add("is-open", "desktop-settings-open");
+  const trigger = $<HTMLButtonElement>("#reader-settings-toggle");
+  trigger.setAttribute("aria-expanded", "true");
+  activeReaderOptionsTrigger = trigger;
+  if (!readerOptionsHistory) {
+    history.pushState({ ...history.state, autumnReaderOptions: true }, "");
+    readerOptionsHistory = true;
+  }
+}
+
 async function refreshReaderTtsAccess(): Promise<void> {
   const trigger = $<HTMLButtonElement>("#speech-toggle");
+  const sidebarTrigger = $<HTMLButtonElement>("#reader-tts-tab");
   let allowed = false;
   try {
     allowed = ttsAvailable() && auth.state.status === "authenticated" && (await plans.current()).premium_tts_tier !== "none";
   } catch { allowed = false; }
   trigger.hidden = !allowed;
+  sidebarTrigger.hidden = !allowed;
+  if (!allowed && activeReaderSidebarTab === "tts") setReaderSidebarTab("contents");
   if (!allowed && activeReaderOptionsTrigger === trigger) closeReaderOptions();
 }
 function closeReaderOptions(fromHistory = false): void {
   if (!readerOptions.classList.contains("is-open")) return;
   readerOptions.classList.remove("is-open");
+  readerOptions.classList.remove("desktop-settings-open");
   readerOptions.hidden = true;
   for (const trigger of readerOptionTriggers) trigger.setAttribute("aria-expanded", "false");
+  $<HTMLButtonElement>("#reader-settings-toggle").setAttribute("aria-expanded", "false");
   readerOptions.querySelectorAll<HTMLElement>(".reader-option-panel").forEach(panel => { panel.hidden = true; });
   activeReaderOptionsTrigger = null;
   if (readerOptionsHistory) {
@@ -1885,6 +2202,7 @@ function closeReaderOptions(fromHistory = false): void {
   }
 }
 function openReaderOptions(trigger: HTMLButtonElement): void {
+  placeSpeechPanel();
   const panelId = trigger.getAttribute("aria-controls");
   if (!panelId) return;
   if (activeReaderOptionsTrigger === trigger && readerOptions.classList.contains("is-open")) { closeReaderOptions(); return; }
@@ -1892,6 +2210,7 @@ function openReaderOptions(trigger: HTMLButtonElement): void {
   for (const button of readerOptionTriggers) button.setAttribute("aria-expanded", String(button === trigger));
   readerOptions.querySelectorAll<HTMLElement>(".reader-option-panel").forEach(panel => { panel.hidden = panel.id !== panelId; });
   readerOptions.hidden = false;
+  readerOptions.classList.remove("desktop-settings-open");
   readerOptions.classList.add("is-open");
   activeReaderOptionsTrigger = trigger;
   if (panelId === "speech-panel") {
@@ -1905,6 +2224,22 @@ function openReaderOptions(trigger: HTMLButtonElement): void {
   resetReaderChrome();
 }
 for (const trigger of readerOptionTriggers) trigger.addEventListener("click", () => openReaderOptions(trigger));
+$<HTMLButtonElement>("#reader-settings-toggle").addEventListener("click", () => openDesktopReaderSettings());
+$<HTMLButtonElement>("#reader-settings-layout-tab").addEventListener("click", () => showDesktopSettingsTab("layout"));
+$<HTMLButtonElement>("#reader-settings-appearance-tab").addEventListener("click", () => showDesktopSettingsTab("appearance"));
+const readerSidebarTabs = (["contents", "notes", "tts"] as const).map(name => $<HTMLButtonElement>(`#reader-${name}-tab`));
+readerSidebarTabs.forEach((button, index) => {
+  button.addEventListener("click", () => setReaderSidebarTab((["contents", "notes", "tts"] as const)[index]));
+  button.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const visible = readerSidebarTabs.filter(tab => !tab.hidden);
+    const current = visible.indexOf(button);
+    const next = event.key === "Home" ? visible[0] : event.key === "End" ? visible.at(-1)
+      : visible[(current + (event.key === "ArrowRight" ? 1 : -1) + visible.length) % visible.length];
+    next?.focus(); next?.click();
+  });
+});
 window.addEventListener("popstate", () => closeReaderOptions(true));
 document.addEventListener("pointerdown", event => {
   if (readerOptions.classList.contains("is-open") && !readerOptions.contains(event.target as Node) && !(event.target as Element).closest(".reader-tool-button")) closeReaderOptions();
@@ -1916,14 +2251,18 @@ document.addEventListener("toggle", event => {
     document.querySelectorAll<HTMLDetailsElement>(".book-menu[open]").forEach(other => { if (other !== menu) other.open = false; });
 }, true);
 $("#back-button").addEventListener("click", () => { closeReaderOptions(); setView(lastCollectionView); });
+$("#desktop-reader-back").addEventListener("click", () => { closeReaderOptions(); setView(lastCollectionView); });
 $("#previous-button").addEventListener("click", () => void turnPage(-1));
 $("#next-button").addEventListener("click", () => void turnPage(1));
 $("#smaller-button").addEventListener("click", () => changeSize(-1));
 $("#larger-button").addEventListener("click", () => changeSize(1));
 $<HTMLInputElement>("#reader-brightness").addEventListener("input", event => {
-  const value = (event.target as HTMLInputElement).value;
+  const value = Number((event.target as HTMLInputElement).value);
+  readerBrightness = value;
   readingSurface.style.filter = `brightness(${value}%)`;
   $<HTMLOutputElement>("#brightness-value").textContent = `${value}%`;
+  const key = readerPreferenceKey("brightness");
+  if (key) localStorage.setItem(key, String(value));
   resetReaderChrome();
 });
 function ttsAvailable(): boolean {
@@ -2339,6 +2678,14 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(".theme-choice
     applyTheme();
   });
 }
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-book-theme]")) {
+  button.addEventListener("click", () => {
+    bookReaderTheme = button.dataset.bookTheme as BookReaderTheme;
+    const key = readerPreferenceKey("theme");
+    if (key) localStorage.setItem(key, bookReaderTheme);
+    applyBookReaderTheme();
+  });
+}
 const renderNoteStyleChoices = (): void => {
   for(const button of document.querySelectorAll<HTMLButtonElement>(".note-style-choice")){
     const selected=button.dataset.noteStyle===noteStyle;
@@ -2448,6 +2795,7 @@ window.addEventListener("resize", () => {
 applyTheme();
 setView("home");
 mountSettings($("#view-settings"));
+void mountDesktopGeneralSettings();
 translationUI=mountTranslation($("#translation-panel"),translationService,()=>readingSurface.focus({preventScroll:true}));
 $("#selection-translate").addEventListener("click",()=>{hideNoteMenu();searchUI?.close();translationUI?.open(selectedTranslationText);});
 searchUI = mountBookSearch($("#book-search-panel"), jumpToSearch, () => { clearSearchHighlight(); $("#book-search-button").focus(); });
@@ -2467,7 +2815,20 @@ $("#reading-adopt").addEventListener("click", () => {
   if (currentBook?.format === "epub") { stableLayoutAnchor = null; stableLayoutPercentage = null; currentBook.cfi = epubPosition.cfi; if (rendition?.location) currentBook.percentage = epubReadingPercentage(rendition.location); }
   void persistCurrent(); updateHistory();
 });
-folderUI = mountFolders($("#library-folders"), renderCollections, showToast, () => confirmAction({ title: t("deleteFolder"), message: t("deleteFolderMessage"), confirmLabel: t("deleteFolder"), tone: "remove" }), () => { $<HTMLInputElement>("#library-search").value = ""; });
+folderUI = mountFolders(
+  $("#library-folders"),
+  renderCollections,
+  showToast,
+  deleteBooks => confirmAction({ title: t("deleteFolder"), message: t(deleteBooks ? "deleteFolderWithBooksMessage" : "deleteFolderMessage"), confirmLabel: t("deleteFolder"), tone: "remove" }),
+  () => { $<HTMLInputElement>("#library-search").value = ""; },
+  () => desktopGeneralPreferences.deleteBooksWithFolder,
+  async folderBooks => {
+    for (const book of folderBooks) await deleteBook(book.id, { permanent: desktopGeneralPreferences.disableTrashBin });
+    const removed = new Set(folderBooks.map(book => book.id));
+    books = books.filter(book => !removed.has(book.id));
+    renderCollections();
+  },
+);
 $("#legacy-recovery-button").addEventListener("click", () => {
   const owner = auth.state.ownerId;
   if (!owner) return;
@@ -2518,12 +2879,17 @@ bookLayoutUI = mountLayoutFields($("#book-layout-fields"), {
   changeGlobal: () => {},
   changeBook: value => {
     if (!currentBook) return;
+    const previousEffective = resolvePagePreferences(globalPagePreferences, bookPageOverrides);
+    const nextEffective = resolvePagePreferences(globalPagePreferences, value);
     bookPageOverrides = value;
     saveBookPageOverrides(currentBook.ownerId ?? auth.state.ownerId ?? "local", currentBook.id, value);
-    void relayoutReader();
+    // Turning off inheritance initially copies the value already on screen.
+    // Do not ask EPUB.js to repaginate until the reader actually changes it:
+    // a no-op resize can disturb the publisher's layout in complex EPUBs.
+    if (!pagePreferencesEqual(previousEffective, nextEffective)) void relayoutReader();
   },
 });
-mountAccount(app, $(".shell"), $("#settings-account-panel"));
+mountAccount(app, $(".shell"), $("#settings-account-sheet"));
 mountAccountPlans($("#settings-plan"));
 mountAccountSecurity($("#settings-security"));
 const cloudDownloads = new Map<string, Promise<StoredBook>>();

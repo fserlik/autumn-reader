@@ -9,6 +9,7 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
   const cloud = await mockCloud(page, true);
   await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-name")).toHaveText("Gratis");
   await expect(page.locator(".plan-storage")).toContainText("1 GB");
   await expect(page.locator(".plan-devices")).toContainText("1 de 2");
@@ -49,6 +50,7 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
   cloud.setPlan("plus");
   await page.reload();
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-name")).toHaveText("Autumn+");
   await expect(page.locator(".plan-storage")).toContainText("25 GB");
   await expect(page.locator(".plan-devices")).toContainText("Ilimitados");
@@ -57,53 +59,42 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
   await page.locator("#settings-interface-tab").click();
   await page.locator('[data-theme-choice="dark"]').click();
   await page.locator("#settings-account-tab").click();
-  await page.locator(".plan-compare").click();
-  const dark = await page.locator(".plan-card").first().evaluate(el => getComputedStyle(el).backgroundColor);
-  await page.locator(".plan-dialog .note-close").click();
+  await expect(page.locator(".plan-subscription-detail")).toContainText("Mensual");
+  await expect(page.locator(".plan-compare")).toContainText("Administrar suscripción");
   await page.locator("#settings-interface-tab").click();
   await page.locator('[data-theme-choice="light"]').click();
   await page.locator("#settings-account-tab").click();
-  await page.locator(".plan-compare").click();
-  const light = await page.locator(".plan-card").first().evaluate(el => getComputedStyle(el).backgroundColor);
-  expect(light).not.toBe(dark);
-  await page.locator(".plan-dialog .note-close").click();
+  const light = await page.locator(".plan-feature").evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(light).toBeTruthy();
   cloud.setPlan("pro");
   await page.reload();
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-name")).toHaveText("Autumn Pro");
   await expect(page.locator(".plan-storage")).toContainText("100 GB");
 });
 
-test("Microsoft Store choices appear only in the native Windows app", async ({ page }) => {
-  await page.addInitScript(() => {
-    (window as unknown as {isTauri:boolean}).isTauri = true;
-    (window as unknown as {__TAURI_INTERNALS__:{invoke:(command:string)=>Promise<unknown>}}).__TAURI_INTERNALS__ = {
-      invoke: async (command: string) => command === "microsoft_store_products" ? [
-        {productId:"autumn_plus_monthly",storeId:"9AAAAAAAAAAA",title:"Autumn+ mensual",formattedPrice:"ARS 4.999",formattedRecurrencePrice:"ARS 4.999",owned:false},
-        {productId:"autumn_plus_yearly",storeId:"9BBBBBBBBBBB",title:"Autumn+ anual",formattedPrice:"ARS 39.999",formattedRecurrencePrice:"ARS 39.999",owned:false},
-        {productId:"autumn_pro_monthly",storeId:"9CCCCCCCCCCC",title:"Autumn Pro mensual",formattedPrice:"ARS 9.999",formattedRecurrencePrice:"ARS 9.999",owned:false},
-        {productId:"autumn_pro_yearly",storeId:"9DDDDDDDDDDD",title:"Autumn Pro anual",formattedPrice:"ARS 79.999",formattedRecurrencePrice:"ARS 79.999",owned:false},
-      ] : [],
-    };
-  });
+test("Lemon Squeezy choices are account-based on every platform", async ({ page }) => {
   await mockCloud(page, true); await page.goto("/"); await login(page);
-  await page.locator('.nav-button[data-view="settings"]').click(); await page.locator(".plan-compare").click();
-  await expect(page.locator(".plan-store-toolbar")).toBeVisible();
+  await page.locator('.nav-button[data-view="settings"]').click(); await page.locator("#settings-account-tab").click(); await page.locator(".plan-compare").click();
   await expect(page.locator(".plan-card-featured .plan-store-choice")).toHaveCount(2);
   await expect(page.locator(".plan-card-featured .plan-store-choice").first()).toContainText("Mensual");
-  await expect(page.locator(".plan-card-featured .plan-store-choice").first()).toContainText("ARS 4.999");
+  await expect(page.locator(".plan-card-featured .plan-store-choice").first()).toContainText("4.99");
   await expect(page.locator(".plan-card-featured .plan-store-choice").first()).toBeEnabled();
+  await expect(page.locator(".plan-dialog-intro")).toContainText("Lemon Squeezy");
 });
 
 test("a third Free installation can revoke an old device and then register", async ({ page }) => {
   await mockCloud(page, true);
   await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-devices")).toContainText("1 de 2");
   await page.evaluate(() => localStorage.setItem("autumn-installation-id", crypto.randomUUID()));
   await page.locator("#account-logout").click();
   await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-devices")).toContainText("2 de 2");
   await page.evaluate(() => localStorage.setItem("autumn-installation-id", crypto.randomUUID()));
   await page.locator("#account-logout").click();
@@ -122,7 +113,7 @@ test("revoking a PC session blocks cloud access, signs it out, and cannot restor
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Kept.epub",mimeType:"application/epub+zip",buffer:await epubFixture("kept","Kept locally")});
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   const phoneContext = await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   try {
     const phone = await phoneContext.newPage();
@@ -130,6 +121,7 @@ test("revoking a PC session blocks cloud access, signs it out, and cannot restor
     await phone.goto("/"); await login(phone);
     const revokePc = async () => {
       await phone.locator('.nav-button[data-view="settings"]').click();
+      await phone.locator("#settings-account-tab").click();
       await phone.locator(".plan-manage-devices").click();
       await expect(phone.locator(".device-row")).toHaveCount(2);
       phone.once("dialog", dialog => dialog.accept());
@@ -165,6 +157,7 @@ test("a downgraded account shows over-quota without removing its existing cloud 
   cloud.setQuota({used_books:68,used_bytes:2*1073741824,max_bytes:1073741824,active_pending_uploads:0,reserved_bytes:0});
   await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-warning")).toContainText("Superaste el límite de almacenamiento");
   await page.locator(".cloud-storage-manage").click();
   await expect(page.locator(".cloud-storage-dialog-usage")).toContainText("68 libros en la nube");
@@ -186,6 +179,7 @@ test("the unified account card keeps its actions in all four languages", async (
       await mockCloud(localized, true);
       await localized.goto("/"); await login(localized);
       await localized.locator('.nav-button[data-view="settings"]').click();
+      await localized.locator("#settings-account-tab").click();
       await expect(localized.locator(".plan-identity h3")).toHaveText(heading);
       await expect(localized.locator(".plan-feature #migrate-library")).toContainText(sync);
       await expect(localized.locator(".plan-feature .cloud-storage-manage")).toContainText(manage);

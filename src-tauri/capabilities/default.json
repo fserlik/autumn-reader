@@ -3,5 +3,17 @@
   "identifier": "default",
   "description": "Basic permissions for the main window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-hide",
+    "core:window:allow-maximize",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://*.lemonsqueezy.com/**" },
+        { "url": "https://autumnreader.lat/**" },
+        { "url": "https://*.autumnreader.lat/**" }
+      ]
+    }
+  ]
 }

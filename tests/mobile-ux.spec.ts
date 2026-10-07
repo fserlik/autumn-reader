@@ -146,12 +146,12 @@ test("library menus are exclusive and close on outside press or Escape", async (
   await expect(menus.nth(0)).not.toHaveAttribute("open", "");
 });
 
-test("settings sections use themed surfaces and logout ends the account panel", async ({ page }) => {
+test("settings sections use themed surfaces and logout ends the account panel", async ({ page }, info) => {
   await mockCloud(page, true); await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
   await page.locator("#settings-page-tab").click();
-  await expect(page.locator("#settings-page-panel > .settings-group")).toHaveCount(3);
-  const surfaces = await page.locator("#settings-page-panel > .settings-group").first().evaluate(el => ({
+  await expect(page.locator("#settings-page-panel > .page-settings-panel")).toBeVisible();
+  const surfaces = await page.locator("#settings-page-panel > .page-settings-panel").evaluate(el => ({
     card: getComputedStyle(el).backgroundColor,
     page: getComputedStyle(document.querySelector(".settings-view")!).backgroundColor,
   }));
@@ -159,7 +159,7 @@ test("settings sections use themed surfaces and logout ends the account panel", 
   await expect(page.locator("#settings-account-panel #account-logout")).toBeHidden();
   await page.locator("#settings-account-tab").click();
   await expect(page.locator("#settings-account-panel #account-logout")).toBeVisible();
-  expect(await page.locator("#settings-account-panel").evaluate(el => el.lastElementChild?.classList.contains("account-settings"))).toBe(true);
+  expect(await page.locator("#settings-account-sheet").evaluate(el => el.lastElementChild?.classList.contains("account-settings"))).toBe(true);
   const alignment = await page.locator("#settings-account-panel .account-settings").evaluate(el => getComputedStyle(el).justifyContent);
-  expect(alignment).toBe("center");
+  expect(alignment).toBe(info.project.name === "desktop" ? "flex-end" : "flex-start");
 });

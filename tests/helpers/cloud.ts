@@ -264,6 +264,19 @@ export async function mockCloud(page: Page, emptyLibrary = false, cloudFile?: Bu
           status: "unread", updated_at: timestamp, deleted_at: null,
           display_title: null, display_author: null, cover_path: null, metadata_updated_at: timestamp })));
     } else if (url.pathname.endsWith("/rpc/plan_catalog")) data = planCatalog;
+    else if (url.pathname.endsWith("/rpc/get_user_entitlements")) {
+      const selected=planCatalog.find(plan=>plan.code===planCode)!;
+      data={
+        plan:selected.code,cloudStorageBytes:selected.cloud_bytes,maxDevices:selected.max_devices,
+        sync:true,offline:true,notesAndHighlights:true,advancedThemes:selected.advanced_themes,
+        advancedStats:selected.advanced_stats,translationTier:selected.translation_tier,
+        premiumTtsTier:selected.premium_tts_tier,subscriptionStatus:planCode==="free"?"free":"active",
+        billingPeriod:planCode==="free"?null:"monthly",currentPeriodStart:null,
+        currentPeriodEnd:planCode==="free"?null:new Date(Date.now()+30*86400000).toISOString(),
+        cancelAtPeriodEnd:false,provider:planCode==="free"?null:"lemonsqueezy",
+        activeDevices:activeDevices.get(current)?.size??0,
+      };
+    }
     else if (url.pathname.endsWith("/rpc/account_plan")) data = {
       ...planCatalog.find(plan=>plan.code===planCode)!, subscription_status:planCode==="free"?"free":"active",
       billing_cycle:planCode==="free"?null:"monthly",starts_at:null,renews_at:null,expires_at:null,grace_until:null,
@@ -325,6 +338,10 @@ export async function mockCloud(page: Page, emptyLibrary = false, cloudFile?: Bu
         }
       }
       data = ops.map((o) => ({ id: o.id, outcome: "applied" }));
+    } else if (url.pathname.includes("/functions/v1/billing-portal")) {
+      data={portalUrl:"https://app.lemonsqueezy.com/my-orders/test-session"};
+    } else if (url.pathname.includes("/functions/v1/billing-checkout")) {
+      data={checkoutUrl:"https://autumn-reader.lemonsqueezy.com/buy/test-session"};
     } else if (url.pathname.includes("/functions/v1/book-storage")) {
       const action = req.postDataJSON() as { action: string; bookId?: string };
       if (action.action === "remove") {

@@ -139,14 +139,35 @@ test("header avatar picker validates files and keeps profile editing independent
 });
 
 test("settings separate account, page, and interface and support keyboard navigation", async ({page}, testInfo) => {
+  const desktop = testInfo.project.name === "desktop";
   await mockCloud(page,true);
   await page.addInitScript(() => localStorage.setItem("autumn-language","es"));
   await page.goto("/");
   await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
+  if (desktop) {
+    await expect(page.locator("#settings-general-panel")).toBeVisible();
+    await expect(page.locator("[data-general-setting]")).toHaveCount(6);
+    await expect(page.locator("#settings-general-panel #app-language")).toBeVisible();
+    await expect(page.locator("#settings-account-panel")).toBeHidden();
+    await expect(page.locator(".general-settings-sheet")).toHaveCSS("border-top-width", "1px");
+    const settingType = await page.locator(".general-setting-row .settings-copy strong, #settings-page-panel .settings-copy h3, .tts-setting-row .settings-copy h3, #settings-interface-panel .settings-copy h3").evaluateAll(elements => elements.map(element => {
+      const style = getComputedStyle(element);
+      return `${style.fontFamily}|${style.fontSize}|${style.fontWeight}|${style.lineHeight}`;
+    }));
+    expect(new Set(settingType).size).toBe(1);
+    await page.locator("#general-screen-awake").check();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("autumn-desktop-general") ?? "{}").preventScreenBlanking)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath("settings-general.png"), fullPage:true});
+    await page.locator("#settings-account-tab").click();
+  } else {
+    await expect(page.locator("#settings-general-tab")).toHaveCount(0);
+  }
   await expect(page.locator("#settings-account-panel")).toBeVisible();
   await expect(page.locator("#settings-account-panel #migrate-library, #settings-account-panel #account-logout")).toHaveCount(2);
   await expect(page.locator("#account-logout")).toHaveCount(1);
+  await expect(page.locator("#settings-account-panel .settings-note")).toHaveCount(0);
+  await expect(page.locator("#settings-account-sheet > #settings-plan, #settings-account-sheet > #settings-security, #settings-account-sheet > .account-settings")).toHaveCount(3);
   await expect(page.locator("#book-font")).toBeHidden();
   await expect(page.locator("#app-language")).toBeHidden();
   await page.screenshot({path:testInfo.outputPath("settings-account.png"), fullPage:true});
@@ -162,10 +183,14 @@ test("settings separate account, page, and interface and support keyboard naviga
   await expect(page.locator("#settings-tts-tab")).toHaveAttribute("aria-selected","true");
   await expect(page.locator("#settings-tts-tab")).toHaveText("TTS");
   await expect(page.locator("#settings-tts-panel #tts-voice-select")).toBeVisible();
+  await expect(page.locator(".tts-settings-sheet")).toHaveCSS("border-top-width", "1px");
+  if (desktop) await page.screenshot({path:testInfo.outputPath("settings-tts.png"), fullPage:true});
   await page.keyboard.press("ArrowRight");
   await expect(page.locator("#settings-interface-tab")).toHaveAttribute("aria-selected","true");
   await expect(page.locator("#settings-interface-tab")).toHaveText("Apariencia");
-  await expect(page.locator("#settings-interface-panel #app-language")).toBeVisible();
+  if (desktop) await expect(page.locator("#settings-interface-panel #app-language")).toHaveCount(0);
+  else await expect(page.locator("#settings-interface-panel #app-language")).toBeVisible();
+  await expect(page.locator("#settings-interface-panel .interface-settings-sheet > .settings-group")).toHaveCount(desktop ? 3 : 4);
   await expect(page.locator(".note-style-choice")).toHaveCount(4);
   await expect(page.locator(".note-style-options")).toContainText("Subrayado ondulado");
   await page.locator('[data-note-style="wavy"]').click();
@@ -178,9 +203,30 @@ test("settings separate account, page, and interface and support keyboard naviga
   await page.screenshot({path:testInfo.outputPath("settings-interface.png"), fullPage:true});
   await page.locator("#settings-interface-tab").focus();
   await page.keyboard.press("Home");
-  await expect(page.locator("#settings-account-tab")).toHaveAttribute("aria-selected","true");
-  await expect(page.locator("#account-logout")).toBeVisible();
+  await expect(page.locator(desktop ? "#settings-general-tab" : "#settings-account-tab")).toHaveAttribute("aria-selected","true");
+  if (desktop) {
+    await expect(page.locator("#account-logout")).toBeHidden();
+    await expect(page.locator("#settings-general-panel #app-language")).toBeVisible();
+    await page.screenshot({path:testInfo.outputPath("settings-general-dark.png"), fullPage:true});
+  } else {
+    await expect(page.locator("#account-logout")).toBeVisible();
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
+test("desktop General settings stays readable at the minimum window size", async ({page}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop");
+  await page.setViewportSize({ width: 760, height: 540 });
+  await mockCloud(page, true);
+  await page.addInitScript(() => localStorage.setItem("autumn-language", "es"));
+  await page.goto("/");
+  await login(page);
+  await page.locator('.nav-button[data-view="settings"]').click();
+  await expect(page.locator("#settings-general-panel")).toBeVisible();
+  await expect(page.locator(".general-setting-row")).toHaveCount(7);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  expect(await page.locator("#general-minimize-tray").evaluate(input => input.getBoundingClientRect().right <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath("settings-general-760.png") });
 });
 
 test("avatar uploads PNG when the WebView cannot encode WebP", async ({page,context}) => {

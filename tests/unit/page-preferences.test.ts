@@ -1,5 +1,5 @@
 import { test, expect, vi } from "vitest";
-import { loadPagePreferences, savePagePreferences, defaultPagePreferences, pageSpacingCss, resolvePagePreferences, saveBookPageOverrides, loadBookPageOverrides, columnCount } from "../../src/services/preferences/page";
+import { loadPagePreferences, savePagePreferences, defaultPagePreferences, pageSpacingCss, resolvePagePreferences, pagePreferencesEqual, saveBookPageOverrides, loadBookPageOverrides, columnCount } from "../../src/services/preferences/page";
 test("page spacing persists, resets, validates, and produces EPUB typography rules", () => {
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) });
@@ -31,4 +31,12 @@ test("book overrides inherit individual global settings and remain local to owne
   expect(columnCount("two", 390, 844)).toBe(1);
   expect(columnCount("two", 700, 400)).toBe(2);
   vi.unstubAllGlobals();
+});
+test("copying an inherited value into a book override is not an effective layout change", () => {
+  const global = { ...defaultPagePreferences, lineHeight: 1.8, margins: "wide" as const, font: "georgia" };
+  const inherited = resolvePagePreferences(global, {});
+  const identicalOverrides = resolvePagePreferences(global, { lineHeight: 1.8, margins: "wide", font: "georgia" });
+  const changedOverride = resolvePagePreferences(global, { lineHeight: 2.1 });
+  expect(pagePreferencesEqual(inherited, identicalOverrides)).toBe(true);
+  expect(pagePreferencesEqual(inherited, changedOverride)).toBe(false);
 });

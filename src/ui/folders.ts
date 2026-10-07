@@ -25,7 +25,15 @@ const folderDrawing = `<svg class="folder-drawing" viewBox="0 0 240 190" aria-hi
   <path class="folder-glint" d="M23 55Q20 30 47 27Q29 37 23 55ZM25 85Q27 65 51 65Q33 72 25 85ZM16 148Q12 173 40 175Q21 165 16 148ZM222 146Q219 173 193 175Q212 164 222 146Z"/>
 </svg>`;
 
-export function mountFolders(parent: HTMLElement, render: () => void, report: (message: string) => void, confirm: () => Promise<boolean>, clearSearch: () => void): FolderUI {
+export function mountFolders(
+  parent: HTMLElement,
+  render: () => void,
+  report: (message: string) => void,
+  confirm: (deleteBooks: boolean) => Promise<boolean>,
+  clearSearch: () => void,
+  deleteBooksWithFolder: () => boolean = () => false,
+  removeBooks: (books: StoredBook[]) => Promise<void> = async () => {},
+): FolderUI {
   parent.innerHTML = `<div class="folder-tools"><button id="folder-new" class="secondary-button" type="button">${t("newFolder")}</button><button id="folder-rename" class="text-link" type="button">${t("editFolder")}</button><button id="folder-delete" class="text-link" type="button">${t("deleteFolder")}</button></div><form id="folder-form" hidden><label for="folder-name">${t("folderName")}</label><input id="folder-name" maxlength="100" required /><fieldset class="folder-color-field"><legend>${t("folderColor")}</legend><div id="folder-color-options" class="book-color-options"><button id="folder-color-auto" class="color-auto" type="button" aria-pressed="true">${t("automaticColor")}</button></div><label class="custom-color-label" for="folder-custom-color">${t("customColor")} <input id="folder-custom-color" type="color" value="#326fca" aria-label="${t("customColor")}" /></label></fieldset><button class="primary-button" type="submit">${t("saveFolder")}</button><button id="folder-cancel" class="secondary-button" type="button">${t("cancel")}</button></form>
     <nav class="folder-breadcrumb" aria-label="${t("libraryLocation")}"><button id="folder-back" class="back-button" type="button" hidden>${t("backToLibrary")}</button><span id="folder-location"></span></nav>
     <section id="folder-section" aria-labelledby="folder-heading" hidden><h3 id="folder-heading" class="library-section-heading">${t("yourFolders")}</h3><div id="folder-grid" class="folder-grid"></div></section>
@@ -43,7 +51,7 @@ export function mountFolders(parent: HTMLElement, render: () => void, report: (m
   const section = parent.querySelector<HTMLElement>("#folder-section")!;
   const grid = parent.querySelector<HTMLElement>("#folder-grid")!;
   const heading = parent.querySelector<HTMLElement>("#folder-books-heading")!;
-  let items: LibraryFolder[] = [], memberships: LocalMembership[] = [], editing: LibraryFolder | undefined, owner: string | null = null;
+  let items: LibraryFolder[] = [], memberships: LocalMembership[] = [], knownBooks: StoredBook[] = [], editing: LibraryFolder | undefined, owner: string | null = null;
   let selectedColor: string | null = null;
   const showColors = (): void => {
     automatic.setAttribute("aria-pressed", String(selectedColor === null));
@@ -88,6 +96,7 @@ export function mountFolders(parent: HTMLElement, render: () => void, report: (m
       updateActions(); render();
     },
     update(books, query, visibleBookCount) {
+      knownBooks = books;
       const root = currentFolder === null, folder = selected();
       const counts = new Map<string, number>();
       for (const book of books) {
@@ -160,7 +169,13 @@ export function mountFolders(parent: HTMLElement, render: () => void, report: (m
   });
   remove.addEventListener("click", () => {
     const folder = selected(); if (!folder) return;
-    void confirm().then(async yes => { if (yes) { await folders.save({ ...folder, deleted_at: new Date().toISOString() }); await ui.reload(); } }).catch((error: unknown) => report(error instanceof Error ? error.message : t("deleteFolderFailed")));
+    const deleteBooks = deleteBooksWithFolder();
+    void confirm(deleteBooks).then(async yes => {
+      if (!yes) return;
+      if (deleteBooks) await removeBooks(knownBooks.filter(book => activeFolder(book) === folder.id));
+      await folders.save({ ...folder, deleted_at: new Date().toISOString() });
+      await ui.reload();
+    }).catch((error: unknown) => report(error instanceof Error ? error.message : t("deleteFolderFailed")));
   });
   updateActions();
   return ui;

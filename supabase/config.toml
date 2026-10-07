@@ -8,6 +8,14 @@ verify_jwt = false
 # Authentication is verified with auth.getUser(token) in the handler.
 verify_jwt = false
 
-[functions.microsoft-store-subscriptions]
+[functions.billing-checkout]
 # Authentication is verified with auth.getUser(token) in the handler.
+verify_jwt = false
+
+[functions.billing-portal]
+# Authentication is verified with auth.getUser(token) in the handler.
+verify_jwt = false
+
+[functions.lemonsqueezy-webhook]
+# Lemon Squeezy authenticates with its webhook signature; this endpoint does not use Supabase JWT auth.
 verify_jwt = false

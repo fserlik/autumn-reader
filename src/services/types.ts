@@ -185,6 +185,19 @@ export interface Database {
       };
       plan_catalog: { Args: Record<string, never>; Returns: import("./plans").PlanDefinition[] };
       account_plan: { Args: Record<string, never>; Returns: import("./plans").AccountPlan };
+      get_user_entitlements: {
+        Args: Record<string, never>;
+        Returns: {
+          plan: "free" | "plus" | "pro"; cloudStorageBytes: number; maxDevices: number | null;
+          sync: boolean; offline: boolean; notesAndHighlights: boolean; advancedThemes: boolean;
+          advancedStats: boolean; translationTier: "very_limited" | "standard" | "high";
+          premiumTtsTier: "none" | "limited" | "full"; subscriptionStatus: string;
+          billingPeriod: "monthly" | "annual" | null; currentPeriodStart: string | null;
+          currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean;
+          provider: "lemonsqueezy" | "google_play" | "apple" | "microsoft_store" | "manual" | null;
+          activeDevices: number;
+        };
+      };
       register_device: { Args: { p_device: string; p_platform: string; p_name: string }; Returns: import("./devices").DeviceAccess };
       account_devices: { Args: Record<string, never>; Returns: import("./devices").AccountDevice[] };
       remove_account_device: { Args: { p_device: string }; Returns: { removed: boolean } };

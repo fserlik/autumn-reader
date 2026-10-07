@@ -14,6 +14,9 @@ export interface PlanDefinition {
   advanced_stats: boolean;
   translation_tier: "very_limited" | "standard" | "high";
   premium_tts_tier: "none" | "limited" | "full";
+  sync_enabled?: boolean;
+  offline_enabled?: boolean;
+  notes_and_highlights_enabled?: boolean;
 }
 export interface AccountPlan extends PlanDefinition {
   subscription_status: string;
@@ -23,6 +26,27 @@ export interface AccountPlan extends PlanDefinition {
   expires_at: string | null;
   grace_until: string | null;
   active_devices: number;
+  cancel_at_period_end: boolean;
+  provider: "lemonsqueezy" | "google_play" | "apple" | "microsoft_store" | "manual" | null;
+}
+interface EntitlementResponse {
+  plan: PlanCode;
+  cloudStorageBytes: number;
+  maxDevices: number | null;
+  sync: boolean;
+  offline: boolean;
+  notesAndHighlights: boolean;
+  advancedThemes: boolean;
+  advancedStats: boolean;
+  translationTier: PlanDefinition["translation_tier"];
+  premiumTtsTier: PlanDefinition["premium_tts_tier"];
+  subscriptionStatus: string;
+  billingPeriod: "monthly" | "annual" | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  provider: AccountPlan["provider"];
+  activeDevices: number;
 }
 let current: AccountPlan | undefined;
 let currentOwner: string | null = null;
@@ -33,12 +57,35 @@ export const plans = {
   async current(): Promise<AccountPlan> {
     const owner = auth.requireUser();
     if (currentOwner === owner && current && Date.now() - currentCheckedAt < 60_000) return current;
-    const { data, error } = await cloud().rpc("account_plan", {});
+    const { data, error } = await cloud().rpc("get_user_entitlements", {});
     checkError(error);
     if (!data || auth.state.ownerId !== owner) throw new CloudError("session_expired");
     currentOwner = owner;
     currentCheckedAt = Date.now();
-    return current = data;
+    const value = data as EntitlementResponse;
+    return current = {
+      code: value.plan,
+      monthly_usd_cents: 0,
+      annual_usd_cents: null,
+      cloud_bytes: value.cloudStorageBytes,
+      max_devices: value.maxDevices,
+      advanced_themes: value.advancedThemes,
+      advanced_stats: value.advancedStats,
+      translation_tier: value.translationTier,
+      premium_tts_tier: value.premiumTtsTier,
+      sync_enabled: value.sync,
+      offline_enabled: value.offline,
+      notes_and_highlights_enabled: value.notesAndHighlights,
+      subscription_status: value.subscriptionStatus,
+      billing_cycle: value.billingPeriod,
+      starts_at: value.currentPeriodStart,
+      renews_at: value.cancelAtPeriodEnd ? null : value.currentPeriodEnd,
+      expires_at: value.currentPeriodEnd,
+      grace_until: null,
+      active_devices: value.activeDevices,
+      cancel_at_period_end: value.cancelAtPeriodEnd,
+      provider: value.provider,
+    };
   },
   async catalog(): Promise<PlanDefinition[]> {
     auth.requireUser();

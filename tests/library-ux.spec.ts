@@ -8,7 +8,8 @@ test("desktop library uses a larger readable type scale without changing mobile 
   await page.addInitScript(() => localStorage.setItem("autumn-theme", "dark"));
   await mockCloud(page, true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Readable.epub", mimeType: "application/epub+zip", buffer: await epubFixture() });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#back-button").click();
+  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await page.locator(info.project.name === "desktop" ? "#desktop-reader-back" : "#back-button").click();
   await page.locator('.nav-button[data-view="library"]').click();
   const card = page.locator("#library-list .library-book-card").first();
   const sizes = await card.evaluate((element) => ({
@@ -30,7 +31,7 @@ test("desktop library grid/list, sorting, cloud state and folder drag persist of
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles(await Promise.all(["Zeta.epub", "Alpha.epub"].map(async name => ({ name, mimeType: "", buffer: await epubFixture(name, name.replace(/\.epub$/, "")) }))));
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back").click();
   await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator("#library-list .library-book-card")).toHaveCount(2);
   await expect(page.locator("#library-list .cloud-badge.state-local")).toHaveCount(2);
@@ -68,6 +69,28 @@ test("desktop library grid/list, sorting, cloud state and folder drag persist of
   await expect(page.locator(".folder-count")).toHaveText("1 libro");
   await tile.click(); await expect(page.locator("#library-list .book-title")).toHaveText("Alpha");
   await context.setOffline(false);
+});
+
+test("desktop General can delete a folder together with its books", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Desktop-only preference");
+  await mockCloud(page, true); await page.goto("/"); await login(page);
+  await page.locator("#file-input").setInputFiles({ name: "Ephemeral.epub", mimeType: "application/epub+zip", buffer: await epubFixture("ephemeral", "Ephemeral") });
+  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#desktop-reader-back").click();
+  await page.locator('.nav-button[data-view="library"]').click();
+  await page.locator("#folder-new").click(); await page.locator("#folder-name").fill("Temporal");
+  await page.locator('#folder-form [type="submit"]').click();
+  const tile = page.locator(".folder-tile");
+  const folderId = await tile.getAttribute("data-folder-id");
+  await page.locator(".book-folder").selectOption(folderId!);
+  await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#general-delete-folder-books").check();
+  await page.locator('.nav-button[data-view="library"]').click();
+  await tile.click();
+  await page.locator("#folder-delete").click();
+  await expect(page.locator("#confirm-message")).toContainText("todos los libros");
+  await page.locator("#confirm-accept").click();
+  await expect(tile).toHaveCount(0);
+  await expect(page.locator("#library-list .book-title")).toHaveCount(0);
 });
 
 test("touch library keeps its folder selector and does not start desktop preview", async ({ page }, info) => {

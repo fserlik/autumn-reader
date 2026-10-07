@@ -1,8 +1,8 @@
 import { auth } from "../services/auth";
+import { billing } from "../services/billing";
 import { library } from "../services/books";
 import { devices, type AccountDevice } from "../services/devices";
 import { plans, type AccountPlan, type PlanDefinition } from "../services/plans";
-import { microsoftStore, type MicrosoftStoreProduct } from "../services/plans/microsoft-store";
 import { errorMessage } from "../services/errors";
 import { language, t } from "../i18n";
 import leafUrl from "../assets/autumn-leaf.png";
@@ -13,14 +13,15 @@ const size = (bytes: number): string => {
   const value = bytes / unit;
   return `${new Intl.NumberFormat(language, { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value)} ${unit === 1073741824 ? "GB" : "MB"}`;
 };
-const name = (code: PlanDefinition["code"]): string => t(code === "free" ? "planFree" : code === "plus" ? "planPlus" : "planPro");
+const name = (code: PlanDefinition["code"]): string =>
+  t(code === "free" ? "planFree" : code === "plus" ? "planPlus" : "planPro");
 const price = (cents: number): string => cents === 0 ? "0" : (cents / 100).toFixed(2);
 
 export function mountAccountPlans(parent: HTMLElement): void {
   const section = document.createElement("section");
   section.className = "account-feature plan-feature";
   section.innerHTML = `<div class="plan-identity"><img class="plan-leaf" src="${leafUrl}" alt="" />
-      <div><h3>${t("planSection")}</h3><p class="plan-name"></p><span class="plan-current">${t("planCurrent")}</span></div></div>
+      <div><h3>${t("planSection")}</h3><p class="plan-name"></p><span class="plan-current">${t("planCurrent")}</span><p class="plan-subscription-detail"></p></div></div>
     <div class="plan-usage"><div class="plan-storage-row">${accountIcon("cloud")}
       <div class="plan-storage-detail"><div class="plan-storage-heading"><p class="plan-storage"></p><span class="plan-percent"></span></div>
         <progress class="plan-meter" max="100" value="0" aria-label="${t("planStorage")}"></progress></div></div>
@@ -31,7 +32,7 @@ export function mountAccountPlans(parent: HTMLElement): void {
   const comparison = document.createElement("dialog");
   comparison.className = "account-dialog plan-dialog";
   comparison.innerHTML = `<header><h2>${t("plansTitle")}</h2><button class="note-close" type="button" aria-label="${t("plansClose")}">×</button></header>
-    <div class="plan-cards"></div><div class="plan-store-toolbar" hidden><span>${t("planMicrosoftStore")}</span><button class="text-link plan-restore" type="button">${t("planRestore")}</button></div><p class="plan-message" role="status"></p>`;
+    <p class="plan-dialog-intro">${t("planCheckoutSecure")}</p><div class="plan-cards"></div><p class="plan-message" role="status"></p>`;
   const deviceDialog = document.createElement("dialog");
   deviceDialog.className = "account-dialog devices-dialog";
   deviceDialog.innerHTML = `<header><h2>${t("deviceListTitle")}</h2><button class="note-close" type="button" aria-label="${t("close")}">×</button></header>
@@ -40,6 +41,7 @@ export function mountAccountPlans(parent: HTMLElement): void {
   document.body.append(comparison, deviceDialog);
   const find = <T extends HTMLElement>(root: HTMLElement, selector: string): T => root.querySelector<T>(selector)!;
   const planName = find<HTMLElement>(section, ".plan-name");
+  const subscriptionDetail = find<HTMLElement>(section, ".plan-subscription-detail");
   const storage = find<HTMLElement>(section, ".plan-storage");
   const deviceCount = find<HTMLElement>(section, ".plan-devices");
   const warning = find<HTMLElement>(section, ".plan-warning");
@@ -47,17 +49,13 @@ export function mountAccountPlans(parent: HTMLElement): void {
   const percent = find<HTMLElement>(section, ".plan-percent");
   const cards = find<HTMLElement>(comparison, ".plan-cards");
   const planMessage = find<HTMLElement>(comparison, ".plan-message");
-  const storeToolbar = find<HTMLElement>(comparison, ".plan-store-toolbar");
-  const restoreButton = find<HTMLButtonElement>(comparison, ".plan-restore");
   const deviceRows = find<HTMLElement>(deviceDialog, ".device-rows");
   const deviceMessage = find<HTMLElement>(deviceDialog, ".device-message");
   const limitMessage = find<HTMLElement>(deviceDialog, ".device-limit-message");
-  let generation = 0;
-  let deviceLoad = 0;
+  let generation = 0, deviceLoad = 0;
   let owner: string | null = null;
   let currentPlan: AccountPlan | undefined;
-  let storeProducts: MicrosoftStoreProduct[] = [];
-  let storeBusy = false;
+  let billingBusy = false;
 
   function feature(label: string, value: string): HTMLElement {
     const row = document.createElement("li");
@@ -65,41 +63,33 @@ export function mountAccountPlans(parent: HTMLElement): void {
     left.textContent = label; right.textContent = value; row.append(left, right);
     return row;
   }
+  async function beginCheckout(plan: "plus" | "pro", period: "monthly" | "annual"): Promise<void> {
+    if (billingBusy) return;
+    billingBusy = true; planMessage.textContent = t("planPurchaseOpening");
+    try { await billing.checkout(plan, period); planMessage.textContent = t("planCheckoutPending"); }
+    catch { planMessage.textContent = t("planPurchaseFailed"); }
+    finally { billingBusy = false; }
+  }
   async function showPlans(): Promise<void> {
-    if (!comparison.open) comparison.showModal(); cards.replaceChildren(); planMessage.textContent = "";
-    const storeEnabled = microsoftStore.available();
-    storeToolbar.hidden = !storeEnabled;
-    if (storeEnabled) {
-      planMessage.textContent = t("planStoreLoading");
-      try { storeProducts = await microsoftStore.products(); }
-      catch { storeProducts = []; planMessage.textContent = t("planStoreUnavailable"); }
-    }
+    if (!comparison.open) comparison.showModal();
+    cards.replaceChildren(); planMessage.textContent = "";
     try {
       const catalog = await plans.catalog();
       if (!comparison.open) return;
-      if (storeEnabled && storeProducts.length) planMessage.textContent = "";
-      else if (storeEnabled && !planMessage.textContent) planMessage.textContent = t("planStoreNoProducts");
       for (const plan of catalog) {
         const card = document.createElement("article");
         card.className = `plan-card ${plan.code === "plus" ? "plan-card-featured" : ""}`;
         const heading = document.createElement("h3"); heading.textContent = name(plan.code);
-        const monthlyStore = storeProducts.find(entry => entry.productId === `autumn_${plan.code}_monthly`);
-        const yearlyStore = storeProducts.find(entry => entry.productId === `autumn_${plan.code}_yearly`);
         const pricing = document.createElement("p"); pricing.className = "plan-card-price";
-        pricing.textContent = plan.code === "free" ? t("planIncludedFree") : monthlyStore
-          ? `${monthlyStore.formattedRecurrencePrice || monthlyStore.formattedPrice} · ${t("planMonthly")}`
-          : t("planPerMonth", { price: price(plan.monthly_usd_cents) });
+        pricing.textContent = plan.code === "free" ? t("planIncludedFree") : t("planPerMonth", { price: price(plan.monthly_usd_cents) });
         const annual = document.createElement("p"); annual.className = "plan-card-annual";
-        annual.textContent = yearlyStore ? `${yearlyStore.formattedRecurrencePrice || yearlyStore.formattedPrice} · ${t("planYearly")}`
-          : plan.annual_usd_cents === null ? "" : t("planPerYear", { price: price(plan.annual_usd_cents) });
+        annual.textContent = plan.annual_usd_cents === null ? "" : t("planPerYear", { price: price(plan.annual_usd_cents) });
         const details = document.createElement("ul");
         details.append(
           feature(t("planStorage"), size(plan.cloud_bytes)),
           feature(t("planDevices"), plan.max_devices === null ? t("planUnlimited") : String(plan.max_devices)),
-          feature(t("planSync"), t("planIncluded")),
-          feature(t("planOffline"), t("planIncluded")),
-          feature(t("planNotes"), t("planIncluded")),
-          feature(t("planSocial"), t("planIncluded")),
+          feature(t("planSync"), t("planIncluded")), feature(t("planOffline"), t("planIncluded")),
+          feature(t("planNotes"), t("planIncluded")), feature(t("planSocial"), t("planIncluded")),
           feature(t("planBasicThemes"), t("planIncluded")),
           feature(t("planAdvancedThemes"), t(plan.advanced_themes ? "planIncluded" : "planNotIncluded")),
           feature(t("planAdvancedStats"), t(plan.advanced_stats ? "planIncluded" : "planNotIncluded")),
@@ -109,43 +99,29 @@ export function mountAccountPlans(parent: HTMLElement): void {
         const actions = document.createElement("div"); actions.className = "plan-purchase-actions";
         if (plan.code === currentPlan?.code || plan.code === "free") {
           const action = document.createElement("button"); action.type = "button"; action.className = "secondary-button";
-          action.textContent = plan.code === currentPlan?.code ? t("planCurrent") : t("planIncludedFree"); action.disabled = true; actions.append(action);
-        } else if (storeEnabled) {
-          for (const cycle of ["monthly", "yearly"] as const) {
-            const product = cycle === "monthly" ? monthlyStore : yearlyStore;
-            if (!product) continue;
-            const action = document.createElement("button"); action.type = "button"; action.className = "plan-store-choice";
-            action.innerHTML = `<span>${t(cycle === "monthly" ? "planMonthly" : "planYearly")}</span><strong></strong>`;
-            action.querySelector("strong")!.textContent = product.formattedRecurrencePrice || product.formattedPrice;
-            action.disabled = storeBusy;
-            action.addEventListener("click", () => void buy(product)); actions.append(action);
-          }
-          if (!actions.childElementCount) {
-            const unavailable = document.createElement("button"); unavailable.type = "button"; unavailable.className = "secondary-button";
-            unavailable.textContent = t("planStoreUnavailableShort"); unavailable.disabled = true; actions.append(unavailable);
-          }
+          action.textContent = plan.code === currentPlan?.code ? t("planCurrent") : t("planIncludedFree");
+          action.disabled = true; actions.append(action);
         } else {
-          const action = document.createElement("button"); action.type = "button"; action.className = "secondary-button";
-          action.textContent = t("planComingSoon"); action.disabled = true; actions.append(action);
+          for (const period of ["monthly", "annual"] as const) {
+            const action = document.createElement("button"); action.type = "button"; action.className = "plan-store-choice";
+            const cents = period === "monthly" ? plan.monthly_usd_cents : plan.annual_usd_cents ?? 0;
+            action.innerHTML = `<span>${t(period === "monthly" ? "planMonthly" : "planYearly")}</span><strong></strong>`;
+            action.querySelector("strong")!.textContent = t(period === "monthly" ? "planPerMonth" : "planPerYear", { price: price(cents) });
+            action.setAttribute("aria-label", t("planChoose", { plan: name(plan.code), period: t(period === "monthly" ? "planMonthly" : "planYearly") }));
+            action.addEventListener("click", () => void beginCheckout(plan.code as "plus" | "pro", period));
+            actions.append(action);
+          }
         }
         card.append(heading, pricing, annual, details, actions); cards.append(card);
       }
     } catch (error) { planMessage.textContent = errorMessage(error); }
   }
-  async function buy(product: MicrosoftStoreProduct): Promise<void> {
-    if (storeBusy) return; storeBusy = true; planMessage.textContent = t("planPurchaseOpening");
-    try {
-      await microsoftStore.purchase(product); plans.invalidate(); await refresh();
-      await showPlans(); planMessage.textContent = t("planPurchaseSuccess");
-    } catch (error) {
-      planMessage.textContent = error instanceof Error && error.message === "purchase_cancelled" ? t("planPurchaseCancelled") : t("planPurchaseFailed");
-    } finally { storeBusy = false; }
-  }
-  async function restore(): Promise<void> {
-    if (storeBusy) return; storeBusy = true; restoreButton.disabled = true; planMessage.textContent = t("planRestoreChecking");
-    try { const result = await microsoftStore.restore(); plans.invalidate(); await refresh(); await showPlans(); planMessage.textContent = t(result.plan === "free" ? "planRestoreNone" : "planRestoreSuccess"); }
-    catch { planMessage.textContent = t("planRestoreFailed"); }
-    finally { storeBusy = false; restoreButton.disabled = false; }
+  async function manageSubscription(): Promise<void> {
+    if (billingBusy) return;
+    billingBusy = true; warning.textContent = t("planPortalOpening");
+    try { await billing.portal(); warning.textContent = ""; }
+    catch { warning.textContent = t("planPortalFailed"); }
+    finally { billingBusy = false; }
   }
   async function showDevices(limited = false): Promise<void> {
     const token = ++deviceLoad;
@@ -162,29 +138,22 @@ export function mountAccountPlans(parent: HTMLElement): void {
   }
   function renderDevice(entry: AccountDevice): void {
     const row = document.createElement("div"); row.className = "device-row";
-    const details = document.createElement("div");
-    const title = document.createElement("strong");
-    const platform = ({android:"Android",windows:"Windows",linux:"Linux",macos:"macOS",web:t("devicePlatformWeb"),other:t("devicePlatformOther")})[entry.platform] ?? t("devicePlatformOther");
+    const details = document.createElement("div"), title = document.createElement("strong");
+    const platform = ({ android: "Android", windows: "Windows", linux: "Linux", macos: "macOS", web: t("devicePlatformWeb"), other: t("devicePlatformOther") })[entry.platform] ?? t("devicePlatformOther");
     title.textContent = `${entry.display_name} · ${platform}`;
     const meta = document.createElement("small");
     meta.textContent = entry.device_id === devices.id ? t("deviceThis") : new Date(entry.last_seen_at).toLocaleDateString(language);
     details.append(title, meta);
     if (entry.device_id === devices.id) { row.append(details); deviceRows.append(row); return; }
-    const remove = document.createElement("button"); remove.type = "button"; remove.className = "secondary-button";
-    remove.textContent = t("deviceRemove");
+    const remove = document.createElement("button"); remove.type = "button"; remove.className = "secondary-button"; remove.textContent = t("deviceRemove");
     remove.addEventListener("click", async () => {
       if (!window.confirm(t("deviceRemoveConfirm", { name: title.textContent ?? entry.display_name }))) return;
       remove.disabled = true;
       try {
-        await devices.remove(entry.device_id);
-        deviceMessage.textContent = t("deviceRemoved");
+        await devices.remove(entry.device_id); deviceMessage.textContent = t("deviceRemoved");
         const status = await devices.register(true);
-        if (status.allowed) {
-          limitMessage.textContent = "";
-          window.dispatchEvent(new Event("autumn-device-ready"));
-        }
-        await showDevices(!status.allowed);
-        await refresh();
+        if (status.allowed) { limitMessage.textContent = ""; window.dispatchEvent(new Event("autumn-device-ready")); }
+        await showDevices(!status.allowed); await refresh();
       } catch (error) { deviceMessage.textContent = errorMessage(error); }
       finally { remove.disabled = false; }
     });
@@ -200,8 +169,15 @@ export function mountAccountPlans(parent: HTMLElement): void {
       if (!access.allowed) { void showDevices(true); return; }
       const [plan, usage] = await Promise.all([plans.current(), library.quota()]);
       if (auth.state.ownerId !== activeOwner || token !== generation) return;
-      currentPlan = plan;
-      planName.textContent = name(plan.code);
+      currentPlan = plan; planName.textContent = name(plan.code);
+      const period = plan.billing_cycle === "monthly" ? t("planMonthly") : plan.billing_cycle === "annual" ? t("planYearly") : "";
+      const status = t(plan.subscription_status === "trialing" ? "planStatusTrialing"
+        : plan.subscription_status === "past_due" ? "planStatusPastDue"
+        : plan.subscription_status === "canceled" || plan.subscription_status === "expired" ? "planStatusEnded" : "planStatusActive");
+      const renewal = plan.expires_at ? new Date(plan.expires_at).toLocaleDateString(language) : "";
+      subscriptionDetail.textContent = plan.code === "free" ? t("planFreeDescription")
+        : plan.cancel_at_period_end && renewal ? t("planEndsOn", { date: renewal })
+        : renewal ? t("planRenewsOn", { period, status, date: renewal }) : [period, status].filter(Boolean).join(" · ");
       storage.textContent = t("planStorageUsage", { used: size(usage.used_bytes), limit: size(usage.max_bytes) });
       const usedRatio = usage.max_bytes > 0 ? usage.used_bytes / usage.max_bytes : 0;
       meter.value = Math.min(100, Math.round(usedRatio * 100));
@@ -212,16 +188,16 @@ export function mountAccountPlans(parent: HTMLElement): void {
       find<HTMLElement>(section, ".plan-compare span").textContent = plan.code === "free" ? t("viewPlans") : t("manageSubscription");
     } catch { if (token === generation) warning.textContent = t("planLoadFailed"); }
   }
-  find<HTMLButtonElement>(section, ".plan-compare").addEventListener("click", () => void showPlans());
+  find<HTMLButtonElement>(section, ".plan-compare").addEventListener("click", () =>
+    currentPlan?.code === "free" ? void showPlans() : void manageSubscription());
   find<HTMLButtonElement>(section, ".plan-manage-devices").addEventListener("click", () => void showDevices());
   find<HTMLButtonElement>(comparison, ".note-close").addEventListener("click", () => comparison.close());
-  restoreButton.addEventListener("click", () => void restore());
   find<HTMLButtonElement>(deviceDialog, ".note-close").addEventListener("click", () => deviceDialog.close());
   deviceDialog.addEventListener("close", () => { if (!deviceDialog.open) ++deviceLoad; });
-  auth.subscribe(state => {
+  auth.subscribe((state) => {
     if (state.ownerId !== owner) {
       owner = state.ownerId; currentPlan = undefined; ++generation; ++deviceLoad; plans.invalidate();
-      planName.textContent = storage.textContent = deviceCount.textContent = warning.textContent = percent.textContent = "";
+      planName.textContent = storage.textContent = deviceCount.textContent = warning.textContent = percent.textContent = subscriptionDetail.textContent = "";
       if (comparison.open) comparison.close(); if (deviceDialog.open) deviceDialog.close();
     }
     if (state.status === "authenticated") void refresh();
@@ -229,7 +205,6 @@ export function mountAccountPlans(parent: HTMLElement): void {
   window.addEventListener("online", () => void refresh());
   window.addEventListener("autumn-cloud-storage-changed", () => void refresh());
   window.addEventListener("autumn-device-access", (event) => {
-    const access = (event as CustomEvent<{allowed:boolean}>).detail;
-    if (!access.allowed) void showDevices(true);
+    if (!(event as CustomEvent<{ allowed: boolean }>).detail.allowed) void showDevices(true);
   });
 }

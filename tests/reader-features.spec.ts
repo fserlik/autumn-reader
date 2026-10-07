@@ -56,9 +56,15 @@ test("TTS discovers local voices, persists voice and speed, and controls book pl
 
   await page.locator("#file-input").setInputFiles({name:"Narración.epub",mimeType:"application/epub+zip",buffer:await epubFixture("narration", "Narración")});
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await expect(page.locator("#speech-toggle")).toBeVisible();
-  await page.locator("#speech-toggle").click();
+  const speechEntry = page.locator(info.project.name === "desktop" ? "#reader-tts-tab" : "#speech-toggle");
+  await expect(speechEntry).toBeVisible();
+  await speechEntry.click();
   await expect(page.locator("#tts-active-voice")).toContainText("Lucía local");
+  if (info.project.name === "desktop") {
+    const sidebar = (await page.locator("#reader-sidebar").boundingBox())!;
+    const rate = (await page.locator("#tts-rate-reader-value").boundingBox())!;
+    expect(rate.x + rate.width).toBeLessThanOrEqual(sidebar.x + sidebar.width + 1);
+  }
   await page.screenshot({ path: info.outputPath("tts-player.png") });
   await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
   await page.screenshot({ path: info.outputPath("tts-player-dark.png") });

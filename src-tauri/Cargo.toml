@@ -13,14 +13,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tauri-plugin-opener = "=2.5.3"
 
 [target.'cfg(target_os = "android")'.dependencies]
 percent-encoding = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = ["Foundation", "Services_Store", "Win32_Foundation", "Win32_UI_Shell"] }
-windows-collections = "0.2"
-windows-future = "0.2"
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Power"] }

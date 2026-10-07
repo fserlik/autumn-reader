@@ -39,6 +39,10 @@ export type BookPageOverrides = Partial<PagePreferences>;
 export function resolvePagePreferences(global: PagePreferences, overrides: BookPageOverrides = {}): PagePreferences {
   return normalizePagePreferences({ ...global, ...overrides });
 }
+export function pagePreferencesEqual(left: PagePreferences, right: PagePreferences): boolean {
+  return (Object.keys(defaultPagePreferences) as (keyof PagePreferences)[])
+    .every(key => left[key] === right[key]);
+}
 const bookKey = (ownerId: string, bookId: string): string => `autumn-book-page:${ownerId}:${bookId}`;
 export function loadBookPageOverrides(ownerId: string, bookId: string): BookPageOverrides {
   try {

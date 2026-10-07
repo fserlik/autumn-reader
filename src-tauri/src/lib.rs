@@ -1,8 +1,9 @@
+#[cfg(any(target_os = "android", target_os = "windows"))]
+use tauri::Manager;
 #[cfg(target_os = "android")]
-use tauri::{Manager, State};
-
+use tauri::State;
 #[cfg(target_os = "windows")]
-mod microsoft_store;
+use std::os::windows::process::CommandExt;
 
 #[cfg(target_os = "android")]
 const MAX_LOCAL_BOOK_BYTES: usize = 250 * 1024 * 1024;
@@ -143,6 +144,7 @@ fn system_font_families() -> Vec<String> {
     ] {
         let Ok(output) = std::process::Command::new("reg.exe")
             .args(["query", key])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output()
         else {
             continue;
@@ -171,6 +173,122 @@ fn system_font_families() -> Vec<String> {
     families.into_iter().collect()
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_prevent_screen_blanking(enabled: bool) -> Result<(), String> {
+    use windows::Win32::System::Power::{
+        SetThreadExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED,
+    };
+
+    let state = if enabled {
+        ES_CONTINUOUS | ES_DISPLAY_REQUIRED
+    } else {
+        ES_CONTINUOUS
+    };
+    let previous = unsafe { SetThreadExecutionState(state) };
+    if previous.0 == 0 {
+        Err(std::io::Error::last_os_error().to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_launch_on_startup(enabled: bool) -> Result<(), String> {
+    const STARTUP_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+    const STARTUP_VALUE: &str = "Autumn Reader";
+
+    if enabled {
+        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+        let command = format!("\"{}\"", executable.to_string_lossy());
+        let status = std::process::Command::new("reg.exe")
+            .args([
+                "add",
+                STARTUP_KEY,
+                "/v",
+                STARTUP_VALUE,
+                "/t",
+                "REG_SZ",
+                "/d",
+                &command,
+                "/f",
+            ])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .status()
+            .map_err(|error| error.to_string())?;
+        return status
+            .success()
+            .then_some(())
+            .ok_or_else(|| "Windows could not add Autumn Reader to startup".to_string());
+    }
+
+    let exists = std::process::Command::new("reg.exe")
+        .args(["query", STARTUP_KEY, "/v", STARTUP_VALUE])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .status()
+        .map_err(|error| error.to_string())?
+        .success();
+    if !exists {
+        return Ok(());
+    }
+    let status = std::process::Command::new("reg.exe")
+        .args(["delete", STARTUP_KEY, "/v", STARTUP_VALUE, "/f"])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .status()
+        .map_err(|error| error.to_string())?;
+    status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "Windows could not remove Autumn Reader from startup".to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_tray_enabled(enabled: bool, app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        return tray.set_visible(enabled).map_err(|error| error.to_string());
+    }
+    if !enabled {
+        return Ok(());
+    }
+
+    let mut builder = TrayIconBuilder::with_id("main-tray")
+        .tooltip("Autumn Reader")
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                if let Some(window) = tray.app_handle().get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    builder
+        .build(&app)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 #[cfg(not(any(target_os = "windows", target_os = "android")))]
 #[tauri::command]
 fn system_font_families() -> Vec<String> {
@@ -184,9 +302,10 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         restart_app,
         system_font_families,
-        microsoft_store::microsoft_store_products,
-        microsoft_store::microsoft_store_purchase,
-        microsoft_store::microsoft_store_customer_purchase_id
+        set_prevent_screen_blanking,
+        set_launch_on_startup,
+        set_tray_enabled,
+        exit_app
     ]);
     #[cfg(not(any(target_os = "windows", target_os = "android")))]
     let builder =
@@ -271,6 +390,7 @@ pub fn run() {
                 .build(),
         );
     builder
+        .plugin(tauri_plugin_opener::init())
         .run(tauri::generate_context!())
         .expect("Could not start Autumn Reader");
 }

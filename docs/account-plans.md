@@ -6,14 +6,14 @@ Deploy in this order: apply all pending migrations with `npx supabase db push`, 
 
 The app creates a random installation ID and a second random secret in local storage. The server stores only the SHA-256 hash of the secret. One registration is associated with each account and installation, and the verified Supabase session is bound to it. Free admits two active registrations. A third device can view and revoke old registrations in Account. A downgrade with more than two registered devices pauses cloud access on all of them until the user chooses which registrations to remove; it does not log out or delete local books. Plus and Pro have no device cap. A stolen Supabase session token remains a general account security issue; this registry does not replace normal session protection.
 
-The plan catalog is server controlled: Free is 1 GiB and two devices; Plus is 25 GiB; Pro is 100 GiB. Translation and premium TTS are tiers without invented numeric allowances. Current translation limits and existing functionality stay in place until tier-specific usage policies are specified. Microsoft Store purchases are available only in the native Windows build and are validated against Microsoft's recurrence API before the service role updates `private.account_subscriptions`; the client has no write privilege. See `microsoft-store-billing.md` for configuration and release steps.
+The plan catalog is server controlled: Free is 1 GiB and two devices; Plus is 25 GiB; Pro is 100 GiB. Translation and premium TTS are tiers without invented numeric allowances. Current translation limits and existing functionality stay in place until tier-specific usage policies are specified. Billing is provider-agnostic and the application reads normalized entitlements from Supabase. Paddle is the first commercial provider. See `BILLING.md` for configuration and release steps.
 
 For staging verification only, an operator can use Supabase SQL Editor to assign a test account a paid plan, then revert it. Do not expose this command to a client or run it against a real customer's account:
 
 ```sql
-insert into private.account_subscriptions(user_id,plan_code,status,billing_cycle)
-values ('STAGING_TEST_USER_UUID','plus','active','monthly')
-on conflict(user_id) do update set plan_code=excluded.plan_code,status=excluded.status,billing_cycle=excluded.billing_cycle,updated_at=now();
+insert into private.subscriptions(user_id,provider,plan,status,billing_period)
+values ('STAGING_TEST_USER_UUID','manual','plus','active','monthly')
+on conflict(user_id) do update set plan=excluded.plan,status=excluded.status,billing_period=excluded.billing_period,updated_at=now();
 -- Change plus to pro for the Pro case. Revert to Free by setting status='expired'.
 ```
 

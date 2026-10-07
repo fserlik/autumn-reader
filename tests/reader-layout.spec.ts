@@ -17,6 +17,110 @@ async function openEpub(page: Page): Promise<void> {
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
 }
 
+async function showReaderSettings(page: Page, tab: "layout" | "appearance"): Promise<void> {
+  const desktopMenu = page.locator("#reader-settings-toggle");
+  if (await page.locator("#reader-sidebar").isVisible()) {
+    if (!(await page.locator("#reader-options").isVisible())) await desktopMenu.click();
+    await page.locator(tab === "layout" ? "#reader-settings-layout-tab" : "#reader-settings-appearance-tab").click();
+    return;
+  }
+  await page.locator(tab === "layout" ? "#layout-toggle" : "#size-toggle").click();
+}
+
+test("desktop reader has an immersive sidebar and book settings", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Desktop reader composition");
+  await openEpub(page);
+  await expect(page.locator(".shell > .sidebar")).toBeHidden();
+  await expect(page.locator(".workspace > .topbar")).toBeHidden();
+  await expect(page.locator("#reader-sidebar")).toBeVisible();
+  await expect(page.locator("#reader-book-title")).toHaveText("Cloud EPUB");
+  await expect(page.locator("#reader-contents-tab")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#reader-toc-list .reader-toc-entry")).toHaveCount(1);
+  const readingWidth = await page.evaluate(() => {
+    const surface = document.querySelector<HTMLElement>("#reading-surface")!.getBoundingClientRect();
+    const frame = document.querySelector<HTMLElement>(".epub-frame")!.getBoundingClientRect();
+    return { surface: surface.width, frame: frame.width };
+  });
+  expect(readingWidth.surface - readingWidth.frame).toBeLessThanOrEqual(50);
+  await page.locator("#reader-notes-tab").click();
+  await expect(page.locator("#reader-sidebar-notes-list")).toContainText(/notes|notas/i);
+  await page.locator("#reader-settings-toggle").click();
+  await expect(page.locator("#reader-settings-appearance-tab")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#reader-brightness")).toBeVisible();
+  await page.locator('[data-book-theme="sepia"]').click();
+  await expect(page.locator("#view-reader")).toHaveAttribute("data-book-theme", "sepia");
+  await page.screenshot({ path: info.outputPath("desktop-reader-appearance.png") });
+  await page.locator("#reader-settings-layout-tab").click();
+  await expect(page.locator("#book-layout-details")).toBeVisible();
+  const search = (await page.locator("#book-search-button").boundingBox())!;
+  const settings = (await page.locator("#reader-settings-toggle").boundingBox())!;
+  expect(search.x).toBeLessThan(settings.x);
+  await page.screenshot({ path: info.outputPath("desktop-reader-settings.png") });
+});
+
+test("disabling global book settings keeps the current reader layout", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Desktop per-book settings regression");
+  await page.setViewportSize({ width: 1920, height: 951 });
+  await openEpub(page);
+  const layout = () => page.evaluate(() => {
+    const frame = document.querySelector<HTMLElement>(".epub-frame")!.getBoundingClientRect();
+    const body = document.querySelector<HTMLIFrameElement>(".epub-frame iframe")!.contentDocument!.body;
+    const style = getComputedStyle(body);
+    return {
+      frame: { x: frame.x, y: frame.y, width: frame.width, height: frame.height },
+      margin: getComputedStyle(document.querySelector<HTMLElement>("#reader-content")!).getPropertyValue("--reader-margin").trim(),
+      typography: {
+        fontFamily: style.fontFamily,
+        lineHeight: style.lineHeight,
+        paragraphSpacing: getComputedStyle(body.querySelector("p")!).marginBlockEnd,
+        wordSpacing: style.wordSpacing,
+        letterSpacing: style.letterSpacing,
+      },
+      pages: document.querySelector("#position-label")!.textContent,
+    };
+  });
+  const before = await layout();
+  await showReaderSettings(page, "layout");
+  for (const key of ["font", "lineHeight", "paragraphSpacing", "wordSpacing", "letterSpacing", "textIndent", "columns", "margins"]) {
+    await page.locator(`#book-layout-fields [data-layout-key="${key}"] input[type="checkbox"]`).uncheck();
+  }
+  await page.waitForTimeout(800);
+  expect(await layout()).toEqual(before);
+  await page.screenshot({ path: info.outputPath("reader-after-local-overrides.png") });
+});
+
+test("custom book typography repaginates inside the paper content box", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Desktop EPUB geometry regression");
+  await page.setViewportSize({ width: 1920, height: 951 });
+  await openEpub(page);
+  const geometry = () => page.evaluate(() => {
+    const frame = document.querySelector<HTMLElement>(".epub-frame")!;
+    const stage = frame.querySelector<HTMLElement>(".epub-container")!;
+    const style = getComputedStyle(frame);
+    return {
+      frame: frame.getBoundingClientRect().toJSON(),
+      contentWidth: frame.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+      contentHeight: frame.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+      stage: stage.getBoundingClientRect().toJSON(),
+    };
+  });
+  const before = await geometry();
+  expect(Math.abs(before.stage.width - before.contentWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(before.stage.height - before.contentHeight)).toBeLessThanOrEqual(1);
+  await showReaderSettings(page, "appearance");
+  await page.locator('[data-book-theme="dark"]').click();
+  await page.locator("#reader-settings-layout-tab").click();
+  const lineHeight = page.locator('#book-layout-fields [data-layout-key="lineHeight"]');
+  await lineHeight.locator('input[type="checkbox"]').uncheck();
+  await lineHeight.locator('input[type="range"]').fill("2.1");
+  await page.waitForTimeout(800);
+  const after = await geometry();
+  expect(after.frame).toEqual(before.frame);
+  expect(Math.abs(after.stage.width - after.contentWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(after.stage.height - after.contentHeight)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: info.outputPath("reader-after-custom-typography.png") });
+});
+
 test("portrait and landscape retain the EPUB anchor and use the reader viewport", async ({ page }, info) => {
   await openEpub(page);
   const start = (await saved(page)).cfi;
@@ -76,7 +180,7 @@ test("global typography and per-book overrides repaginate without returning to t
   await page.locator("#next-button").click();
   await expect.poll(async () => (await saved(page)).cfi).not.toBe(start);
   const anchor = await saved(page);
-  await page.locator("#layout-toggle").click();
+  await showReaderSettings(page, "layout");
   const line = page.locator('#book-layout-fields [data-layout-key="lineHeight"]');
   await line.locator('input[type="checkbox"]').uncheck();
   await line.locator('input[type="range"]').fill("2.1");
@@ -96,6 +200,15 @@ test("global typography and per-book overrides repaginate without returning to t
   const after = await saved(page);
   expect(Math.abs(after.percentage - anchor.percentage)).toBeLessThan(.08);
   await page.setViewportSize({ width: 844, height: 390 });
+  await expect.poll(() => page.evaluate(() => {
+    const frame = document.querySelector<HTMLElement>(".epub-frame")!;
+    const stage = frame.querySelector<HTMLElement>(".epub-container")!;
+    const style = getComputedStyle(frame);
+    const width = frame.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const height = frame.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    const bounds = stage.getBoundingClientRect();
+    return { width: Math.abs(bounds.width - width) <= 1, height: Math.abs(bounds.height - height) <= 1 };
+  })).toEqual({ width: true, height: true });
   const columnWidth = await page.frameLocator(".epub-frame iframe").locator("body").evaluate(element => parseFloat(getComputedStyle(element).columnWidth));
   const viewportWidth = (await page.locator(".epub-frame iframe").boundingBox())!.width;
   expect(columnWidth * 2).toBeLessThanOrEqual(viewportWidth + 2);
@@ -109,14 +222,13 @@ test("PDF original exposes zoom but hides typography, with real page progress", 
   await mockCloud(page, true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Pages.pdf", mimeType: "application/pdf", buffer: samplePdf() });
   await expect(page.locator(".pdf-reading-text")).toBeVisible();
-  await page.locator("#layout-toggle").click();
+  await showReaderSettings(page, "layout");
   await page.locator("#pdf-reading-mode").selectOption("original");
   await expect(page.locator(".pdf-page")).toBeVisible();
-  await page.locator("#layout-toggle").click();
   await expect(page.locator("#book-layout-details")).toBeHidden();
   await expect(page.locator("#size-label")).toHaveText(/Zoom/i);
   const before = await page.locator(".pdf-page").boundingBox();
-  await page.locator("#size-toggle").click();
+  await showReaderSettings(page, "appearance");
   await page.locator("#larger-button").click();
   await expect.poll(async () => (await page.locator(".pdf-page").boundingBox())?.width ?? 0).toBeGreaterThan(before!.width);
   await page.locator("#next-button").click();
@@ -127,7 +239,7 @@ test("PDF retains its real page across portrait and landscape", async ({ page },
   await mockCloud(page, true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Rotate.pdf", mimeType: "application/pdf", buffer: samplePdf() });
   await expect(page.locator(".pdf-reading-text")).toBeVisible();
-  await page.locator("#layout-toggle").click();
+  await showReaderSettings(page, "layout");
   await page.locator("#pdf-reading-mode").selectOption("original");
   await expect(page.locator(".pdf-page")).toBeVisible();
   await page.locator("#next-button").click();
@@ -239,7 +351,7 @@ test("original PDF text layer offers Copy for selectable text", async ({ page })
   } }));
   await page.locator("#file-input").setInputFiles({ name: "TextLayer.pdf", mimeType: "application/pdf", buffer: samplePdf() });
   await expect(page.locator(".pdf-reading-text")).toBeVisible();
-  await page.locator("#layout-toggle").click();
+  await showReaderSettings(page, "layout");
   await page.locator("#pdf-reading-mode").selectOption("original");
   const span = page.locator(".pdf-text-layer span").first();
   await expect(span).toBeVisible();
