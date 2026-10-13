@@ -43,6 +43,10 @@ beforeAll(async () => {
   catch (error) { throw new Error(`Migration 202610040001_provider_agnostic_billing.sql: ${JSON.stringify(error, Object.getOwnPropertyNames(error as object))}`); }
   try { await db.exec(migration("202610060001_lemonsqueezy_billing.sql")); }
   catch (error) { throw new Error(`Migration 202610060001_lemonsqueezy_billing.sql: ${JSON.stringify(error, Object.getOwnPropertyNames(error as object))}`); }
+  try { await db.exec(migration("202610100001_premium_ai_speech.sql")); }
+  catch (error) { throw new Error(`Migration 202610100001_premium_ai_speech.sql: ${JSON.stringify(error, Object.getOwnPropertyNames(error as object))}`); }
+  try { await db.exec(migration("202610130001_reduce_paid_plan_storage.sql")); }
+  catch (error) { throw new Error(`Migration 202610130001_reduce_paid_plan_storage.sql: ${JSON.stringify(error, Object.getOwnPropertyNames(error as object))}`); }
   await db.query("insert into auth.users(id) values($1),($2)",[a,b]);
 }, 40000);
 afterAll(async () => db.close());
@@ -73,7 +77,7 @@ test("catalog defines Free, Plus and Pro centrally; existing accounts are Free w
   await addBooks(a,55,100);
   const catalog=(await db.query<{code:string;cloud_bytes:number;max_devices:number|null}>("select code,cloud_bytes,max_devices from private.plan_catalog order by cloud_bytes")).rows;
   expect(catalog.map(p=>[p.code,Number(p.cloud_bytes),p.max_devices])).toEqual([
-    ["free",1073741824,2],["plus",26843545600,null],["pro",107374182400,null],
+    ["free",1073741824,2],["plus",5368709120,null],["pro",21474836480,null],
   ]);
   expect((await db.query<{count:number}>("select count(*)::integer as count from public.user_books where user_id=$1 and deleted_at is null",[a])).rows[0].count).toBe(55);
   await asUser(a,async()=>{
@@ -245,5 +249,57 @@ test("authenticated clients cannot mutate subscriptions or call the billing writ
       'lemonsqueezy','evt_attack','subscription.updated',now(),$1,'ls_customer_attack','ls_subscription_attack','pro','annual','active',now(),now()+interval '1 year',false
     )`,[owner])).rejects.toThrow();
     await expect(db.query("insert into private.subscriptions(user_id,provider,plan,status) values($1,'manual','pro','active')",[owner])).rejects.toThrow();
+  });
+});
+
+test("AI speech grants monthly anchored allowances and rejects Free accounts",async()=>{
+  const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]); await addBooks(owner,1,100);
+  const book=(await db.query<{book_id:string}>("select book_id from public.user_books where user_id=$1",[owner])).rows[0].book_id;
+  await db.exec("set role service_role");
+  try {
+    await expect(db.query("select public.reserve_ai_speech($1,$2,$3,$3,'page-1','Lucia','es-ES',1,120,10,160,10000000,90)",[owner,book,"a".repeat(64)])).rejects.toThrow("subscription_required");
+    await db.query(`insert into private.subscriptions(user_id,provider,plan,status,billing_period,current_period_start,current_period_end)
+      values($1,'manual','plus','active','annual',now()-interval '2 months',now()+interval '10 months')`,[owner]);
+    let usage=(await db.query<{value:{includedSeconds:number;remainingSeconds:number} }>("select public.ai_speech_usage_for_user($1,10000000) as value",[owner])).rows[0].value;
+    expect(usage.includedSeconds).toBe(3600); expect(usage.remainingSeconds).toBe(3600);
+    await db.query("update private.subscriptions set plan='pro' where user_id=$1",[owner]);
+    usage=(await db.query<{value:{includedSeconds:number} }>("select public.ai_speech_usage_for_user($1,10000000) as value",[owner])).rows[0].value;
+    expect(usage.includedSeconds).toBe(10800);
+  } finally { await db.exec("reset role"); }
+});
+
+test("AI speech reservations are idempotent, atomic and release user quota after failure",async()=>{
+  const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]); await addBooks(owner,1,100);
+  const book=(await db.query<{book_id:string}>("select book_id from public.user_books where user_id=$1",[owner])).rows[0].book_id;
+  await db.query(`insert into private.subscriptions(user_id,provider,plan,status,billing_period,current_period_start,current_period_end)
+    values($1,'manual','plus','active','monthly',now(),now()+interval '1 month')`,[owner]);
+  await db.exec("set role service_role");
+  try {
+    const key="b".repeat(64),args=[owner,book,key,"c".repeat(64),"page-1","Lucia","es-ES",1,3000,250,48000,10000000,90];
+    const first=(await db.query<{value:{outcome:string;generationId:string} }>("select public.reserve_ai_speech($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) as value",args)).rows[0].value;
+    const repeat=(await db.query<{value:{outcome:string;generationId:string} }>("select public.reserve_ai_speech($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) as value",args)).rows[0].value;
+    expect(first.outcome).toBe("reserved"); expect(repeat).toEqual({outcome:"pending",generationId:first.generationId});
+    expect((await db.query<{count:number}>("select count(*)::integer as count from private.ai_speech_generations where user_id=$1",[owner])).rows[0].count).toBe(1);
+    await db.query("select public.fail_ai_speech($1,$2,'provider_unavailable',false)",[owner,first.generationId]);
+    const usage=(await db.query<{value:{usedSeconds:number} }>("select public.ai_speech_usage_for_user($1,10000000) as value",[owner])).rows[0].value;
+    expect(usage.usedSeconds).toBe(0);
+  } finally { await db.exec("reset role"); }
+});
+
+test("AI speech global budget pauses new generation and clients cannot mutate accounting",async()=>{
+  const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]); await addBooks(owner,1,100);
+  const book=(await db.query<{book_id:string}>("select book_id from public.user_books where user_id=$1",[owner])).rows[0].book_id;
+  await db.query(`insert into private.subscriptions(user_id,provider,plan,status,billing_period,current_period_start,current_period_end)
+    values($1,'manual','pro','active','monthly',now(),now()+interval '1 month')`,[owner]);
+  await db.exec("set role service_role");
+  try {
+    const first=(await db.query<{value:{generationId:string} }>("select public.reserve_ai_speech($1,$2,$3,$4,'page-1','Lucia','es-ES',1,10,1,100,100,90) as value",[owner,book,"d".repeat(64),"e".repeat(64)])).rows[0].value;
+    await db.query("select public.mark_ai_speech_generating($1,$2)",[owner,first.generationId]);
+    await db.query("select public.complete_ai_speech($1,$2,$3,null)",[owner,first.generationId,`ai-speech/${owner}/${book}/${"d".repeat(64)}.mp3`]);
+    await expect(db.query("select public.reserve_ai_speech($1,$2,$3,$4,'page-2','Lucia','es-ES',1,10,1,1,100,90)",[owner,book,"f".repeat(64),"1".repeat(64)])).rejects.toThrow("global_budget");
+  } finally { await db.exec("reset role"); }
+  await asUser(owner,async()=>{
+    await expect(db.query("select * from private.ai_speech_generations")).rejects.toThrow();
+    await expect(db.query("select public.fail_ai_speech($1,$2,'tamper',false)",[owner,randomUUID()])).rejects.toThrow();
   });
 });

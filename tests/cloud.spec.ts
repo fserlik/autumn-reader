@@ -141,16 +141,19 @@ test("registration verifies email and recovery requires a new password before en
   await page.locator("#auth-submit").click();
   await expect(page.locator("#email-token-form")).toBeVisible();
   await expect(page.locator(".shell")).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath("verification.png"), fullPage: true });
   expect(cloud.registeredUsername).toBe("autumn_user");
   await expect(page.locator("#email-token-form select")).toHaveCount(0);
   await page.reload();
   await expect(page.locator("#email-token-form")).toBeVisible();
-  await expect(page.locator('#email-token-form [name="email"]')).toHaveValue("a@example.org");
+  await expect(page.locator('#email-token-form [name="email"]')).toHaveCount(0);
+  await expect(page.locator("#auth-code-email")).toHaveText("a@example.org");
   await page.locator('#email-token-form [name="token"]').fill("123456");
   await page.locator('#email-token-form button[type="submit"]').click();
   await expect.poll(() => cloud.verifyRequests[0]).toMatchObject({email:"a@example.org", token:"123456", type:"email"});
   await expect(page.locator("#auth-entry")).toBeHidden();
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.getByRole("tab", { name: "Cuenta" }).click();
   await page.locator("#account-logout").click();
   await expect(page.locator("#auth-entry")).toBeVisible();
   await page.locator("#auth-recover").click();
@@ -167,6 +170,64 @@ test("registration verifies email and recovery requires a new password before en
   await page.locator('#password-form [name="password"]').fill("new-test-password");
   await page.locator('#password-form button[type="submit"]').click();
   await expect(page.locator("#auth-entry")).toBeHidden();
+});
+
+test("verification resends are rate-limited in the UI and stop after three attempts", async ({ page }) => {
+  const cloud = await mockCloud(page);
+  await page.goto("/");
+  await page.locator("#auth-register-tab").click();
+  await page.locator('#account-form [name="username"]').fill("autumn_user");
+  await page.locator('#account-form [name="email"]').fill("a@example.org");
+  await page.locator('#account-form [name="password"]').fill("test-password");
+  await page.locator("#auth-submit").click();
+
+  const resend = page.locator("#auth-resend");
+  await expect(resend).toBeDisabled();
+  await expect(resend).toContainText("Reenviar en");
+  await expect(page.locator("#auth-resend-note")).toHaveText("Reenvíos disponibles: 3");
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await page.evaluate(() => {
+      const key = "autumn-verification-resend-state";
+      const state = JSON.parse(localStorage.getItem(key)!);
+      state.availableAt = Date.now() - 1;
+      localStorage.setItem(key, JSON.stringify(state));
+    });
+    await page.reload();
+    await expect(resend).toBeEnabled();
+    await resend.click();
+    await expect.poll(() => cloud.resendRequests.length).toBe(attempt);
+    await expect.poll(() => cloud.resendRequests.at(-1)).toMatchObject({
+      email: "a@example.org",
+      type: "signup",
+    });
+  }
+
+  await expect(resend).toBeDisabled();
+  await expect(resend).toHaveText("Límite de reenvíos alcanzado");
+  await expect(page.locator("#auth-resend-note")).toHaveText("Alcanzaste el límite de 3 reenvíos.");
+  await page.reload();
+  await expect(resend).toBeDisabled();
+  expect(cloud.resendRequests).toHaveLength(3);
+});
+
+test("recovery resend requests a new recovery email", async ({ page }) => {
+  const cloud = await mockCloud(page);
+  await page.goto("/");
+  await page.locator("#auth-recover").click();
+  await page.locator('#account-form [name="email"]').fill("a@example.org");
+  await page.locator("#auth-submit").click();
+  await expect.poll(() => cloud.recoveryRequests).toBe(1);
+  await page.evaluate(() => {
+    const key = "autumn-verification-resend-state";
+    const state = JSON.parse(localStorage.getItem(key)!);
+    state.availableAt = Date.now() - 1;
+    localStorage.setItem(key, JSON.stringify(state));
+  });
+  await page.reload();
+  await page.locator("#auth-resend").click();
+  await expect.poll(() => cloud.recoveryRequests).toBe(2);
+  expect(cloud.resendRequests).toHaveLength(0);
 });
 
 test("an unconfirmed login resumes signup verification without offering an email type choice", async ({page}) => {

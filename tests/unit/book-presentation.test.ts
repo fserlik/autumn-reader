@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { StoredBook } from "../../src/storage";
-import { bookProgress, completedBooks, readingBooks, readingStats, toReadBooks } from "../../src/ui/book-presentation";
+import { bookProgress, completedBooks, homeReadingSelection, readingBooks, readingStats, toReadBooks } from "../../src/ui/book-presentation";
 
 const make = (id: string, status: StoredBook["status"], lastOpenedAt: number, percentage: number, favorite = false): StoredBook => ({
   id, name: `${id}.epub`, format: "epub", data: new Blob(), addedAt: 1, lastOpenedAt,
@@ -11,6 +11,8 @@ test("Home features the most recently opened reading book and excludes completed
   const books = [make("old", "reading", 2, .4), make("done", "finished", 10, 1), make("latest", "reading", 8, .68)];
   expect(readingBooks(books).map(book => book.id)).toEqual(["latest", "old"]);
   expect(bookProgress(readingBooks(books)[0])).toBe(68);
+  expect(homeReadingSelection(books).featured?.id).toBe("latest");
+  expect(homeReadingSelection(books).shelf.map(book => book.id)).toEqual(["old"]);
 });
 
 test("Profile statistics and shelves use the same stored book state as the reader", () => {

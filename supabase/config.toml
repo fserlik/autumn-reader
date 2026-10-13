@@ -8,6 +8,10 @@ verify_jwt = false
 # Authentication is verified with auth.getUser(token) in the handler.
 verify_jwt = false
 
+[functions.ai-speech]
+# Authentication and the active-device session are verified in the handler before paid work.
+verify_jwt = false
+
 [functions.billing-checkout]
 # Authentication is verified with auth.getUser(token) in the handler.
 verify_jwt = false

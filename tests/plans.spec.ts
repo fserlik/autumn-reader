@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("autumn-language", "es"));
 });
 
-test("Account shows server plan, byte quota, devices, and a read-only localized comparison", async ({ page }) => {
+test("Account shows server plan, byte quota, devices, and a read-only localized comparison", async ({ page }, testInfo) => {
   const cloud = await mockCloud(page, true);
   await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
@@ -15,10 +15,12 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
   await expect(page.locator(".plan-devices")).toContainText("1 de 2");
   await expect(page.locator("#settings-sync")).toHaveCount(0);
   await expect(page.locator("#settings-account-panel .plan-feature")).toHaveCount(1);
-  await expect(page.locator(".plan-feature #migrate-library")).toBeVisible();
-  await expect(page.locator(".plan-feature .cloud-storage-manage")).toBeVisible();
   await expect(page.locator(".plan-feature .plan-manage-devices")).toBeVisible();
   await expect(page.locator(".plan-feature .plan-percent")).toHaveText(/\d+\s*%/);
+  await expect(page.locator("#sidebar-plans, #view-plans")).toHaveCount(0);
+  await expect(page.locator("#settings-account-panel .plan-compare")).toContainText("Administrar mi plan");
+  await expect(page.locator(".plan-comparison-dialog")).not.toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("account-manage-plan.png"), fullPage: true });
   if (page.viewportSize()!.width < 800) {
     const card = await page.locator(".plan-feature").boundingBox();
     expect(card).not.toBeNull();
@@ -29,30 +31,42 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
     expect(positions[1]).toBeLessThan(positions[2]);
   }
   await page.locator(".plan-compare").click();
-  await expect(page.locator(".plan-card")).toHaveCount(3);
-  await expect(page.locator("#settings-plan .cloud-storage-manage")).toBeVisible();
-  await expect(page.locator("#settings-cloud-storage")).toHaveCount(0);
+  const comparison = page.locator(".plan-comparison-dialog");
+  await expect(comparison).toBeVisible();
+  await expect(comparison.locator(".note-close")).toBeFocused();
+  await expect(comparison.locator(".plan-card")).toHaveCount(3);
   if (page.viewportSize()!.width >= 800) {
-    const boxes = await page.locator(".plan-card").evaluateAll(cards => cards.map(card => card.getBoundingClientRect().left));
+    const boxes = await comparison.locator(".plan-card").evaluateAll(cards => cards.map(card => card.getBoundingClientRect().left));
     expect(boxes[0]).toBeLessThan(boxes[1]);
     expect(boxes[1]).toBeLessThan(boxes[2]);
   } else {
-    const boxes = await page.locator(".plan-card").evaluateAll(cards => cards.map(card => card.getBoundingClientRect()));
+    const boxes = await comparison.locator(".plan-card").evaluateAll(cards => cards.map(card => card.getBoundingClientRect()));
     expect(Math.max(...boxes.map(box => box.right))).toBeLessThanOrEqual(page.viewportSize()!.width);
     expect(boxes[0].top).toBeLessThan(boxes[1].top);
     expect(boxes[1].top).toBeLessThan(boxes[2].top);
   }
-  await expect(page.locator(".plan-card-featured")).toContainText("Autumn+");
-  await expect(page.locator(".plan-card-featured")).toContainText("4.99");
-  await expect(page.locator(".plan-card-featured")).toContainText("25 GB");
-  await expect(page.locator(".plan-card button").first()).toBeDisabled();
-  await page.locator(".plan-dialog .note-close").click();
+  await expect(comparison.locator(".plan-card-featured")).toContainText("Autumn+");
+  await expect(comparison.locator(".plan-card-featured")).toContainText("4.99");
+  await expect(comparison.locator(".plan-card-featured")).toContainText("5 GB");
+  await expect(comparison.locator(".plan-card button").first()).toBeDisabled();
+  await page.screenshot({ path: testInfo.outputPath("plan-comparison-dialog.png"), fullPage: true });
+  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+  await page.screenshot({ path: testInfo.outputPath("plan-comparison-dialog-dark.png"), fullPage: true });
+  if (testInfo.project.name === "android") {
+    await page.setViewportSize({ width: 375, height: 812 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.setViewportSize({ width: 812, height: 375 });
+    await expect(comparison.locator(".note-close")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  }
+  await page.keyboard.press("Escape");
+  await expect(comparison).not.toBeVisible();
   cloud.setPlan("plus");
   await page.reload();
   await page.locator('.nav-button[data-view="settings"]').click();
   await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-name")).toHaveText("Autumn+");
-  await expect(page.locator(".plan-storage")).toContainText("25 GB");
+  await expect(page.locator(".plan-storage")).toContainText("5 GB");
   await expect(page.locator(".plan-devices")).toContainText("Ilimitados");
   await expect(page.locator("#account-logout")).toHaveCount(1);
   await expect(page.locator("#settings-account-panel #account-logout")).toBeVisible();
@@ -60,7 +74,26 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
   await page.locator('[data-theme-choice="dark"]').click();
   await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-subscription-detail")).toContainText("Mensual");
-  await expect(page.locator(".plan-compare")).toContainText("Administrar suscripción");
+  await expect(page.locator(".plan-compare")).toContainText("Administrar mi plan");
+  await page.locator(".plan-compare").click();
+  const manageSubscription = page.locator(".plan-comparison-dialog .plan-manage-subscription");
+  await expect(manageSubscription).toContainText("Administrar suscripción");
+  await page.evaluate(() => {
+    Object.defineProperty(window, "open", {
+      configurable: true,
+      value: (url?: string | URL) => {
+        (window as typeof window & { __billingPortalUrl?: string }).__billingPortalUrl = String(url ?? "");
+        return window;
+      },
+    });
+  });
+  await manageSubscription.click();
+  await expect.poll(() => page.evaluate(() =>
+    (window as typeof window & { __billingPortalUrl?: string }).__billingPortalUrl,
+  )).toBe("https://app.lemonsqueezy.com/my-orders/test-session");
+  await expect(manageSubscription).toBeEnabled();
+  await expect(page.locator(".plan-message")).toBeEmpty();
+  await page.locator(".plan-dialog .note-close").click();
   await page.locator("#settings-interface-tab").click();
   await page.locator('[data-theme-choice="light"]').click();
   await page.locator("#settings-account-tab").click();
@@ -71,16 +104,30 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
   await page.locator('.nav-button[data-view="settings"]').click();
   await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-name")).toHaveText("Autumn Pro");
-  await expect(page.locator(".plan-storage")).toContainText("100 GB");
+  await expect(page.locator(".plan-storage")).toContainText("20 GB");
+});
+
+test("paid plans keep subscription management visible while provider metadata is delayed", async ({ page }) => {
+  const cloud = await mockCloud(page, true);
+  cloud.setPlan("pro");
+  cloud.setPlanProvider("manual");
+  await page.goto("/");
+  await login(page);
+  await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
+  await page.locator(".plan-compare").click();
+
+  await expect(page.locator(".plan-name")).toHaveText("Autumn Pro");
+  await expect(page.locator(".plan-comparison-dialog .plan-manage-subscription")).toContainText("Administrar suscripción");
 });
 
 test("Lemon Squeezy choices are account-based on every platform", async ({ page }) => {
   await mockCloud(page, true); await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click(); await page.locator("#settings-account-tab").click(); await page.locator(".plan-compare").click();
-  await expect(page.locator(".plan-card-featured .plan-store-choice")).toHaveCount(2);
-  await expect(page.locator(".plan-card-featured .plan-store-choice").first()).toContainText("Mensual");
-  await expect(page.locator(".plan-card-featured .plan-store-choice").first()).toContainText("4.99");
-  await expect(page.locator(".plan-card-featured .plan-store-choice").first()).toBeEnabled();
+  await expect(page.locator(".plan-card-featured .plan-price-choice")).toHaveCount(2);
+  await expect(page.locator(".plan-card-featured .plan-price-choice").first()).toContainText("mes");
+  await expect(page.locator(".plan-card-featured .plan-price-choice").first()).toContainText("4.99");
+  await expect(page.locator(".plan-card-featured .plan-price-choice").first()).toBeEnabled();
   await expect(page.locator(".plan-dialog-intro")).toContainText("Lemon Squeezy");
 });
 
@@ -166,12 +213,12 @@ test("a downgraded account shows over-quota without removing its existing cloud 
 
 test("the unified account card keeps its actions in all four languages", async ({ browser }) => {
   const labels = {
-    en: ["Your plan", "Sync all local books", "Manage cloud storage"],
-    es: ["Tu plan", "Sincronizar todos los libros locales", "Administrar libros en la nube"],
-    it: ["Il tuo piano", "Sincronizza tutti i libri locali", "Gestisci i libri nel cloud"],
-    fr: ["Votre offre", "Synchroniser tous les livres locaux", "Gérer les livres dans le cloud"],
+    en: ["Your plan", "Manage cloud storage"],
+    es: ["Tu plan", "Administrar libros en la nube"],
+    it: ["Il tuo piano", "Gestisci i libri nel cloud"],
+    fr: ["Votre offre", "Gérer les livres dans le cloud"],
   };
-  for (const [locale, [heading, sync, manage]] of Object.entries(labels)) {
+  for (const [locale, [heading, manage]] of Object.entries(labels)) {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     try {
       await context.addInitScript(value => localStorage.setItem("autumn-language", value), locale);
@@ -181,7 +228,6 @@ test("the unified account card keeps its actions in all four languages", async (
       await localized.locator('.nav-button[data-view="settings"]').click();
       await localized.locator("#settings-account-tab").click();
       await expect(localized.locator(".plan-identity h3")).toHaveText(heading);
-      await expect(localized.locator(".plan-feature #migrate-library")).toContainText(sync);
       await expect(localized.locator(".plan-feature .cloud-storage-manage")).toContainText(manage);
       await expect(localized.locator("#settings-sync")).toHaveCount(0);
       const card = await localized.locator(".plan-feature").boundingBox();

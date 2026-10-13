@@ -9,6 +9,7 @@ test("authenticated password change checks current password, confirmation, polic
   const cloud = await mockCloud(page);
   await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await page.locator(".account-change-password").click();
   const dialog = page.locator(".account-password-form");
   await expect(dialog.locator('input[type="password"]')).toHaveCount(3);
@@ -52,8 +53,11 @@ test("removing a downloaded book frees cloud quota while its offline file remain
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#library-list .book-title").click();
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  const firstBack = page.locator("#back-button");
+  if (await firstBack.isVisible()) await firstBack.click();
+  else await page.locator("#desktop-reader-back").click();
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await expect(page.locator("#settings-cloud-storage")).toHaveCount(0);
   await expect(page.locator("#settings-plan .cloud-storage-manage")).toBeVisible();
   await page.locator(".cloud-storage-manage").click();
@@ -80,6 +84,7 @@ test("cloud-only removal warns clearly and does not download the file", async ({
   cloud.setPersonalMetadata("Cloud EPUB", "Author", "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa/cccccccc-cccc-4ccc-cccc-cccccccccccc/custom.webp");
   await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await page.locator(".cloud-storage-manage").click();
   await page.locator(".cloud-storage-remove").click();
   await expect(page.locator(".cloud-remove-warning")).toContainText("no tiene una copia descargada");
@@ -98,8 +103,11 @@ test("a removed local book can be synchronized again without losing its cached E
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#library-list .book-title").click();
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  const secondBack = page.locator("#back-button");
+  if (await secondBack.isVisible()) await secondBack.click();
+  else await page.locator("#desktop-reader-back").click();
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await page.locator(".cloud-storage-manage").click();
   await page.locator(".cloud-storage-remove").click();
   await page.locator(".cloud-remove-submit").click();
@@ -112,6 +120,7 @@ test("a removed local book can be synchronized again without losing its cached E
   expect(cloud.removeRequests).toBe(1);
   expect(cloud.uploads).toBeGreaterThan(0);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await page.locator(".cloud-storage-manage").click();
   await expect(page.locator(".cloud-storage-dialog-usage")).toContainText("1 libro en la nube");
 });
@@ -120,6 +129,7 @@ test("offline cloud removal does not mutate the server or local authorization", 
   const cloud = await mockCloud(page);
   await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await page.locator(".cloud-storage-manage").click();
   await page.locator(".cloud-storage-remove").click();
   await context.setOffline(true);

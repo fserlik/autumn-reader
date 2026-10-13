@@ -22,6 +22,7 @@ import { plans } from "./services/plans";
 import { cloudStorage } from "./services/books/cloud-storage";
 import { bookStorage, requestPersistentCache } from "./services/storage";
 import { ensureBookContentMetadata } from "./services/books/content-metadata";
+import { BOOK_CONTENT_METADATA_VERSION } from "./services/books/content-metadata-version";
 import { bookDisplayTitle } from "./services/books/display";
 import { bookCache } from "./services/storage";
 import { downloadPrivateCover } from "./services/storage/book-covers";
@@ -29,13 +30,13 @@ import { mountBookEditor, type BookEditor } from "./ui/edit-book";
 import { library } from "./services/books";
 import { importUniqueBook, reconcileLocalLibrary } from "./services/books/identity";
 import { sync } from "./services/sync";
-import { mountSync } from "./ui/sync";
 import { cancelMigration, migrateLibrary, resumeApprovedMigrations } from "./services/sync/migration";
 import { errorMessage } from "./services/errors";
 import { mountDetails } from "./ui/social-details";
 import { mountProfile, type ProfileUI } from "./ui/profile-page";
+import { mountReadingStats } from "./ui/reading-stats";
 import { mountBookCarousel } from "./ui/book-carousel";
-import { presentationCard, readingBooks } from "./ui/book-presentation";
+import { homeReadingSelection, presentationCard } from "./ui/book-presentation";
 import { mountReviewComposer, type ReviewComposer } from "./ui/reviews";
 import type { ReviewEntry } from "./services/reviews/personal";
 import { mountSettings } from "./ui/settings";
@@ -52,20 +53,24 @@ import { loadDesktopGeneralPreferences, saveDesktopGeneralPreferences, type Desk
 import { availableSystemFonts, fontCss } from "./services/preferences/fonts";
 import { dictionaryService, type DictionarySource } from "./services/dictionary";
 import { loadTtsPreferences, localDeviceVoices, nativeDeviceVoices, nativePause, nativeResume, nativeSpeak, nativeStop, preferredVoice, refreshDeviceVoices, saveTtsPreferences, usesNativeTts, type TtsPreferences, type TtsVoice } from "./services/tts";
+import { aiSpeech, loadBookAiSpeechPreferences, saveBookAiSpeechPreferences, type AiSpeechVoice, type BookAiSpeechPreferences } from "./services/ai-speech";
 import { ReaderHistory, type ReaderPosition } from "./readers/history";
 import { epubSearch, pdfSearch, quoteRects, type BookSearch, type SearchResult } from "./readers/search";
 import { mountBookSearch, type SearchUI } from "./ui/book-search";
 import { bindPageGestures } from "./readers/gestures";
-import { pageSnapshot, pageTurnSheetTransform, slide } from "./readers/page-turn";
+import { pageSnapshot, pageTurnSheetTransform, settledPageMove, slide, waitForStableTypography } from "./readers/page-turn";
 import { translationService } from "./services/translation";
 import { mountTranslation, type TranslationUI } from "./ui/translation";
 import { pdfDestination, pdfPageLinks } from "./readers/pdf-navigation";
+import { readingActivity } from "./services/reading/activity";
 
 const icons = {
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
   library: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="16" rx="1"/><path d="m17 5 4 14M3 8h5m2 4h5"/>',
   profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
   settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="16" cy="17" r="2"/>',
+  plans: '<path d="M4 7h16v13H4z"/><path d="M7 4h10v3M8 11h8M8 15h5"/>',
+  collapse: '<path d="m15 18-6-6 6-6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
   back: '<path d="M19 12H5m6 6-6-6 6-6"/>',
@@ -78,6 +83,7 @@ const icons = {
   speech: '<path d="M5 10v4h3l4 3V7l-4 3H5zM16 9.2a4 4 0 0 1 0 5.6M18.5 6.5a7.5 7.5 0 0 1 0 11"/>',
   play: '<path d="m8 5 11 7-11 7V5z"/>',
   pause: '<path d="M9 5v14M15 5v14"/>',
+  stop: '<rect x="7" y="7" width="10" height="10" rx="1"/>',
   previousTrack: '<path d="M6 5v14M18 6l-9 6 9 6V6z"/>',
   nextTrack: '<path d="M18 5v14M6 6l9 6-9 6V6z"/>',
   refresh: '<path d="M20 7v5h-5M4 17v-5h5M6.1 8A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 11.9-2"/>',
@@ -105,11 +111,12 @@ app.innerHTML = `
       <nav class="sidebar-nav" aria-label="${t("mainNavigation")}">
         <button class="nav-button active" data-view="home" type="button">${svg("home")}<span>${t("home")}</span></button>
         <button class="nav-button" data-view="library" type="button">${svg("library")}<span>${t("library")}</span><span id="nav-book-count" class="nav-count">0</span></button>
-        <button class="nav-button" data-view="settings" type="button">${svg("settings")}<span>${t("settings")}</span></button>
         <button class="nav-button" data-view="profile" type="button">${svg("profile")}<span>${t("profile")}</span></button>
       </nav>
-      <div class="sidebar-signature"><img src="${leafUrl}" alt="" /><p>${t("storiesSeason")}</p></div>
-      <div class="sidebar-foot">${t("booksYourPace")}</div>
+      <div class="sidebar-bottom">
+        <button class="nav-button" data-view="settings" type="button">${svg("settings")}<span>${t("settings")}</span></button>
+        <button id="sidebar-collapse" class="nav-button sidebar-collapse" type="button" aria-label="Collapse sidebar" aria-pressed="false">${svg("collapse")}<span>Collapse</span></button>
+      </div>
     </aside>
 
     <div class="workspace">
@@ -126,8 +133,10 @@ app.innerHTML = `
             <div class="hero-art" id="hero-art" aria-hidden="true"></div>
           </div>
 
-          <div class="shelf-heading"><div><p class="section-kicker">${t("continueWhere")}</p><h2>${t("continueReading")}</h2></div><div class="carousel-controls" role="group" aria-label="${t("continueReading")}" hidden><button id="recent-previous" type="button" aria-label="${t("previousBooks")}">‹</button><button id="recent-next" type="button" aria-label="${t("nextBooks")}">›</button></div></div>
-          <div id="recent-list" class="book-grid recent-grid" role="region" aria-label="${t("continueReading")}" tabindex="0"></div>
+          <section id="recent-shelf" class="home-reading-shelf">
+            <div class="shelf-heading"><div><p class="section-kicker">${t("continueWhere")}</p><h2>${t("continueReading")}</h2></div><div class="carousel-controls" role="group" aria-label="${t("continueReading")}" hidden><button id="recent-previous" type="button" aria-label="${t("previousBooks")}">‹</button><button id="recent-next" type="button" aria-label="${t("nextBooks")}">›</button></div></div>
+            <div id="recent-list" class="book-grid recent-grid" role="region" aria-label="${t("continueReading")}" tabindex="0"></div>
+          </section>
         </section>
 
         <section id="view-library" class="view library-view" hidden>
@@ -165,9 +174,9 @@ app.innerHTML = `
           <section id="settings-account-panel" class="settings-section" role="tabpanel" aria-labelledby="settings-account-tab" tabindex="0"${isAndroid ? "" : " hidden"}>
             <div class="settings-section-heading"><h2>${t("accountSettings")}</h2><p>${t("accountSettingsHelp")}</p></div>
             <div id="settings-account-sheet" class="account-settings-sheet">
-              <div id="settings-plan"></div>
               <div id="settings-security"></div>
             </div>
+            <div id="settings-account-footer" class="account-settings-footer"></div>
           </section>
           <section id="settings-page-panel" class="settings-section" role="tabpanel" aria-labelledby="settings-page-tab" tabindex="0" hidden>
 
@@ -210,6 +219,7 @@ app.innerHTML = `
         </section>
 
         <section id="view-profile" class="view profile-view" hidden></section>
+        <section id="view-statistics" class="view statistics-view" hidden></section>
         <section id="view-details" class="view details-view" hidden></section>
         <section id="view-reader" class="view reader-view" hidden>
           <aside id="reader-sidebar" class="reader-sidebar" aria-label="${t("readerSidebar")}">
@@ -262,8 +272,16 @@ app.innerHTML = `
               </section>
               <section id="speech-panel" class="reader-option-panel" data-reader-panel="speech" hidden>
                 <div class="reader-panel-heading"><span>${svg("speech", 18)}</span><h3>${t("textToSpeech")}</h3><output id="tts-player-status" aria-live="polite">${t("ttsPlayerReady")}</output></div>
+                <div class="tts-engine-choice" role="group" aria-label="${t("aiSpeechEngine")}"><button id="tts-engine-local" type="button" aria-pressed="true">${t("aiSpeechLocal")}</button><button id="tts-engine-premium" type="button" aria-pressed="false">${t("aiSpeechPremium")}</button></div>
+                <div id="tts-premium-options" class="tts-premium-options" hidden>
+                  <label><span>${t("aiSpeechLanguage")}</span><select id="tts-premium-language"></select></label>
+                  <label><span>${t("aiSpeechVoices")}</span><select id="tts-premium-voice"></select></label>
+                  <div class="tts-premium-sample"><button id="tts-premium-preview" class="text-link" type="button">${svg("play", 14)}<span>${t("aiSpeechPreview")}</span></button><small>${t("aiSpeechPreviewHint")}</small></div>
+                  <p id="tts-premium-message" role="status" aria-live="polite"></p>
+                  <div id="tts-premium-recovery" class="tts-premium-recovery" hidden><button id="tts-premium-retry" class="text-link" type="button">${t("aiSpeechRetry")}</button><button id="tts-use-local" class="text-link" type="button">${t("aiSpeechUseLocal")}</button></div>
+                </div>
                 <div class="tts-current"><span id="tts-page-context">${t("ttsCurrentPage")}</span><p id="tts-passage"></p><small id="tts-active-voice"></small></div>
-                <div class="tts-transport" role="group" aria-label="${t("textToSpeech")}"><button id="tts-previous" type="button" aria-label="${t("ttsPreviousPage")}">${svg("previousTrack", 20)}</button><button id="tts-play-pause" class="tts-play" type="button" aria-label="${t("ttsPlay")}">${svg("play", 23)}</button><button id="tts-next" type="button" aria-label="${t("ttsNextPage")}">${svg("nextTrack", 20)}</button></div>
+                <div class="tts-transport" role="group" aria-label="${t("textToSpeech")}"><button id="tts-previous" type="button" aria-label="${t("ttsPreviousPage")}">${svg("previousTrack", 20)}</button><button id="tts-play-pause" class="tts-play" type="button" aria-label="${t("ttsPlay")}">${svg("play", 23)}</button><button id="tts-stop" type="button" aria-label="${t("speechStop")}">${svg("stop", 18)}</button><button id="tts-next" type="button" aria-label="${t("ttsNextPage")}">${svg("nextTrack", 20)}</button></div>
                 <label class="reader-option-line tts-player-rate" for="tts-rate-reader"><span>${t("ttsReadingPace")}</span><input id="tts-rate-reader" type="range" min="0.5" max="2" step="0.1" /><output id="tts-rate-reader-value">1×</output></label>
               </section>
               <section id="layout-panel" class="reader-option-panel reader-layout-panel" data-reader-panel="layout" hidden>
@@ -337,7 +355,7 @@ type LibraryStatusFilter = "all" | "reading" | "finished" | "unread" | "favorite
 let libraryStatusFilter: LibraryStatusFilter = "all";
 const cloudState = new Map<string, "syncing" | "error">();
 
-type View = "home" | "library" | "settings" | "reader" | "profile" | "details";
+type View = "home" | "library" | "settings" | "reader" | "profile" | "statistics" | "details";
 let profilePage: ProfileUI | undefined;
 let reviewComposer: ReviewComposer | undefined;
 let bookEditor: BookEditor | undefined;
@@ -357,7 +375,7 @@ let epubPosition = { cfi: "", label: "" };
 let readerJumpBusy = false;
 let searchHighlight: string | undefined;
 let pagePreviewActive = false;
-interface PageTurn { snapshot: HTMLElement; live: HTMLElement; preview?: Rendition; previewChanged?: boolean; preloadOnly?: boolean; origin: ReaderPosition; direction: -1|1; dx: number; width: number; sequence: number; ready: Promise<void>; readySettled: boolean; failed: boolean; ending: boolean }
+interface PageTurn { snapshot: HTMLElement; live: HTMLElement; preview?: Rendition; preloadOnly?: boolean; origin: ReaderPosition; direction: -1|1; dx: number; width: number; sequence: number; ready: Promise<void>; readySettled: boolean; failed: boolean; ending: boolean }
 let pageTurn: PageTurn | undefined;
 const pageTurnAnimationKey = "autumn-page-turn-animation";
 let pageTurnAnimationEnabled = localStorage.getItem(pageTurnAnimationKey) !== "off";
@@ -371,6 +389,12 @@ let ttsState: "idle" | "playing" | "paused" = "idle";
 let ttsSequence = 0;
 let ttsChunks: string[] = [];
 let ttsChunkIndex = 0;
+let ttsEngine: "local" | "premium" = "local";
+let aiSpeechAllowed = false;
+let aiSpeechVoices: AiSpeechVoice[] = [];
+let aiSpeechPreferences: BookAiSpeechPreferences = { voiceId: "Lucia", language: "es-ES" };
+let premiumAudio: HTMLAudioElement | undefined;
+let premiumPrefetch: { index: number; request: ReturnType<typeof aiSpeech.synthesize> } | undefined;
 let bookPageOverrides: BookPageOverrides = {};
 let pagePreferences = globalPagePreferences;
 let view: View = "home";
@@ -478,6 +502,7 @@ function setView(next: View): void {
     $<HTMLElement>("#dictionary-panel").hidden = true;
     stopTts();
   }
+  if (view === "reader" && next !== "reader") readingActivity.stop();
   view = next;
   const shell = $<HTMLElement>(".shell");
   shell.dataset.view = next;
@@ -501,6 +526,7 @@ function setView(next: View): void {
     settings: [t("settings"), t("settingsSubtitle")],
     reader: [currentBook ? titleOf(currentBook) : t("reader"), t("enjoyReading")],
     profile: [t("profile"), t("profileSubtitle")],
+    statistics: [({ es: "Estadísticas de lectura", en: "Reading statistics", it: "Statistiche di lettura", fr: "Statistiques de lecture" } as Record<Language, string>)[language], ({ es: "Tu actividad y hábitos de lectura", en: "Your reading activity and habits", it: "La tua attività e le tue abitudini di lettura", fr: "Votre activité et vos habitudes de lecture" } as Record<Language, string>)[language]],
     details: [t("profile"), ""],
   };
   $<HTMLElement>("#page-title").textContent = headings[next][0];
@@ -691,7 +717,7 @@ async function relayoutReader(): Promise<void> {
   if (revision === layoutRevision) await persistCurrent();
 }
 
-function standardizeEpubPage(contents: Contents): void {
+function standardizeEpubPage(contents: Contents): Promise<void> {
   // EPUB chapters are separate documents; app-level CSS cannot reach their scroll containers.
   if (!contents.document.getElementById("autumn-scrollbars")) {
     const style = contents.document.createElement("style");
@@ -699,7 +725,7 @@ function standardizeEpubPage(contents: Contents): void {
     style.textContent = "html, body, * { scrollbar-width: none !important; } html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }";
     contents.document.head.append(style);
   }
-  if (epubBook?.packaging?.metadata?.layout === "pre-paginated") return;
+  if (epubBook?.packaging?.metadata?.layout === "pre-paginated") return waitForStableTypography(contents.document);
   // Android WebView otherwise recalculates font boosting as each EPUB page is laid out.
   // An explicit scale keeps the reader typography stable between page turns.
   if (!contents.document.getElementById("autumn-text-scale")) {
@@ -720,6 +746,7 @@ function standardizeEpubPage(contents: Contents): void {
     }
     body :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0 !important; }
   `, "autumn-page-layout");
+  return waitForStableTypography(contents.document);
 }
 
 function coverElement(book: StoredBook): HTMLElement {
@@ -927,22 +954,31 @@ function emptyState(message: string, withAction = false): HTMLElement {
 
 function renderCollections(): void {
   $<HTMLElement>("#nav-book-count").textContent = String(books.length);
-  const recent = readingBooks(books);
+  const { featured, shelf } = homeReadingSelection(books);
   const recentList = $<HTMLDivElement>("#recent-list");
-  recentList.replaceChildren(...(recent.length ? recent.map((book) => presentationCard(book, coverElement, (item) => void openBook(item), false)) : [emptyState(t("homeReadingEmpty"))]));
+  recentList.replaceChildren(...(shelf.length
+    ? shelf.map((book) => presentationCard(book, coverElement, (item) => void openBook(item), false))
+    : featured ? [] : [emptyState(t("homeReadingEmpty"))]));
+  $<HTMLElement>("#recent-shelf").hidden = Boolean(featured && !shelf.length);
   homeCarousel?.update();
 
   const heroAction = $<HTMLButtonElement>("#hero-action");
-  const featured = recent[0];
-  $<HTMLElement>("#home-hero").classList.toggle("hero-empty", !featured);
+  const hero = $<HTMLElement>("#home-hero");
+  hero.classList.toggle("hero-empty", !featured);
   $<HTMLElement>("#hero-eyebrow").textContent = featured ? t("continueReading") : t("welcome");
   $<HTMLElement>("#hero-title").textContent = featured ? titleOf(featured) : t(books.length ? "homeHeroNoCurrentTitle" : "homeHeroEmptyTitle");
   $<HTMLElement>("#hero-author").textContent = featured ? featured.author?.trim() || t("authorUnknown") : "";
   $<HTMLElement>("#hero-description").textContent = featured ? "" : t(books.length ? "homeHeroNoCurrentDescription" : "homeHeroEmptyDescription");
   const art = $<HTMLElement>("#hero-art");
   art.replaceChildren();
-  if (featured) art.append(coverElement(featured));
-  else { const leaf = document.createElement("img"); leaf.src = leafUrl; leaf.alt = ""; art.append(leaf); }
+  if (featured) {
+    const featuredCover = coverElement(featured);
+    hero.classList.toggle("hero-cover-image", !featuredCover.classList.contains("book-cover-fallback"));
+    art.append(featuredCover);
+  } else {
+    hero.classList.remove("hero-cover-image");
+    const leaf = document.createElement("img"); leaf.src = leafUrl; leaf.alt = ""; art.append(leaf);
+  }
   heroAction.querySelector("span")!.textContent = featured ? t("continueReading") : t("exploreLibrary");
   heroAction.onclick = () => featured ? void openBook(featured) : setView("library");
 
@@ -1000,6 +1036,10 @@ async function removeBook(book: StoredBook): Promise<void> {
 function updatePosition(): void {
   if (pagePreviewActive) return;
   if (!currentBook) return;
+  if (view === "reader" && !pagePreviewActive && !readerJumpBusy && !layoutBusy) {
+    const marker = currentBook.format === "pdf" ? `pdf:${pdfPosition.page}:${pdfTextView?.index ?? 0}` : (rendition?.location?.start?.cfi ?? "");
+    readingActivity.position(marker);
+  }
   const position = currentBook.format === "pdf"
     ? t("pageOf", { page: pdfPosition.page, total: pdfDocument?.numPages ?? "…" })
     : rendition?.location?.start ? `${t("section", { number: rendition.location.start.index + 1 })} · ${rendition.location.start.displayed.page}/${rendition.location.start.displayed.total}` : t("book");
@@ -1465,6 +1505,7 @@ function renderNoteMarkers(): void {
 }
 
 async function clearReader(): Promise<void> {
+  readingActivity.stop();
   stopTts();
   translationUI?.close(); selectedTranslationText=""; noteHighlights.clear();
   ++pdfNavigationToken; pdfNavigationBusy = false;
@@ -1527,7 +1568,7 @@ async function renderPdfPage(): Promise<void> {
   if (pdfReadingMode === "text" && blocks.length) {
     const sheet = document.createElement("div");
     sheet.className = "pdf-sheet pdf-reading-sheet";
-    sheet.style.width = `${Math.min(820, availableWidth)}px`;
+    sheet.style.width = `${availableWidth}px`;
     sheet.style.height = `${availableHeight}px`;
     readerContent.replaceChildren(sheet);
     pdfTextView = new PdfTextView(sheet, blocks, 18 * currentBook.fontSize / 100, fontCss(bookFont), pagePreferences);
@@ -1620,6 +1661,8 @@ async function openBook(book: StoredBook): Promise<void> {
   await clearReader();
   if (sequence !== loadSequence) return;
   currentBook = book;
+  aiSpeechPreferences = loadBookAiSpeechPreferences(book.ownerId ?? auth.state.ownerId ?? "local", book.id);
+  renderAiSpeechVoiceOptions();
   pdfPosition = { page: book.page, offset: book.pdfTextOffset ?? 0 };
   epubPosition = { cfi: book.cfi ?? "", label: "" };
   const cached = hasLocalFile(book);
@@ -1684,7 +1727,7 @@ async function openBook(book: StoredBook): Promise<void> {
       const viewport = epubViewportSize(frame);
       rendition = epubBook.renderTo(frame, { width: "100%", height: "100%", flow: "paginated", spread: columnCount(pagePreferences.columns, viewport.width, viewport.height) === 2 ? "always" : "none" });
       rendition.hooks.content.register((contents: Contents) => {
-        standardizeEpubPage(contents);
+        const typographyReady = standardizeEpubPage(contents);
         addTapNavigation(contents.document, () => contents.window.getSelection());
         const selectedText = () => {
           const selection = contents.window.getSelection();
@@ -1711,6 +1754,10 @@ async function openBook(book: StoredBook): Promise<void> {
             showNoteMenu(note.quote, note.anchor, frameRect.left + event.clientX, frameRect.top + event.clientY);
           }
         });
+        // El contenido EPUB está en un iframe: sus clics no llegan al documento principal.
+        contents.document.addEventListener("pointerdown", () => {
+          if (!$<HTMLDivElement>("#note-menu").hidden) hideNoteMenu();
+        }, { capture: true });
         contents.document.addEventListener("selectionchange", () => scheduleTouchNote(selectedText));
         contents.document.addEventListener("keydown", handleReaderKeydown);
         contents.document.addEventListener("wheel", handleReaderWheel, { passive: false });
@@ -1719,6 +1766,7 @@ async function openBook(book: StoredBook): Promise<void> {
           const href = link?.getAttribute("href");
           if (href && !/^(?:[a-z]+:|\/\/)/i.test(href)) { const from = capturePosition(); readerHistory.jump(from, from); updateHistory(); }
         }, { capture: true });
+        return typographyReady;
       });
       rendition.themes.fontSize(`${book.fontSize}%`);
       applyTheme();
@@ -1741,10 +1789,11 @@ async function openBook(book: StoredBook): Promise<void> {
       addToc(navigation.toc); toc.hidden = toc.options.length <= 1;
       window.requestAnimationFrame(renderNoteMarkers);
     }
+    readingActivity.start(book.ownerId ?? auth.state.ownerId ?? "local", book.id, book.format);
     await persistCurrent();
     updatePosition();
     renderSidebarNotes();
-    if (book.contentMetadataVersion !== 1) void refreshBookContent(book);
+    if (book.contentMetadataVersion !== BOOK_CONTENT_METADATA_VERSION) void refreshBookContent(book);
     if (cached && remotePosition) void remotePosition.then(async (remote) => {
       if (sequence !== loadSequence || currentBook !== book) return;
       restoringRemotePosition = false;
@@ -1777,7 +1826,7 @@ async function refreshBookContent(book: StoredBook): Promise<void> {
     const updated = await ensureBookContentMetadata(book);
     if (auth.state.ownerId !== owner) return;
     const visible = books.find(item => item.id === book.id);
-    if (!visible || updated.contentMetadataVersion !== 1) return;
+    if (!visible || updated.contentMetadataVersion !== BOOK_CONTENT_METADATA_VERSION) return;
     Object.assign(visible, updated);
     if (currentBook?.id === visible.id) { Object.assign(currentBook, updated); renderReaderBookSummary(currentBook); }
     const openMenu = view === "library" ? document.querySelector<HTMLDetailsElement>(".book-menu[open]") : null;
@@ -1884,7 +1933,21 @@ async function navigate(direction: -1 | 1, preview = false): Promise<void> {
     }
   } else if (rendition) {
     stableLayoutAnchor = null; stableLayoutPercentage = null;
-    await (direction < 0 ? rendition.prev() : rendition.next());
+    const active = rendition;
+    if (preview) {
+      await settledPageMove({
+        move: () => direction < 0 ? active.prev() : active.next(),
+        onRelocated: handler => active.on("relocated", handler),
+        offRelocated: handler => active.off("relocated", handler),
+        reportLocation: () => active.reportLocation(),
+        documents: () => {
+          const contents: unknown = active.getContents();
+          return Array.isArray(contents)
+            ? (contents as Contents[]).map(item => item.document)
+            : [];
+        },
+      });
+    } else await (direction < 0 ? active.prev() : active.next());
   }
 }
 
@@ -1898,7 +1961,7 @@ function beginPageTurn(direction: -1|1, preloadOnly = false): void {
   if (pageTurn || !currentBook) return;
   const snapshot = epubBook ? document.createElement("div") : pageSnapshot(readerContent, readingSurface);
   if (epubBook) { snapshot.className="page-turn-snapshot"; snapshot.style.visibility="hidden"; snapshot.setAttribute("aria-hidden","true"); readingSurface.append(snapshot); }
-  const sheet = epubBook ? readerContent : snapshot;
+  const sheet = snapshot;
   if (!preloadOnly) { sheet.classList.add("page-turn-sheet"); sheet.dataset.turnDirection=String(direction); }
   const turn: PageTurn = { snapshot, live: readerContent, preloadOnly, origin: capturePosition(), direction, dx: 0, width: readingSurface.clientWidth, sequence: loadSequence, ready: Promise.resolve(), readySettled: false, failed: false, ending: false };
   pageTurn = turn; pagePreviewActive = true;
@@ -1906,21 +1969,37 @@ function beginPageTurn(direction: -1|1, preloadOnly = false): void {
   $<HTMLButtonElement>("#next-button").disabled = true;
   if (!preloadOnly) { readingSurface.classList.add("page-turning"); readerContent.style.willChange = "transform"; }
   if (epubBook && rendition && turn.origin.format === "epub") {
-    // Keep the touched iframe mounted across chapter boundaries. This temporary
-    // rendition shares the opened book/archive, rather than loading another file.
-    const adjacent = readerContent.cloneNode(false) as HTMLElement; adjacent.removeAttribute("id"); adjacent.setAttribute("aria-hidden","true"); adjacent.classList.remove("page-turn-sheet"); delete adjacent.dataset.turnDirection;
-    adjacent.classList.add("page-turn-preview"); const rect = readerContent.getBoundingClientRect(), bounds = readingSurface.getBoundingClientRect();
-    adjacent.style.cssText = `position:absolute;left:${rect.left-bounds.left}px;top:${rect.top-bounds.top}px;width:${rect.width}px;height:${rect.height}px;min-height:0;z-index:4;pointer-events:none;will-change:transform`;
-    const frame = document.createElement("div"); frame.className="epub-frame"; adjacent.append(frame); readingSurface.append(adjacent); turn.live=adjacent;
+    // The auxiliary rendition is deliberately a cover of the current page,
+    // never a speculative rendition of the destination. Independent EPUB.js
+    // renditions can paginate the same spine differently by one page while an
+    // iframe or font is settling. The real rendition advances underneath this
+    // cover and only its confirmed destination is revealed by the animation.
+    const cover = readerContent.cloneNode(false) as HTMLElement; cover.removeAttribute("id"); cover.setAttribute("aria-hidden","true"); cover.classList.remove("page-turn-sheet"); delete cover.dataset.turnDirection;
+    cover.classList.add("page-turn-preview"); const rect = readerContent.getBoundingClientRect(), bounds = readingSurface.getBoundingClientRect();
+    cover.style.cssText = `position:absolute;left:${rect.left-bounds.left}px;top:${rect.top-bounds.top}px;width:${rect.width}px;height:${rect.height}px;min-height:0;z-index:8;pointer-events:none;will-change:transform;contain:layout paint;backface-visibility:hidden;transform-style:flat`;
+    const frame = document.createElement("div"); frame.className="epub-frame"; cover.append(frame); readingSurface.append(cover);
+    snapshot.remove(); turn.snapshot=cover; turn.live=readerContent;
+    if (!preloadOnly) { cover.classList.add("page-turn-sheet"); cover.dataset.turnDirection=String(direction); }
     const viewport = epubViewportSize(frame);
     const preview = epubBook.renderTo(frame,{width:"100%",height:"100%",flow:"paginated",spread:columnCount(pagePreferences.columns,viewport.width,viewport.height)===2?"always":"none"}); epubBook.rendition=rendition; turn.preview=preview;
     preview.hooks.content.register((contents: Contents)=>standardizeEpubPage(contents));
     preview.themes.fontSize(`${currentBook.fontSize}%`); preview.themes.font(fontCss(bookFont));
     const previewColors = bookReaderColors();
-    adjacent.style.background = previewColors.background; frame.style.background = previewColors.background;
+    cover.style.background = previewColors.background; frame.style.background = previewColors.background;
     preview.themes.default({ body: previewColors });
-    adjacent.style.visibility="hidden";adjacent.style.transform=`translate3d(${direction*turn.width}px,0,0)`;
-    turn.ready=(async()=>{await preview.display((turn.origin as Extract<ReaderPosition,{format:"epub"}>).cfi);const before=await preview.currentLocation() as unknown as Location;await(direction<0?preview.prev():preview.next());const after=await preview.currentLocation() as unknown as Location;turn.previewChanged=before?.start.cfi!==after?.start.cfi;})();
+    cover.style.visibility="hidden"; cover.style.transform="translate3d(0,0,0)";
+    turn.ready=(async()=>{
+      await preview.display((turn.origin as Extract<ReaderPosition,{format:"epub"}>).cfi);
+      const contents: unknown = preview.getContents();
+      if (Array.isArray(contents)) await Promise.all((contents as Contents[]).map(item => waitForStableTypography(item.document)));
+
+      // Freeze the current-page cover into a stable compositor layer before it
+      // is placed over the real reader. The destination is never rendered here.
+      cover.style.opacity = "0.999";
+      void cover.getBoundingClientRect();
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      cover.style.opacity = "1";
+    })();
   } else {
     readerContent.style.visibility = "hidden"; readerContent.style.transform = `translate3d(${direction * turn.width}px,0,0)`;
     turn.ready = navigate(direction, true);
@@ -1930,7 +2009,7 @@ function beginPageTurn(direction: -1|1, preloadOnly = false): void {
     if (pageTurn !== turn) return;
     if (!turn.preloadOnly) {
       readerContent.style.visibility = "";
-      turn.live.style.visibility="";turn.live.dataset.ready="true";
+      turn.snapshot.style.visibility="";turn.snapshot.dataset.ready="true";
       dragPageTurn(turn.dx);
     }
   }).catch(error => { turn.readySettled = true; turn.failed = true; if(pageTurn === turn)showToast(errorMessage(error)); });
@@ -1938,9 +2017,8 @@ function beginPageTurn(direction: -1|1, preloadOnly = false): void {
 function dragPageTurn(dx: number): void {
   const turn = pageTurn; if (!turn || turn.ending) return;
   turn.dx = Math.max(-turn.width, Math.min(turn.width, turn.direction === 1 ? Math.min(0, dx) : Math.max(0, dx)));
-  turn.snapshot.style.transform = turn.preview ? `translate3d(${turn.dx}px,0,0)` : pageTurnSheetTransform(turn.dx,turn.width,turn.direction);
-  turn.live.style.transform = `translate3d(${turn.direction * turn.width + turn.dx}px,0,0)`;
-  if (turn.preview) readerContent.style.transform = pageTurnSheetTransform(turn.dx,turn.width,turn.direction);
+  turn.snapshot.style.transform = pageTurnSheetTransform(turn.dx,turn.width,turn.direction);
+  if (!turn.preview) turn.live.style.transform = `translate3d(${turn.direction * turn.width + turn.dx}px,0,0)`;
 }
 async function endPageTurn(commit: boolean, direction: -1|1): Promise<void> {
   const turn = pageTurn; if (!turn || turn.ending) return; turn.ending = true;
@@ -1962,17 +2040,28 @@ async function endPageTurn(commit: boolean, direction: -1|1): Promise<void> {
     if (turn.preloadOnly && commit) {
       turn.preloadOnly = false;
       readingSurface.classList.add("page-turning");
-      readerContent.classList.add("page-turn-sheet"); readerContent.dataset.turnDirection = String(direction);
-      readerContent.style.willChange = "transform";
-      turn.live.style.visibility = ""; turn.live.dataset.ready = "true";
+      turn.snapshot.classList.add("page-turn-sheet"); turn.snapshot.dataset.turnDirection = String(direction);
+      turn.snapshot.style.willChange = "transform";
+      turn.snapshot.style.visibility = ""; turn.snapshot.dataset.ready = "true";
+    }
+    if (turn.preview && commit && direction === turn.direction) {
+      // Fully cover the live iframe while EPUB.js moves it. This is the key
+      // ordering guarantee: only a settled real destination can be revealed.
+      turn.snapshot.style.transform = "translate3d(0,0,0)";
+      readerContent.style.transform = "";
+      await navigate(turn.direction,true);
+      if (pageTurn !== turn || turn.sequence !== loadSequence) return;
+      turn.snapshot.dataset.destinationReady = "true";
     }
     const position = capturePosition();
     const changed = position.format === "pdf" && turn.origin.format === "pdf" ? position.page !== turn.origin.page || Math.abs(position.offset-turn.origin.offset) > .0001 : position.format === "epub" && turn.origin.format === "epub" && position.cfi !== turn.origin.cfi;
-    commit &&= direction === turn.direction && (turn.preview ? Boolean(turn.previewChanged) : changed);
+    commit &&= direction === turn.direction && changed;
     const duration = turn.readySettled && animatePageTurn() && (commit || Math.abs(turn.dx) > 4) ? 360 : 0;
-    await Promise.all([slide(turn.snapshot, commit ? -turn.direction * turn.width : 0, duration,turn.preview?undefined:{width:turn.width,direction:turn.direction}), slide(turn.live, commit ? 0 : turn.direction * turn.width, duration), ...(turn.preview ? [slide(readerContent,commit ? -turn.direction * turn.width : 0,duration,{width:turn.width,direction:turn.direction})] : [])]);
+    await Promise.all([
+      slide(turn.snapshot, commit ? -turn.direction * turn.width : 0, duration,{width:turn.width,direction:turn.direction}),
+      ...(turn.preview ? [] : [slide(turn.live, commit ? 0 : turn.direction * turn.width, duration)]),
+    ]);
     if (pageTurn !== turn) return;
-    if (turn.preview && commit) { readerContent.style.transform=""; await navigate(turn.direction,true); }
     completed = commit;
   } catch (error) {
     if (pageTurn === turn) showToast(errorMessage(error));
@@ -2088,10 +2177,28 @@ function changeSize(direction: -1 | 1): void {
   updatePosition();
 }
 
-for (const button of document.querySelectorAll<HTMLButtonElement>(".nav-button")) {
-  button.addEventListener("click", () => { setView(button.dataset.view as View); if (button.dataset.view === "profile") location.hash = "/profile"; });
+for (const button of document.querySelectorAll<HTMLButtonElement>(".nav-button[data-view]")) {
+  button.addEventListener("click", () => {
+    const next = button.dataset.view as View;
+    setView(next);
+    if (next === "profile") location.hash = "/profile";
+  });
 }
 $("#brand-home").addEventListener("click", () => setView("home"));
+const shellElement = $<HTMLElement>(".shell");
+const collapseButton = $<HTMLButtonElement>("#sidebar-collapse");
+const sidebarCollapsedKey = "autumn-sidebar-collapsed";
+const applySidebarCollapsed = (collapsed: boolean): void => {
+  shellElement.classList.toggle("sidebar-collapsed", collapsed);
+  collapseButton.setAttribute("aria-pressed", String(collapsed));
+  collapseButton.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+};
+applySidebarCollapsed(localStorage.getItem(sidebarCollapsedKey) !== "false");
+collapseButton.addEventListener("click", () => {
+  const collapsed = !shellElement.classList.contains("sidebar-collapsed");
+  localStorage.setItem(sidebarCollapsedKey, String(collapsed));
+  applySidebarCollapsed(collapsed);
+});
 $("#import-button").addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => {
   if (fileInput.files) void importFiles(fileInput.files);
@@ -2178,14 +2285,17 @@ function openDesktopReaderSettings(tab: "layout" | "appearance" = "appearance"):
 async function refreshReaderTtsAccess(): Promise<void> {
   const trigger = $<HTMLButtonElement>("#speech-toggle");
   const sidebarTrigger = $<HTMLButtonElement>("#reader-tts-tab");
-  let allowed = false;
+  let premiumAllowed = false;
   try {
-    allowed = ttsAvailable() && auth.state.status === "authenticated" && (await plans.current()).premium_tts_tier !== "none";
-  } catch { allowed = false; }
+    premiumAllowed = auth.state.status === "authenticated" && (await plans.current()).premium_tts_tier !== "none";
+  } catch { premiumAllowed = false; }
+  aiSpeechAllowed = premiumAllowed;
+  const allowed = ttsAvailable() || premiumAllowed;
   trigger.hidden = !allowed;
   sidebarTrigger.hidden = !allowed;
   if (!allowed && activeReaderSidebarTab === "tts") setReaderSidebarTab("contents");
   if (!allowed && activeReaderOptionsTrigger === trigger) closeReaderOptions();
+  updateTtsEngineControls();
 }
 function closeReaderOptions(fromHistory = false): void {
   if (!readerOptions.classList.contains("is-open")) return;
@@ -2216,6 +2326,7 @@ function openReaderOptions(trigger: HTMLButtonElement): void {
   if (panelId === "speech-panel") {
     updateTtsPlayer();
     void refreshTtsVoices(false);
+    void refreshAiSpeechVoices();
   }
   if (!wasOpen) {
     history.pushState({ ...history.state, autumnReaderOptions: true }, "");
@@ -2287,6 +2398,75 @@ function ttsVoiceLabel(voice: TtsVoice): string {
   return variant ? `${localizedLanguage} · ${variant}` : localizedLanguage;
 }
 
+function aiSpeechVoiceLabel(voice: AiSpeechVoice): string {
+  let localizedLanguage = voice.language;
+  try { localizedLanguage = new Intl.DisplayNames([language], { type: "language" }).of(voice.language) ?? voice.language; }
+  catch { /* Keep the BCP 47 tag as a reliable fallback. */ }
+  return `${localizedLanguage} · ${voice.name}`;
+}
+
+function updateTtsEngineControls(): void {
+  const local = document.querySelector<HTMLButtonElement>("#tts-engine-local");
+  const premium = document.querySelector<HTMLButtonElement>("#tts-engine-premium");
+  const options = document.querySelector<HTMLElement>("#tts-premium-options");
+  if (!local || !premium || !options) return;
+  local.setAttribute("aria-pressed", String(ttsEngine === "local"));
+  premium.setAttribute("aria-pressed", String(ttsEngine === "premium"));
+  options.hidden = ttsEngine !== "premium";
+  premium.classList.toggle("is-locked", !aiSpeechAllowed);
+}
+
+function renderAiSpeechVoiceOptions(): void {
+  const languageSelect = document.querySelector<HTMLSelectElement>("#tts-premium-language");
+  const voiceSelect = document.querySelector<HTMLSelectElement>("#tts-premium-voice");
+  if (!languageSelect || !voiceSelect) return;
+  const languages = [...new Set(aiSpeechVoices.map(voice => voice.language))];
+  languageSelect.replaceChildren(...languages.map(code => {
+    let label = code;
+    try { label = new Intl.DisplayNames([language], { type: "language" }).of(code) ?? code; } catch { /* Keep code. */ }
+    return new Option(label, code);
+  }));
+  if (!languages.includes(aiSpeechPreferences.language)) aiSpeechPreferences.language = languages[0] ?? "es-ES";
+  languageSelect.value = aiSpeechPreferences.language;
+  const matching = aiSpeechVoices.filter(voice => voice.language === aiSpeechPreferences.language);
+  voiceSelect.replaceChildren(...matching.map(voice => new Option(voice.name, voice.id)));
+  if (!matching.some(voice => voice.id === aiSpeechPreferences.voiceId)) aiSpeechPreferences.voiceId = matching[0]?.id ?? "";
+  voiceSelect.value = aiSpeechPreferences.voiceId;
+  updateTtsPlayer();
+}
+
+async function refreshAiSpeechVoices(): Promise<void> {
+  const message = $<HTMLElement>("#tts-premium-message");
+  if (!aiSpeechAllowed) { aiSpeechVoices = []; renderAiSpeechVoiceOptions(); message.textContent = t("aiSpeechSubscriberOnly"); return; }
+  if (!navigator.onLine) { message.textContent = t("aiSpeechOfflineFallback"); return; }
+  try {
+    const result = await aiSpeech.voices();
+    aiSpeechVoices = result.voices;
+    renderAiSpeechVoiceOptions();
+    message.textContent = currentBook?.cloudId ? "" : t("aiSpeechNeedsCloudBook");
+  } catch { message.textContent = t("aiSpeechGenerationError"); }
+}
+
+function persistAiSpeechVoice(): void {
+  if (!currentBook) return;
+  saveBookAiSpeechPreferences(currentBook.ownerId ?? auth.state.ownerId ?? "local", currentBook.id, aiSpeechPreferences);
+}
+
+function selectTtsEngine(engine: "local" | "premium"): void {
+  if (engine === "premium" && !aiSpeechAllowed) {
+    ttsEngine = "local";
+    $("#tts-premium-message").textContent = t("aiSpeechSubscriberOnly"); showToast(t("aiSpeechSubscriberOnly"));
+    updateTtsEngineControls();
+    return;
+  }
+  if (ttsEngine === engine) return;
+  stopTts(false);
+  ttsEngine = engine;
+  updateTtsEngineControls();
+  updateTtsPlayer();
+  if (engine === "premium") void refreshAiSpeechVoices();
+}
+
 function visibleText(root: HTMLElement, bounds: { left: number; right: number; top: number; bottom: number }): string {
   const owner = root.ownerDocument;
   const walker = owner.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -2330,6 +2510,24 @@ function speechChunks(text: string): string[] {
   return chunks.flatMap(chunk => chunk.length <= 700 ? [chunk] : chunk.match(/.{1,700}(?:\s|$)/gu)?.map(part => part.trim()).filter(Boolean) ?? [chunk]);
 }
 
+function premiumSpeechChunks(text: string): string[] {
+  const sentences = text.match(/[^.!?…]+(?:[.!?…]+|$)/gu) ?? [text];
+  const chunks: string[] = []; let current = "";
+  for (const sentence of sentences) {
+    const value = sentence.trim(); if (!value) continue;
+    if (current && `${current} ${value}`.length > 2800) { chunks.push(current); current = value; }
+    else current = current ? `${current} ${value}` : value;
+  }
+  if (current) chunks.push(current);
+  return chunks.flatMap(chunk => chunk.length <= 3000 ? [chunk] : chunk.match(/.{1,2800}(?:\s|$)/gu)?.map(part => part.trim()).filter(Boolean) ?? [chunk]);
+}
+
+function shortStableId(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index++) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 function updateTtsPlayer(text = currentTtsText()): void {
   const status = $<HTMLOutputElement>("#tts-player-status");
   status.textContent = t(ttsState === "playing" ? "ttsPlayerReading" : ttsState === "paused" ? "ttsPlayerPaused" : "ttsPlayerReady");
@@ -2338,6 +2536,7 @@ function updateTtsPlayer(text = currentTtsText()): void {
   play.innerHTML = svg(playing ? "pause" : "play", 23);
   play.setAttribute("aria-label", t(playing ? "ttsPause" : ttsState === "paused" ? "ttsResume" : "ttsPlay"));
   play.setAttribute("aria-pressed", String(ttsState !== "idle"));
+  $<HTMLButtonElement>("#tts-stop").disabled = ttsState === "idle";
   const epubLocation = currentBook?.format === "epub" ? rendition?.location : undefined;
   $<HTMLButtonElement>("#tts-previous").disabled = $<HTMLButtonElement>("#previous-button").disabled || Boolean(epubLocation?.atStart);
   $<HTMLButtonElement>("#tts-next").disabled = $<HTMLButtonElement>("#next-button").disabled || Boolean(epubLocation?.atEnd);
@@ -2345,7 +2544,10 @@ function updateTtsPlayer(text = currentTtsText()): void {
   $("#tts-page-context").textContent = position && position !== "—" ? `${t("ttsCurrentPage")} · ${position}` : t("ttsCurrentPage");
   $("#tts-passage").textContent = text ? `${text.slice(0, 165)}${text.length > 165 ? "…" : ""}` : t("noSelectableText");
   const voice = preferredVoice(ttsVoices, ttsPreferences, ttsLanguage());
-  $("#tts-active-voice").textContent = t("ttsVoiceActive", { voice: voice ? ttsVoiceLabel(voice) : t("ttsDefaultVoice") });
+  const premiumVoice = aiSpeechVoices.find(item => item.id === aiSpeechPreferences.voiceId);
+  $("#tts-active-voice").textContent = t("ttsVoiceActive", { voice: ttsEngine === "premium"
+    ? (premiumVoice ? aiSpeechVoiceLabel(premiumVoice) : t("aiSpeechPremium"))
+    : (voice ? ttsVoiceLabel(voice) : t("ttsDefaultVoice")) });
   for (const id of ["#tts-rate-reader", "#tts-rate-settings"]) $<HTMLInputElement>(id).value = String(ttsPreferences.rate);
   for (const id of ["#tts-rate-reader-value", "#tts-rate-settings-value"]) $<HTMLOutputElement>(id).textContent = formatTtsRate(ttsPreferences.rate);
 }
@@ -2353,7 +2555,11 @@ function updateTtsPlayer(text = currentTtsText()): void {
 function stopTts(update = true): void {
   ttsSequence += 1;
   if (usesNativeTts()) void nativeStop().catch(error => console.warn("Native TTS stop failed", error));
-  else if (window.speechSynthesis) window.speechSynthesis.cancel();
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  if (premiumAudio) { premiumAudio.pause(); premiumAudio.removeAttribute("src"); premiumAudio.load(); premiumAudio = undefined; }
+  premiumPrefetch = undefined;
+  const speechPanel = document.querySelector<HTMLElement>("#speech-panel");
+  speechPanel?.removeAttribute("aria-busy");
   ttsState = "idle"; ttsChunks = []; ttsChunkIndex = 0;
   if (update && document.querySelector("#tts-player-status")) updateTtsPlayer();
 }
@@ -2403,13 +2609,96 @@ function speakTtsChunk(sequence: number): void {
   window.speechSynthesis.speak(speech);
 }
 
+function premiumErrorMessage(error: unknown): string {
+  const code = error instanceof Error ? error.message : "provider_unavailable";
+  if (code.includes("ai_speech_quota")) return t("aiSpeechQuotaExhausted");
+  if (code.includes("global_budget")) return t("aiSpeechBudgetReached");
+  if (code.includes("generation_limit") || code.includes("rate_limited")) return t("aiSpeechRateLimited");
+  if (code.includes("offline")) return t("aiSpeechOfflineFallback");
+  return t("aiSpeechGenerationError");
+}
+
+function premiumChunkRequest(index: number): ReturnType<typeof aiSpeech.synthesize> {
+  if (!currentBook?.cloudId) return Promise.reject(new Error("book_not_synced"));
+  const text = ttsChunks[index];
+  return aiSpeech.synthesize({ bookId: currentBook.cloudId,
+    fragmentId: currentBook.format === "pdf" ? `pdf-${pdfPosition.page}-${pdfTextView?.index ?? 0}-${index}` : `epub-${shortStableId(ttsPageKey())}-${index}`, text,
+    voiceId: aiSpeechPreferences.voiceId, language: aiSpeechPreferences.language, rate: ttsPreferences.rate });
+}
+
+function ttsStopped(): boolean { return ttsState === "idle"; }
+
+async function playPremiumChunk(sequence: number): Promise<void> {
+  if (sequence !== ttsSequence || ttsState === "idle") return;
+  const text = ttsChunks[ttsChunkIndex];
+  if (!text) { void advanceTtsPage(sequence); return; }
+  const panel = $<HTMLElement>("#speech-panel"), message = $<HTMLElement>("#tts-premium-message");
+  const recovery = $<HTMLElement>("#tts-premium-recovery");
+  panel.setAttribute("aria-busy", "true"); recovery.hidden = true; message.textContent = t("aiSpeechGenerating");
+  try {
+    const request = premiumPrefetch?.index === ttsChunkIndex ? premiumPrefetch.request : premiumChunkRequest(ttsChunkIndex);
+    premiumPrefetch = undefined;
+    const result = await request;
+    if (sequence !== ttsSequence || ttsStopped()) return;
+    const audio = new Audio(result.audioUrl); premiumAudio = audio;
+    audio.preload = "auto";
+    audio.onended = () => {
+      if (sequence !== ttsSequence || ttsState === "idle") return;
+      premiumAudio = undefined; ttsChunkIndex += 1; void playPremiumChunk(sequence);
+    };
+    audio.onerror = () => {
+      if (sequence !== ttsSequence) return;
+      ttsState = "idle"; panel.removeAttribute("aria-busy"); message.textContent = t("aiSpeechGenerationError"); recovery.hidden = false; updateTtsPlayer();
+    };
+    audio.ontimeupdate = () => {
+      if (!premiumPrefetch && ttsChunks[ttsChunkIndex + 1] && Number.isFinite(audio.duration) && audio.duration - audio.currentTime < 20) {
+        const request = premiumChunkRequest(ttsChunkIndex + 1); request.catch(() => undefined);
+        premiumPrefetch = { index: ttsChunkIndex + 1, request };
+      }
+    };
+    message.textContent = result.cached ? t("aiSpeechCached") : "";
+    panel.removeAttribute("aria-busy");
+    if (ttsState === "playing") await audio.play();
+  } catch (error) {
+    if (sequence !== ttsSequence) return;
+    console.error("Premium AI Speech failed", error);
+    ttsState = "idle"; panel.removeAttribute("aria-busy"); message.textContent = currentBook?.cloudId ? premiumErrorMessage(error) : t("aiSpeechNeedsCloudBook");
+    recovery.hidden = false; updateTtsPlayer();
+  }
+}
+
+async function playPremiumSample(): Promise<void> {
+  const button = $<HTMLButtonElement>("#tts-premium-preview"), panel = $<HTMLElement>("#speech-panel");
+  const message = $<HTMLElement>("#tts-premium-message");
+  const visible = currentTtsText();
+  const sample = (visible.match(/^[\s\S]{1,220}?(?:[.!?…](?:\s|$)|$)/u)?.[0] ?? visible.slice(0, 220)).trim();
+  if (!currentBook?.cloudId) { message.textContent = t("aiSpeechNeedsCloudBook"); return; }
+  if (!sample) { showToast(t("noSelectableText")); return; }
+  stopTts(false); button.disabled = true; panel.setAttribute("aria-busy", "true"); message.textContent = t("aiSpeechGenerating");
+  try {
+    const fragmentId = currentBook.format === "pdf"
+      ? `pdf-${pdfPosition.page}-${pdfTextView?.index ?? 0}-sample`
+      : `epub-${shortStableId(ttsPageKey())}-sample`;
+    const result = await aiSpeech.synthesize({ bookId: currentBook.cloudId, fragmentId, text: sample,
+      voiceId: aiSpeechPreferences.voiceId, language: aiSpeechPreferences.language, rate: ttsPreferences.rate });
+    const audio = new Audio(result.audioUrl); premiumAudio = audio;
+    audio.onended = () => { if (premiumAudio === audio) premiumAudio = undefined; };
+    audio.onerror = () => { if (premiumAudio === audio) premiumAudio = undefined; message.textContent = t("aiSpeechGenerationError"); };
+    message.textContent = result.cached ? t("aiSpeechCached") : "";
+    await audio.play();
+  } catch (error) { message.textContent = premiumErrorMessage(error); }
+  finally { button.disabled = false; panel.removeAttribute("aria-busy"); }
+}
+
 function startTtsPage(): void {
-  if (!ttsAvailable()) { showToast(t("speechUnavailable")); return; }
+  if (ttsEngine === "local" && !ttsAvailable()) { showToast(t("speechUnavailable")); return; }
+  if (ttsEngine === "premium" && !aiSpeechAllowed) { showToast(t("aiSpeechSubscriberOnly")); return; }
   const text = currentTtsText();
   if (!text) { showToast(t("noSelectableText")); stopTts(); return; }
   const sequence = ++ttsSequence;
-  ttsChunks = speechChunks(text); ttsChunkIndex = 0; ttsState = "playing";
+  ttsChunks = ttsEngine === "premium" ? premiumSpeechChunks(text) : speechChunks(text); ttsChunkIndex = 0; ttsState = "playing";
   updateTtsPlayer(text);
+  if (ttsEngine === "premium") { void playPremiumChunk(sequence); return; }
   if (usesNativeTts()) {
     void nativeStop().catch(() => undefined).then(() => {
       if (sequence === ttsSequence && ttsState === "playing") speakTtsChunk(sequence);
@@ -2421,17 +2710,20 @@ function startTtsPage(): void {
 }
 
 async function toggleTtsPlayback(): Promise<void> {
-  if (!ttsAvailable()) { showToast(t("speechUnavailable")); return; }
+  if (ttsEngine === "local" && !ttsAvailable()) { showToast(t("speechUnavailable")); return; }
   if (ttsState === "playing") {
     try {
-      if (usesNativeTts()) await nativePause(); else window.speechSynthesis.pause();
+      if (ttsEngine === "premium") premiumAudio?.pause();
+      else if (usesNativeTts()) await nativePause(); else window.speechSynthesis.pause();
       ttsState = "paused"; updateTtsPlayer();
     } catch (error) { console.error("TTS pause failed", error); showToast(t("speechUnavailable")); }
     return;
   }
   if (ttsState === "paused") {
     try {
-      if (usesNativeTts()) await nativeResume(); else window.speechSynthesis.resume();
+      if (ttsEngine === "premium") {
+        if (premiumAudio) await premiumAudio.play(); else void playPremiumChunk(ttsSequence);
+      } else if (usesNativeTts()) await nativeResume(); else window.speechSynthesis.resume();
       ttsState = "playing"; updateTtsPlayer();
     } catch (error) { console.error("TTS resume failed", error); showToast(t("speechUnavailable")); }
     return;
@@ -2482,6 +2774,21 @@ $<HTMLSelectElement>("#tts-voice-select").addEventListener("change", event => {
   ttsPreferences = saveTtsPreferences({ ...ttsPreferences, voiceUri: (event.target as HTMLSelectElement).value });
   updateTtsPlayer();
 });
+$<HTMLButtonElement>("#tts-engine-local").addEventListener("click", () => selectTtsEngine("local"));
+$<HTMLButtonElement>("#tts-engine-premium").addEventListener("click", () => selectTtsEngine("premium"));
+$<HTMLSelectElement>("#tts-premium-language").addEventListener("change", event => {
+  aiSpeechPreferences.language = (event.target as HTMLSelectElement).value;
+  const first = aiSpeechVoices.find(voice => voice.language === aiSpeechPreferences.language);
+  aiSpeechPreferences.voiceId = first?.id ?? ""; renderAiSpeechVoiceOptions(); persistAiSpeechVoice();
+  if (ttsState !== "idle") startTtsPage();
+});
+$<HTMLSelectElement>("#tts-premium-voice").addEventListener("change", event => {
+  aiSpeechPreferences.voiceId = (event.target as HTMLSelectElement).value; persistAiSpeechVoice(); updateTtsPlayer();
+  if (ttsState !== "idle") startTtsPage();
+});
+$<HTMLButtonElement>("#tts-premium-retry").addEventListener("click", () => startTtsPage());
+$<HTMLButtonElement>("#tts-use-local").addEventListener("click", () => { selectTtsEngine("local"); startTtsPage(); });
+$<HTMLButtonElement>("#tts-premium-preview").addEventListener("click", () => void playPremiumSample());
 $("#tts-refresh-voices").addEventListener("click", () => void refreshTtsVoices());
 for (const id of ["#tts-rate-settings", "#tts-rate-reader"]) {
   const input = $<HTMLInputElement>(id);
@@ -2511,6 +2818,7 @@ $("#tts-preview").addEventListener("click", async () => {
   window.speechSynthesis.speak(speech);
 });
 $("#tts-play-pause").addEventListener("click", () => void toggleTtsPlayback());
+$("#tts-stop").addEventListener("click", () => stopTts());
 $("#tts-previous").addEventListener("click", () => void navigateTts(-1));
 $("#tts-next").addEventListener("click", () => void navigateTts(1));
 if (!usesNativeTts() && window.speechSynthesis) window.speechSynthesis.addEventListener("voiceschanged", () => {
@@ -2889,9 +3197,10 @@ bookLayoutUI = mountLayoutFields($("#book-layout-fields"), {
     if (!pagePreferencesEqual(previousEffective, nextEffective)) void relayoutReader();
   },
 });
-mountAccount(app, $(".shell"), $("#settings-account-sheet"));
-mountAccountPlans($("#settings-plan"));
 mountAccountSecurity($("#settings-security"));
+const accountPlans = mountAccountPlans($("#settings-account-sheet"), $("#settings-tts-panel"));
+mountAccountStorage(accountPlans.actions, coverElement, reloadCloudLibrary);
+mountAccount(app, $(".shell"), $("#settings-account-footer"));
 const cloudDownloads = new Map<string, Promise<StoredBook>>();
 setCloudBookLoader((book) => {
   const previous = cloudDownloads.get(book.id);
@@ -2901,8 +3210,6 @@ setCloudBookLoader((book) => {
   return download;
 });
 void requestPersistentCache();
-mountSync($("#settings-plan .plan-feature"), reloadCloudLibrary);
-mountAccountStorage($("#settings-plan .plan-actions"), coverElement, reloadCloudLibrary);
 reviewComposer = mountReviewComposer(app, showToast);
 bookEditor = mountBookEditor(app, coverElement, async (book, changes) => {
   const next = { ...book, ...changes, nativeCoverPath: changes.customCover ? undefined : book.nativeCoverPath };
@@ -2936,6 +3243,7 @@ profilePage = mountProfile($("#view-profile"), (book) => presentationCard(book, 
   renderCollections();
   scheduleContentRecovery();
 }, reviewComposer, () => confirmAction({ title: t("deleteReview"), message: t("deleteReviewMessage"), confirmLabel: t("deleteReview"), tone: "remove" }), () => openLibraryFilter("favorites"));
+mountReadingStats($("#view-profile"), $("#view-statistics"), () => setView("statistics"), () => setView("profile"), () => books.map(book => ({ id: book.id, name: titleOf(book), author: book.author ?? "", cover: () => coverElement(book) })));
 mountDetails($("#view-details"), () => setView("details"), reviewComposer);
 const profileRoute = (): void => {
   if (["/profile", "/community"].includes(location.hash.slice(1))) {
@@ -2971,7 +3279,7 @@ function drainContentQueue(): void {
 }
 function scheduleContentRecovery(): void {
   for (const book of books) {
-    if (book.contentMetadataVersion === 1 || !book.ownerId || book.ownerId !== auth.state.ownerId || queuedContent.has(book.id)) continue;
+    if (book.contentMetadataVersion === BOOK_CONTENT_METADATA_VERSION || !book.ownerId || book.ownerId !== auth.state.ownerId || queuedContent.has(book.id)) continue;
     if (!hasLocalFile(book) && (!book.cloudId || !navigator.onLine)) continue;
     // An edited private cover and edited metadata already have a cheaper cloud path.
     if (!hasLocalFile(book) && book.coverPath && book.displayTitle !== undefined && book.author !== undefined) continue;
@@ -3056,6 +3364,8 @@ auth.subscribe((state) => {
   } else if (state.status === "authenticated") void reloadCloudLibrary();
   if (state.status === "authenticated") void resumeApprovedMigrations().then((resumed) => resumed ? reloadCloudLibrary() : undefined).catch((error: unknown) => showToast(errorMessage(error)));
 });
+readingSurface.addEventListener("pointerdown", () => { if (view === "reader") readingActivity.interact(); }, { passive: true });
+readingSurface.addEventListener("keydown", () => { if (view === "reader") readingActivity.interact(); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && view !== "reader") void reloadCloudLibrary(); });
 window.addEventListener("online", () => { void auth.refresh().then(resumeApprovedMigrations).then(reloadCloudLibrary).catch((error: unknown) => showToast(errorMessage(error))); });
 window.addEventListener("autumn-device-ready", () => { void reloadCloudLibrary(); void sync.flush(true); });

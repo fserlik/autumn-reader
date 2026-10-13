@@ -3,6 +3,7 @@ import { openDatabase, request, localAll } from "./services/local/database";
 import { operationsForBook } from "./services/sync/operations";
 import { auth } from "./services/auth";
 import { t } from "./i18n";
+import { BOOK_CONTENT_METADATA_VERSION } from "./services/books/content-metadata-version";
 
 export type BookFormat = "pdf" | "epub";
 
@@ -155,6 +156,7 @@ export async function cacheBookContentMetadata(
   id: string,
   metadata: { title?: string; author?: string; cover?: Blob },
   expectedHash?: string,
+  version = BOOK_CONTENT_METADATA_VERSION,
 ): Promise<StoredBook | undefined> {
   const owner = auth.state.ownerId;
   if (!owner) return undefined;
@@ -172,7 +174,7 @@ export async function cacheBookContentMetadata(
         contentAuthor: metadata.author || latest.contentAuthor,
         author: latest.displayTitle === undefined && metadata.author ? metadata.author : latest.author,
         cover: !latest.customCover && !latest.coverPath && metadata.cover ? metadata.cover : latest.cover,
-        contentMetadataVersion: 1,
+        contentMetadataVersion: version,
       };
       store.put(updated);
     };

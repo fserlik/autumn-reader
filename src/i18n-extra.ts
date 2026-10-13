@@ -8,6 +8,7 @@ import { dedupTranslations, type DedupKey } from "./i18n-dedup";
 import { ownershipTranslations, type OwnershipKey } from "./i18n-ownership";
 import { planTranslations, type PlanKey } from "./i18n-plans";
 import { readerTranslations, type ReaderKey } from "./i18n-reader";
+import { aiSpeechTranslations, type AiSpeechKey } from "./i18n-ai-speech";
 const en = {
   lineSpacing: "Line spacing", lineSpacingHelp: "For reflowable EPUB and PDF text view.",
   paragraphSpacing: "Paragraph spacing", paragraphSpacingHelp: "Saved on this device and available offline.",
@@ -258,8 +259,8 @@ const fr: Set = {
   openPdfReference: "Ouvrir cette référence du livre", cacheUpgradeBlocked: "Fermez les autres fenêtres d'Autumn Reader pour mettre à jour le cache.",
   searchPositionUnavailable: "Ce résultat de recherche n'est plus disponible.", pdfReferenceInvalid: "Cette référence PDF n'a pas de destination valide.", pdfReferencePageMissing: "Cette référence pointe vers une page inexistante.",
 };
-export type ExtraKey = CoreKey | MoreKey | PresentationKey | EditBookKey | UploadQuotaKey | AccountStorageKey | DedupKey | OwnershipKey | PlanKey | ReaderKey;
+export type ExtraKey = CoreKey | MoreKey | PresentationKey | EditBookKey | UploadQuotaKey | AccountStorageKey | DedupKey | OwnershipKey | PlanKey | ReaderKey | AiSpeechKey;
 export const extraTranslations: Record<"en" | "es" | "it" | "fr", Record<ExtraKey, string>> = {
-  en: { ...en, ...moreTranslations.en, ...presentationTranslations.en, ...editBookTranslations.en, ...uploadQuotaTranslations.en, ...accountStorageTranslations.en, ...dedupTranslations.en, ...ownershipTranslations.en, ...planTranslations.en, ...readerTranslations.en }, es: { ...es, ...moreTranslations.es, ...presentationTranslations.es, ...editBookTranslations.es, ...uploadQuotaTranslations.es, ...accountStorageTranslations.es, ...dedupTranslations.es, ...ownershipTranslations.es, ...planTranslations.es, ...readerTranslations.es },
-  it: { ...it, ...moreTranslations.it, ...presentationTranslations.it, ...editBookTranslations.it, ...uploadQuotaTranslations.it, ...accountStorageTranslations.it, ...dedupTranslations.it, ...ownershipTranslations.it, ...planTranslations.it, ...readerTranslations.it }, fr: { ...fr, ...moreTranslations.fr, ...presentationTranslations.fr, ...editBookTranslations.fr, ...uploadQuotaTranslations.fr, ...accountStorageTranslations.fr, ...dedupTranslations.fr, ...ownershipTranslations.fr, ...planTranslations.fr, ...readerTranslations.fr },
+  en: { ...en, ...moreTranslations.en, ...presentationTranslations.en, ...editBookTranslations.en, ...uploadQuotaTranslations.en, ...accountStorageTranslations.en, ...dedupTranslations.en, ...ownershipTranslations.en, ...planTranslations.en, ...readerTranslations.en, ...aiSpeechTranslations.en }, es: { ...es, ...moreTranslations.es, ...presentationTranslations.es, ...editBookTranslations.es, ...uploadQuotaTranslations.es, ...accountStorageTranslations.es, ...dedupTranslations.es, ...ownershipTranslations.es, ...planTranslations.es, ...readerTranslations.es, ...aiSpeechTranslations.es },
+  it: { ...it, ...moreTranslations.it, ...presentationTranslations.it, ...editBookTranslations.it, ...uploadQuotaTranslations.it, ...accountStorageTranslations.it, ...dedupTranslations.it, ...ownershipTranslations.it, ...planTranslations.it, ...readerTranslations.it, ...aiSpeechTranslations.it }, fr: { ...fr, ...moreTranslations.fr, ...presentationTranslations.fr, ...editBookTranslations.fr, ...uploadQuotaTranslations.fr, ...accountStorageTranslations.fr, ...dedupTranslations.fr, ...ownershipTranslations.fr, ...planTranslations.fr, ...readerTranslations.fr, ...aiSpeechTranslations.fr },
 };

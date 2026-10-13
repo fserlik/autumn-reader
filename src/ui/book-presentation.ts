@@ -10,6 +10,11 @@ export function readingBooks(books: StoredBook[]): StoredBook[] {
   return books.filter(isReading).sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
 }
 
+export function homeReadingSelection(books: StoredBook[]): { featured?: StoredBook; shelf: StoredBook[] } {
+  const [featured, ...shelf] = readingBooks(books);
+  return { featured, shelf };
+}
+
 export function completedBooks(books: StoredBook[]): StoredBook[] {
   return books.filter(book => book.status === "finished").sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
 }

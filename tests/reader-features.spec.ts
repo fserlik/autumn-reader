@@ -5,7 +5,7 @@ import { clickReaderOption, selectReaderOption } from "./helpers/reader-options"
 test.beforeEach(async ({page}) => { await page.addInitScript(() => localStorage.setItem("autumn-language", "es")); });
 test.afterEach(async ({page}) => { await page.unrouteAll({behavior:"wait"}); });
 
-test("TTS discovers local voices, persists voice and speed, and controls book playback", async ({page}, info) => {
+test("TTS discovers local voices, persists voice and speed, and controls book playback offline", async ({page,context}, info) => {
   await page.addInitScript(() => {
     class MockUtterance {
       text: string; lang = ""; rate = 1; voice: SpeechSynthesisVoice | null = null;
@@ -60,6 +60,15 @@ test("TTS discovers local voices, persists voice and speed, and controls book pl
   await expect(speechEntry).toBeVisible();
   await speechEntry.click();
   await expect(page.locator("#tts-active-voice")).toContainText("Lucía local");
+  await page.locator("#tts-engine-premium").click();
+  await expect(page.locator("#tts-premium-options")).toBeVisible();
+  await expect(page.locator("#tts-premium-voice option")).toHaveCount(1);
+  await expect(page.locator("#tts-premium-preview")).toBeVisible();
+  await page.screenshot({ path: info.outputPath("tts-premium-player.png") });
+  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+  await page.screenshot({ path: info.outputPath("tts-premium-player-dark.png") });
+  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+  await page.locator("#tts-engine-local").click();
   if (info.project.name === "desktop") {
     const sidebar = (await page.locator("#reader-sidebar").boundingBox())!;
     const rate = (await page.locator("#tts-rate-reader-value").boundingBox())!;
@@ -69,6 +78,7 @@ test("TTS discovers local voices, persists voice and speed, and controls book pl
   await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
   await page.screenshot({ path: info.outputPath("tts-player-dark.png") });
   await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+  await context.setOffline(true);
   await page.locator("#tts-play-pause").click();
   await expect(page.locator("#tts-player-status")).toHaveText("Leyendo esta página");
   await expect.poll(() => page.evaluate(() => (window as unknown as {__ttsMock:{calls:unknown[]}}).__ttsMock.calls.length)).toBeGreaterThan(1);
@@ -306,7 +316,7 @@ for(const format of ["pdf","epub"] as const)test(`${format} page turn animates b
   await expect(page.locator(".page-turn-sheet")).toHaveCount(0);
   await expect.poll(async()=>{const position=await saved(page);return format==="pdf"?position.pdfTextOffset:position.cfi;}).not.toBe(format==="pdf"?initial.pdfTextOffset:initial.cfi);
   await page.keyboard.press("ArrowLeft");await expect(page.locator(".page-turn-sheet")).toHaveCount(1);await expect(page.locator(".page-turn-sheet")).toHaveCount(0);
-  await page.locator("#back-button").click();
+  await page.locator(info.project.name === "desktop" ? "#desktop-reader-back" : "#back-button").click();
   await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-interface-tab").click();
   await expect(page.locator("#page-turn-animation")).toBeChecked();await page.locator("#page-turn-animation").uncheck();
   await expect(page.locator("#page-turn-animation-status")).toHaveText("Desactivada");

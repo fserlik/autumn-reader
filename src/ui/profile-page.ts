@@ -32,7 +32,9 @@ export function mountProfile(
       <div class="profile-heading">
         <div class="profile-avatar"><span id="profile-initials" aria-hidden="true"></span><img id="profile-photo" alt="" hidden /><button id="profile-avatar-change" class="profile-image-action" type="button" aria-label="${t("profileChangeAvatar")}" title="${t("profileChangeAvatar")}">✎</button><input id="profile-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden /></div>
         <div class="profile-identity"><h2 id="profile-name">${t("profile")}</h2><p id="profile-username"></p><p id="profile-description"></p></div>
-        <button id="profile-edit" type="button" class="secondary-button">${t("editProfile")}</button>
+        <div class="profile-actions">
+          <button id="profile-edit" type="button" class="secondary-button">${t("editProfile")}</button>
+        </div>
       </div>
       <div class="profile-stats" aria-label="${t("profileStats")}">
         <div><strong id="profile-total">0</strong><span>${t("profileBooks")}</span></div>

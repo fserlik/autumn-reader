@@ -19,6 +19,67 @@ export function pageTurnSheetTransform(x:number,width:number,direction:-1|1):str
   const angle=-direction*Math.sin(Math.PI*progress)*2.4;
   return `translate3d(${x}px,0,0) rotateY(${angle.toFixed(2)}deg)`;
 }
+
+/** EPUB.js does not currently enable its font-load resize listener. Wait for
+ * the iframe's fonts and two paint frames before it is measured or revealed,
+ * otherwise a page-turn preview can briefly use fallback font metrics. */
+export async function waitForStableTypography(document: Document): Promise<void> {
+  try { await document.fonts?.ready; } catch { /* A failed book font falls back safely. */ }
+  const frame = () => new Promise<void>(resolve => {
+    const frameWindow = document.defaultView;
+    if (frameWindow) frameWindow.requestAnimationFrame(() => resolve());
+    else requestAnimationFrame(() => resolve());
+  });
+  await frame();
+  await frame();
+}
+
+type PageMoveLifecycle = {
+  move(): Promise<unknown>;
+  onRelocated(handler: () => void): void;
+  offRelocated(handler: () => void): void;
+  reportLocation(): Promise<unknown>;
+  documents(): Document[];
+  destinationReady?(): boolean;
+};
+
+/** Do not release the caller's current-page cover until EPUB.js has confirmed
+ * the real rendition's location and its destination iframe has painted with
+ * final font metrics. `next()`/`prev()` may resolve before either happens. */
+export async function settledPageMove(
+  lifecycle: PageMoveLifecycle,
+  timeoutMs = 750,
+): Promise<void> {
+  let destinationConfirmed = false;
+  let releaseRelocated!: () => void;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const relocation = new Promise<void>(resolve => { releaseRelocated = resolve; });
+  const onRelocated = () => {
+    if (lifecycle.destinationReady && !lifecycle.destinationReady()) return;
+    destinationConfirmed = true;
+    releaseRelocated();
+  };
+
+  lifecycle.onRelocated(onRelocated);
+  try {
+    await lifecycle.move();
+    if (!destinationConfirmed && lifecycle.destinationReady?.()) onRelocated();
+    if (!destinationConfirmed) {
+      void lifecycle.reportLocation().catch(() => undefined);
+      await Promise.race([
+        relocation,
+        new Promise<void>(resolve => {
+          timeout = globalThis.setTimeout(resolve, timeoutMs);
+        }),
+      ]);
+    }
+    await Promise.all(lifecycle.documents().map(waitForStableTypography));
+  } finally {
+    if (timeout !== undefined) globalThis.clearTimeout(timeout);
+    lifecycle.offRelocated(onRelocated);
+  }
+}
+
 export async function slide(element: HTMLElement,x:number,duration:number,sheet?:{width:number;direction:-1|1}):Promise<void>{
   if(!duration||typeof element.animate!=="function"){element.style.transform=`translate3d(${x}px,0,0)`;return;}
   const from=element.style.transform||"translate3d(0,0,0)",to=`translate3d(${x}px,0,0)`;

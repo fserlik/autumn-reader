@@ -68,7 +68,7 @@ test("custom cover previews, validates and syncs privately without changing book
   await page.locator('.nav-button[data-view="home"]').click();
   await expect(page.locator("#hero-art .book-cover > img")).toBeVisible();
   await expect(page.locator("#hero-art .book-cover > img")).toHaveCSS("transform", "none");
-  await expect(page.locator("#hero-art .book-cover > img")).toHaveCSS("object-fit", "contain");
+  await expect(page.locator("#hero-art .book-cover > img")).toHaveCSS("object-fit", "cover");
   // A fresh device sees metadata first and fetches only the private cover in view.
   await page.evaluate(() => new Promise<void>((resolve, reject) => {
     const open = indexedDB.open("autumn-reader");

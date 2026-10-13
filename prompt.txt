@@ -1,0 +1,302 @@
+# Implementar Premium AI Speech en Autumn Reader
+
+Quiero implementar **Premium AI Speech** en Autumn Reader, aprovechando la infraestructura existente y priorizando una inversión inicial mínima.
+
+Antes de modificar código, analizá la arquitectura actual del proyecto, especialmente:
+
+- El sistema TTS local existente.
+- Los planes Free, Autumn+ y Autumn Pro.
+- La autenticación y las suscripciones.
+- Las integraciones con Supabase, Supabase Edge Functions y Cloudflare R2.
+- El lector de libros EPUB/PDF.
+- La internacionalización y los temas visuales.
+- La compatibilidad con Windows y Android.
+
+**Importante:** No reemplaces el TTS actual ni rompas ninguna funcionalidad existente. Premium AI Speech debe ser una opción adicional dentro del lector.
+
+## 1. Proveedor de síntesis de voz
+
+Implementá Amazon Polly Neural como proveedor inicial.
+
+Requisitos:
+
+- Utilizar las voces neuronales disponibles de Amazon Polly.
+- Permitir seleccionar idioma y voz.
+- Priorizar voces de calidad en español.
+- Incluir voces en inglés, francés e italiano cuando estén disponibles.
+- Permitir ajustar la velocidad de reproducción.
+- Mantener la voz seleccionada para cada libro.
+- Usar una arquitectura modular que permita incorporar otros proveedores posteriormente.
+
+No implementar inicialmente voces generativas más caras, clonación de voces ni narración con múltiples personajes.
+
+El sistema debe funcionar bajo demanda, sin servidores dedicados ni servicios que generen gastos fijos innecesarios.
+
+## 2. Integración con los planes
+
+Respetar el sistema de suscripciones existente.
+
+### Free
+- TTS local ilimitado.
+- Sin acceso a generación Premium AI Speech.
+- Mantener las funcionalidades actuales de reproducción.
+
+### Autumn+
+- Acceso a Amazon Polly Neural.
+- 1 hora mensual de generación de audio IA.
+- Selección de voces.
+- Reutilización del audio previamente generado.
+- Reproducción sin consumir cuota adicional cuando el audio ya existe.
+
+### Autumn Pro
+- Todas las funcionalidades de Autumn+.
+- 3 horas mensuales de generación de audio IA.
+- Acceso a todas las voces neuronales habilitadas.
+- Reutilización del audio generado.
+
+Las cuotas deben configurarse desde el backend, sin depender de valores modificables desde el cliente.
+
+La duración debe contabilizarse mediante una estimación conservadora antes de generar y ajustarse según la duración real cuando sea posible.
+
+Si el proveedor no devuelve la duración real, utilizar una estimación documentada y consistente.
+
+No permitir superar la cuota mediante solicitudes simultáneas.
+
+Las cuotas se renuevan por ciclo de facturación, respetando el estado real de la suscripción. Los planes anuales también reciben su asignación mensual.
+
+No modificar precios ni productos del sistema de pagos existente.
+
+## 3. Backend seguro con Supabase
+
+Implementar las Edge Functions necesarias para:
+
+1. Verificar la identidad del usuario.
+2. Consultar su suscripción vigente.
+3. Comprobar su cuota disponible.
+4. Validar que el libro y el texto solicitado pertenecen al usuario autenticado.
+5. Comprobar si el audio ya fue generado.
+6. Solicitar la síntesis a Amazon Polly cuando sea necesario.
+7. Registrar el consumo de forma segura.
+8. Devolver una referencia autorizada para reproducir el audio.
+
+Las credenciales AWS deben permanecer exclusivamente en el backend.
+
+Nunca exponer claves secretas, credenciales de R2 ni tokens administrativos en el frontend.
+
+Implementar límites por solicitud, rate limiting, reservas de cuota atómicas, protección contra solicitudes duplicadas y recuperación ante errores.
+
+La cuota debe reservarse antes de llamar al proveedor y liberarse si la generación falla.
+
+Si una solicitud se repite, no debe producir cobros duplicados.
+
+## 4. Almacenamiento en Cloudflare R2
+
+Utilizar la infraestructura R2 existente para guardar el audio generado.
+
+Requisitos:
+
+- Guardar audio privado por usuario.
+- Asociarlo al libro, fragmento, voz y configuración utilizada.
+- Crear identificadores estables para detectar generaciones repetidas.
+- Reutilizar el audio sin llamar nuevamente a Amazon Polly.
+- Evitar duplicaciones.
+- No hacer públicos los archivos de audio.
+- Utilizar URLs firmadas de corta duración o un mecanismo de acceso autenticado.
+- Permitir reproducir audio desde distintos dispositivos del mismo usuario.
+
+Implementar una política de retención configurable para evitar almacenamiento indefinido.
+
+No generar automáticamente libros completos. Trabajar con fragmentos o secciones bajo demanda.
+
+Evitar precargar grandes cantidades de audio.
+
+## 5. Integración con el lector
+
+Agregar un selector de motor de voz dentro de la interfaz TTS existente:
+
+- Voz del dispositivo (gratuita).
+- Premium AI Speech (requiere suscripción).
+
+Cuando el usuario seleccione Premium AI Speech:
+
+- Mostrar las voces disponibles.
+- Permitir escuchar una muestra breve, preferiblemente pregenerada.
+- Permitir reproducir, pausar, reanudar y detener.
+- Ajustar la velocidad.
+- Continuar la reproducción entre fragmentos.
+- Mostrar un estado de carga mientras se genera audio.
+- Mantener la posición de lectura.
+- Permitir cambiar entre TTS local y Premium sin reiniciar el libro.
+
+Conservar la experiencia de lectura existente y evitar cambios innecesarios en su navegación.
+
+Implementar una cola de reproducción que solicite el siguiente fragmento oportunamente, evitando pausas perceptibles sin generar audio excesivo.
+
+Si la generación falla, ofrecer continuar con el TTS local.
+
+## 6. Cuotas y estadísticas
+
+Dentro del apartado correspondiente al plan del usuario, mostrar:
+
+- Cuota mensual incluida.
+- Tiempo de generación consumido.
+- Tiempo restante.
+- Fecha del próximo reinicio de cuota.
+- Estado del servicio.
+
+Ejemplo:
+
+**Premium AI Speech**
+
+Plan: Autumn+
+
+Generación disponible: 60 minutos al mes
+
+Utilizados: 18 minutos
+
+Restantes: 42 minutos
+
+Aclarar que escuchar audio previamente generado no consume minutos adicionales.
+
+No duplicar estadísticas que ya existan en otras secciones de Autumn Reader.
+
+Mantener un diseño limpio y compacto, coherente con el resto de la aplicación.
+
+## 7. Control de costes
+
+Este es uno de los requisitos más importantes.
+
+Quiero mantener la inversión inicial lo más baja posible.
+
+Implementar:
+
+- Generación exclusivamente bajo demanda.
+- Reutilización del audio almacenado.
+- Límite mensual por usuario.
+- Límite máximo de caracteres por solicitud.
+- Límite de generaciones simultáneas.
+- Presupuesto global mensual configurable.
+- Registro de caracteres facturables y coste estimado.
+- Mecanismo para suspender nuevas generaciones si se alcanza el presupuesto global.
+- Alertas administrativas cuando el consumo se acerque al límite.
+
+El presupuesto global inicial debe ser configurable mediante secretos o configuración segura del backend.
+
+Establecer un valor inicial conservador de **US$10 mensuales**, que pueda aumentarse posteriormente sin modificar la aplicación cliente.
+
+Este límite debe aplicarse mediante un control propio del backend, sin asumir que AWS detendrá automáticamente la facturación.
+
+Considerar que las estimaciones pueden diferir de la facturación final del proveedor.
+
+No contratar ni activar servicios adicionales de pago automáticamente.
+
+## 8. Internacionalización
+
+Toda nueva interfaz debe estar disponible en los idiomas que Autumn Reader ya soporta.
+
+No agregar textos directamente en español dentro de los componentes.
+
+Utilizar el sistema i18n existente.
+
+Traducir correctamente:
+
+- Premium AI Speech.
+- Voces disponibles.
+- Generando audio.
+- Cuota mensual.
+- Minutos disponibles.
+- Cuota agotada.
+- Error de generación.
+- Reintentar.
+- Cambiar a voz local.
+- Funcionalidad exclusiva de suscriptores.
+
+Revisar también los mensajes de error y estados de carga.
+
+## 9. Diseño visual
+
+Respetar la estética vintage y minimalista de Autumn Reader.
+
+Requisitos:
+
+- Compatibilidad completa con temas claro y oscuro.
+- Diseño responsive para Windows y Android.
+- Evitar paneles excesivamente altos.
+- No agregar estadísticas redundantes.
+- Integrar las opciones dentro de los controles de lectura existentes.
+- Mantener una jerarquía visual clara.
+- No introducir barras de desplazamiento innecesarias.
+
+No rediseñar toda la aplicación para incorporar esta funcionalidad.
+
+## 10. Migraciones y configuración
+
+Crear las migraciones SQL necesarias para almacenar:
+
+- Consumo de generación por usuario y ciclo.
+- Reservas y registros de generación.
+- Identificadores de audio almacenado.
+- Voz y configuración utilizada.
+- Duración estimada o real.
+- Caracteres facturables.
+- Estado de generación.
+- Coste estimado.
+
+Aplicar políticas RLS apropiadas.
+
+Las operaciones administrativas y la contabilización de cuotas deben realizarse mediante funciones seguras, no mediante escrituras arbitrarias desde el cliente.
+
+Preparar un archivo de ejemplo con las variables de entorno necesarias, sin incluir credenciales reales.
+
+Documentar cómo configurar:
+
+- Amazon Polly.
+- Permisos mínimos de IAM.
+- Región de AWS.
+- Secretos de Supabase.
+- Acceso a R2.
+- Migraciones.
+- Despliegue de Edge Functions.
+
+## 11. Pruebas obligatorias
+
+Verificar:
+
+1. Un usuario Free no puede consumir la API Premium.
+2. Autumn+ dispone de 1 hora mensual.
+3. Autumn Pro dispone de 3 horas mensuales.
+4. No se puede manipular la cuota desde el frontend.
+5. Dos solicitudes simultáneas no pueden superar el límite.
+6. Reproducir audio almacenado no genera una nueva solicitud facturable.
+7. Cambiar de cuenta no permite acceder al audio privado de otra cuenta.
+8. Los errores del proveedor no consumen cuota injustificadamente.
+9. El presupuesto global detiene nuevas generaciones al alcanzarse.
+10. El TTS local sigue funcionando sin conexión.
+11. La interfaz funciona correctamente en Windows y Android.
+12. Los textos están traducidos en todos los idiomas.
+13. Los temas claro y oscuro mantienen una presentación correcta.
+14. Las suscripciones canceladas, vencidas o modificadas aplican correctamente los permisos.
+
+## 12. Forma de trabajo
+
+Primero inspeccioná el proyecto y explicá brevemente qué componentes existentes vas a reutilizar.
+
+Después implementá los cambios directamente sobre los archivos correspondientes.
+
+No crees sistemas paralelos si ya existe una solución equivalente en el proyecto.
+
+Priorizá código mantenible, modular y con pocas dependencias.
+
+No ejecutes migraciones remotas, despliegues ni operaciones que puedan generar cargos sin autorización.
+
+Al finalizar:
+
+- Enumerá los archivos modificados.
+- Indicá las migraciones creadas.
+- Mostrá las variables de entorno necesarias.
+- Explicá cómo configurar AWS.
+- Indicá cómo desplegar las funciones.
+- Informá qué pruebas se ejecutaron y cuáles quedan pendientes.
+- Señalá cualquier funcionalidad que requiera una fase posterior.
+
+**Objetivo final:** incorporar Premium AI Speech como una funcionalidad monetizable, segura y escalable, con costes variables controlados, sin comprometer el TTS gratuito ni la estabilidad actual de Autumn Reader.

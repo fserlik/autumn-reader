@@ -1,9 +1,10 @@
-import ePub from "epubjs";
+import ePub, { type Book as EpubBook } from "epubjs";
 import type { StoredBook } from "../../storage";
 import { cacheBookContentMetadata, readBookData } from "../../storage";
 import { auth } from "../auth";
 import { loadPdfEngine } from "../../readers/pdf-engine";
 import { optimizeCover } from "../storage/covers";
+import { BOOK_CONTENT_METADATA_VERSION } from "./content-metadata-version";
 
 export interface BookContentMetadata { title?: string; author?: string; cover?: Blob }
 const pending = new Map<string, Promise<StoredBook>>();
@@ -12,6 +13,86 @@ const clean = (value: unknown): string | undefined =>
 const diagnostic = (message: string, reason?: unknown): void => {
   if (import.meta.env.DEV) console.info(message, reason instanceof Error ? reason.message : reason ?? "");
 };
+
+const elements = (document: Document, name: string): Element[] =>
+  Array.from(document.getElementsByTagNameNS("*", name));
+
+function archivePath(baseFile: string, href: string): string | undefined {
+  const clean = href.trim().replace(/\\/g, "/").split(/[?#]/, 1)[0];
+  if (!clean || /^(?:data|blob|https?):/i.test(clean)) return undefined;
+  const parts = clean.startsWith("/") ? [] : baseFile.split("/").slice(0, -1);
+  for (const part of clean.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  try { return decodeURIComponent(parts.join("/")); }
+  catch { return parts.join("/"); }
+}
+
+function imageType(path: string, declared?: string): string {
+  if (declared?.startsWith("image/")) return declared;
+  const extension = path.toLocaleLowerCase().split(".").at(-1);
+  return extension === "png" ? "image/png"
+    : extension === "svg" ? "image/svg+xml"
+      : extension === "gif" ? "image/gif"
+        : extension === "webp" ? "image/webp"
+          : "image/jpeg";
+}
+
+async function coverBlobFromEntry(
+  epub: EpubBook,
+  baseFile: string,
+  href: string,
+  declaredType?: string,
+  visited = new Set<string>(),
+): Promise<Blob | undefined> {
+  const path = archivePath(baseFile, href);
+  if (!path || visited.has(path)) return undefined;
+  visited.add(path);
+  const archiveUrl = path.startsWith("/") ? path : `/${path}`;
+  const type = declaredType?.toLocaleLowerCase() ?? "";
+  const image = type.startsWith("image/") || /\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(path);
+  if (image) return epub.archive.getBlob(archiveUrl, imageType(path, type));
+
+  if (!/(?:html|xhtml|xml)$/.test(type) && !/\.(?:x?html?)$/i.test(path)) return undefined;
+  const pageText = await epub.archive.getText(archiveUrl);
+  if (!pageText) return undefined;
+  const page = new DOMParser().parseFromString(pageText, "application/xhtml+xml");
+  const visual = [...elements(page, "img"), ...elements(page, "image"), ...elements(page, "object")]
+    .find(element => element.getAttribute("src") || element.getAttribute("href") ||
+      element.getAttributeNS("http://www.w3.org/1999/xlink", "href") || element.getAttribute("data"));
+  const source = visual?.getAttribute("src") || visual?.getAttribute("href") ||
+    visual?.getAttributeNS("http://www.w3.org/1999/xlink", "href") || visual?.getAttribute("data");
+  return source ? coverBlobFromEntry(epub, path, source, undefined, visited) : undefined;
+}
+
+/** Resolve EPUB 2 cover pages and less consistent manifests that epubjs cannot expose as an image URL. */
+async function extractEpubCover(epub: EpubBook): Promise<Blob | undefined> {
+  const manifest = Object.values(epub.packaging.manifest);
+  const coverPath = (epub as EpubBook & { cover?: string }).cover ||
+    (epub.packaging.coverPath ? epub.resolve(epub.packaging.coverPath) : undefined);
+  const declared = manifest.find(item => item.href === epub.packaging.coverPath)?.type;
+  if (coverPath) {
+    const cover = await coverBlobFromEntry(epub, "/", coverPath, declared);
+    if (cover) return cover;
+  }
+  const packagePath = epub.resolve((epub.container as unknown as { packagePath?: string }).packagePath ?? "");
+  if (!packagePath) return undefined;
+  const packageText = await epub.archive.getText(packagePath);
+  if (!packageText) return undefined;
+  const opf = new DOMParser().parseFromString(packageText, "application/xml");
+  const guideHref = elements(opf, "reference")
+    .find(element => (element.getAttribute("type") ?? "").toLocaleLowerCase().split(/\s+/).includes("cover"))
+    ?.getAttribute("href");
+  const candidate = Object.entries(epub.packaging.manifest)
+    .find(([id, item]) => item.type.startsWith("image/") && /(?:^|[-_.])cover(?:[-_.]|$)/i.test(`${id} ${item.href}`))?.[1];
+  if (candidate?.href) {
+    const cover = await coverBlobFromEntry(epub, packagePath, candidate.href, candidate.type);
+    if (cover) return cover;
+  }
+  return guideHref ? coverBlobFromEntry(epub, packagePath, guideHref) : undefined;
+}
 
 /** The same EPUB/PDF parser is used after a manual import and an R2 download. */
 export async function extractBookContentMetadata(
@@ -55,13 +136,23 @@ export async function extractBookContentMetadata(
       result.title = clean(epub.packaging?.metadata?.title);
       result.author = clean(epub.packaging?.metadata?.creator);
       if (!skipCover) {
+        let coverResolved = false;
         try {
           const url = await epub.coverUrl();
           if (url && (url.startsWith("blob:") || url.startsWith("data:"))) {
             const response = await fetch(url);
-            if (response.ok) result.cover = await optimizeCover(await response.blob());
+            if (response.ok) {
+              result.cover = await optimizeCover(await response.blob());
+              coverResolved = true;
+            }
           }
         } catch (error) { diagnostic("[BOOK COVER] EPUB image unavailable", error); }
+        if (!coverResolved) {
+          try {
+            const cover = await extractEpubCover(epub);
+            if (cover) result.cover = await optimizeCover(cover);
+          } catch (error) { diagnostic("[BOOK COVER] EPUB manifest fallback unavailable", error); }
+        }
       }
     } finally { epub.destroy(); }
   }
@@ -70,7 +161,7 @@ export async function extractBookContentMetadata(
 
 /** Idempotent, account-scoped repair; the file is parsed once per local record. */
 export function ensureBookContentMetadata(book: StoredBook, data?: Blob): Promise<StoredBook> {
-  if (book.contentMetadataVersion === 1) return Promise.resolve(book);
+  if (book.contentMetadataVersion === BOOK_CONTENT_METADATA_VERSION) return Promise.resolve(book);
   const owner = book.ownerId;
   if (!owner || auth.state.ownerId !== owner) return Promise.resolve(book);
   const key = `${owner}:${book.id}`;
@@ -86,11 +177,18 @@ export function ensureBookContentMetadata(book: StoredBook, data?: Blob): Promis
       diagnostic(extracted.cover ? "[BOOK COVER] extracted" : book.customCover || book.coverPath
         ? "[BOOK COVER] custom preserved" : "[BOOK COVER] fallback used: no usable embedded cover");
     } catch (error) {
-      diagnostic("[BOOK COVER] fallback used: extraction failed", error);
-      extracted = {};
+      // Do not mark a transient parser/read failure as complete: a later load
+      // must be allowed to recover the real metadata and cover.
+      diagnostic("[BOOK COVER] extraction deferred after failure", error);
+      return book;
     }
     if (auth.state.ownerId !== owner) return book;
-    const cached = await cacheBookContentMetadata(book.id, extracted, book.fileHash);
+    const cached = await cacheBookContentMetadata(
+      book.id,
+      extracted,
+      book.fileHash,
+      BOOK_CONTENT_METADATA_VERSION,
+    );
     if (cached) diagnostic("[BOOK COVER] cached");
     return cached ?? book;
   })().finally(() => pending.delete(key));

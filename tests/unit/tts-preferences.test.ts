@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { defaultTtsPreferences, loadTtsPreferences, localDeviceVoices, preferredVoice, saveTtsPreferences } from "../../src/services/tts";
+import { loadBookAiSpeechPreferences, saveBookAiSpeechPreferences } from "../../src/services/ai-speech";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -26,4 +27,14 @@ test("TTS lists local voices and prefers the saved voice, then the book language
   expect(localDeviceVoices(synthesis).map(voice => voice.voiceURI)).toEqual(["local-en", "local-es"]);
   expect(preferredVoice(voices, { voiceUri: "local-en", rate: 1 }, "es")?.voiceURI).toBe("local-en");
   expect(preferredVoice(voices, defaultTtsPreferences, "es")?.voiceURI).toBe("local-es");
+});
+
+test("Premium AI voice preference is isolated per account and book", () => {
+  const values = new Map<string,string>();
+  vi.stubGlobal("localStorage", { getItem: (key:string)=>values.get(key)??null, setItem:(key:string,value:string)=>values.set(key,value) });
+  saveBookAiSpeechPreferences("owner-a","book-a",{voiceId:"Lucia",language:"es-ES"});
+  saveBookAiSpeechPreferences("owner-a","book-b",{voiceId:"Bianca",language:"it-IT"});
+  expect(loadBookAiSpeechPreferences("owner-a","book-a")).toEqual({voiceId:"Lucia",language:"es-ES"});
+  expect(loadBookAiSpeechPreferences("owner-a","book-b")).toEqual({voiceId:"Bianca",language:"it-IT"});
+  expect(loadBookAiSpeechPreferences("owner-b","book-a")).toEqual({voiceId:"Lucia",language:"es-ES"});
 });

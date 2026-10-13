@@ -159,7 +159,8 @@ test("settings sections use themed surfaces and logout ends the account panel", 
   await expect(page.locator("#settings-account-panel #account-logout")).toBeHidden();
   await page.locator("#settings-account-tab").click();
   await expect(page.locator("#settings-account-panel #account-logout")).toBeVisible();
-  expect(await page.locator("#settings-account-sheet").evaluate(el => el.lastElementChild?.classList.contains("account-settings"))).toBe(true);
+  expect(await page.locator("#settings-account-panel").evaluate(el => el.lastElementChild?.classList.contains("account-settings-footer"))).toBe(true);
+  await expect(page.locator("#settings-account-sheet .cloud-storage-manage")).toBeVisible();
   const alignment = await page.locator("#settings-account-panel .account-settings").evaluate(el => getComputedStyle(el).justifyContent);
-  expect(alignment).toBe(info.project.name === "desktop" ? "flex-end" : "flex-start");
+  expect(alignment).toBe("center");
 });

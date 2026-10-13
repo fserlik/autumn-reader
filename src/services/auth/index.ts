@@ -212,6 +212,14 @@ export const auth = {
     const { error } = await cloud().auth.resetPasswordForEmail(email);
     if (error) throw error;
   },
+  async resendEmail(email: string, type: "recovery" | "signup"): Promise<void> {
+    requireOnline();
+    const normalizedEmail = email.trim();
+    const { error } = type === "recovery"
+      ? await cloud().auth.resetPasswordForEmail(normalizedEmail)
+      : await cloud().auth.resend({ type: "signup", email: normalizedEmail });
+    if (error) throw error;
+  },
   // Accept short email OTPs and older TokenHash emails during the template transition.
   async verifyEmail(email: string, token: string, type: "recovery" | "signup"): Promise<void> {
     requireOnline();

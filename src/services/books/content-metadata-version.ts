@@ -1,0 +1,1 @@
+export const BOOK_CONTENT_METADATA_VERSION = 2;

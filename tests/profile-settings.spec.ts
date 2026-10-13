@@ -164,10 +164,11 @@ test("settings separate account, page, and interface and support keyboard naviga
     await expect(page.locator("#settings-general-tab")).toHaveCount(0);
   }
   await expect(page.locator("#settings-account-panel")).toBeVisible();
-  await expect(page.locator("#settings-account-panel #migrate-library, #settings-account-panel #account-logout")).toHaveCount(2);
+  await expect(page.locator("#settings-account-panel .cloud-storage-manage, #settings-account-panel #account-logout")).toHaveCount(2);
   await expect(page.locator("#account-logout")).toHaveCount(1);
   await expect(page.locator("#settings-account-panel .settings-note")).toHaveCount(0);
-  await expect(page.locator("#settings-account-sheet > #settings-plan, #settings-account-sheet > #settings-security, #settings-account-sheet > .account-settings")).toHaveCount(3);
+  await expect(page.locator("#settings-account-sheet > #settings-plan, #settings-account-sheet > #settings-security")).toHaveCount(2);
+  await expect(page.locator("#settings-account-panel > .account-settings-footer #account-logout")).toBeVisible();
   await expect(page.locator("#book-font")).toBeHidden();
   await expect(page.locator("#app-language")).toBeHidden();
   await page.screenshot({path:testInfo.outputPath("settings-account.png"), fullPage:true});

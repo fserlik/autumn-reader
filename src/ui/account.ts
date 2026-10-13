@@ -5,6 +5,19 @@ import leafUrl from "../assets/autumn-leaf.png";
 import { t } from "../i18n";
 
 type EntryMode = "login" | "register" | "recover" | "verify";
+type VerificationType = "signup" | "recovery";
+type ResendState = {
+  email: string;
+  type: VerificationType;
+  count: number;
+  availableAt: number;
+};
+
+const pendingVerificationKey = "autumn-pending-verification";
+const pendingEmailKey = "autumn-pending-email";
+const resendStateKey = "autumn-verification-resend-state";
+const resendCooldownMs = 60_000;
+const maxResends = 3;
 
 export function mountAccount(
   root: HTMLElement,
@@ -37,9 +50,16 @@ export function mountAccount(
         <button id="auth-recover" class="text-link" type="button">${t("authForgot")}</button>
       </form>
       <form id="email-token-form" class="cloud-form" hidden>
-        <label>${t("authEmail")}<input name="email" type="email" autocomplete="email" maxlength="254" required /></label>
-        <label>${t("authEmailCode")}<input name="token" autocomplete="one-time-code" maxlength="2000" required /></label>
+        <div class="auth-code-destination">
+          <span>${t("authCodeSentTo")}</span>
+          <strong id="auth-code-email"></strong>
+        </div>
+        <label class="auth-code-field">${t("authEmailCode")}<input name="token" autocomplete="one-time-code" maxlength="2000" required /></label>
         <button type="submit" class="primary-button">${t("authVerifyCode")}</button>
+        <div class="auth-resend">
+          <button id="auth-resend" class="text-link" type="button" aria-describedby="auth-resend-note">${t("authResendCode")}</button>
+          <p id="auth-resend-note"></p>
+        </div>
       </form>
       <form id="password-form" class="cloud-form" hidden>
         <label>${t("authNewPassword")}<input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required /></label>
@@ -58,19 +78,111 @@ export function mountAccount(
   const form = find<HTMLFormElement>("#account-form");
   const password = form.querySelector<HTMLInputElement>('[name="password"]')!;
   const tokenForm = find<HTMLFormElement>("#email-token-form");
-  const tokenEmail = tokenForm.querySelector<HTMLInputElement>('[name="email"]')!;
+  const resendButton = find<HTMLButtonElement>("#auth-resend");
+  const resendNote = find<HTMLParagraphElement>("#auth-resend-note");
+  const codeEmail = find<HTMLElement>("#auth-code-email");
   const passwordForm = find<HTMLFormElement>("#password-form");
   const username = form.querySelector<HTMLInputElement>('[name="username"]')!;
-  let verificationType: "signup" | "recovery" = "signup";
+  let verificationType: VerificationType = "signup";
   const logout =
     accountSettings.querySelector<HTMLButtonElement>("#account-logout")!;
   let mode: EntryMode = "login";
   let busy = false;
   let enteredOwner: string | undefined;
   let previousOwner: string | null | undefined;
+  let resendTimer: number | undefined;
   const message = (text: string): void => {
     find("#account-message").textContent = text;
   };
+
+  function pendingEmail(): string {
+    return localStorage.getItem(pendingEmailKey)?.trim() ?? "";
+  }
+
+  function readResendState(): ResendState {
+    const email = pendingEmail();
+    try {
+      const value = JSON.parse(localStorage.getItem(resendStateKey) ?? "null") as Partial<ResendState> | null;
+      if (
+        value?.email === email &&
+        value.type === verificationType &&
+        Number.isInteger(value.count) &&
+        typeof value.availableAt === "number"
+      ) {
+        return {
+          email,
+          type: verificationType,
+          count: Math.min(maxResends, Math.max(0, value.count!)),
+          availableAt: Math.max(0, value.availableAt),
+        };
+      }
+    } catch { /* Replace malformed local state below. */ }
+    return { email, type: verificationType, count: 0, availableAt: 0 };
+  }
+
+  function saveResendState(value: ResendState): void {
+    localStorage.setItem(resendStateKey, JSON.stringify(value));
+  }
+
+  function clearResendTimer(): void {
+    if (resendTimer !== undefined) window.clearInterval(resendTimer);
+    resendTimer = undefined;
+  }
+
+  function updateResendUi(state: AuthState): void {
+    if (mode !== "verify") {
+      clearResendTimer();
+      return;
+    }
+    const resend = readResendState();
+    const remainingSeconds = Math.max(0, Math.ceil((resend.availableAt - Date.now()) / 1000));
+    codeEmail.textContent = resend.email;
+    resendNote.textContent = resend.count >= maxResends
+      ? t("authResendLimit")
+      : t("authResendsAvailable", { count: maxResends - resend.count });
+    resendButton.textContent = resend.count >= maxResends
+      ? t("authResendLimitShort")
+      : remainingSeconds > 0
+        ? t("authResendIn", { seconds: remainingSeconds })
+        : t("authResendCode");
+    resendButton.disabled =
+      busy ||
+      state.status === "loading" ||
+      !cloudConfigured ||
+      !navigator.onLine ||
+      !resend.email ||
+      resend.count >= maxResends ||
+      remainingSeconds > 0;
+    if (remainingSeconds > 0 && resendTimer === undefined) {
+      resendTimer = window.setInterval(() => {
+        updateResendUi(auth.state);
+        if (readResendState().availableAt <= Date.now()) clearResendTimer();
+      }, 1000);
+    } else if (remainingSeconds === 0) {
+      clearResendTimer();
+    }
+  }
+
+  function clearVerification(): void {
+    localStorage.removeItem(pendingVerificationKey);
+    localStorage.removeItem(pendingEmailKey);
+    localStorage.removeItem(resendStateKey);
+    clearResendTimer();
+  }
+
+  function beginVerification(type: VerificationType, email: string): void {
+    const normalizedEmail = email.trim();
+    mode = "verify";
+    verificationType = type;
+    localStorage.setItem(pendingVerificationKey, type);
+    localStorage.setItem(pendingEmailKey, normalizedEmail);
+    saveResendState({
+      email: normalizedEmail,
+      type,
+      count: 0,
+      availableAt: Date.now() + resendCooldownMs,
+    });
+  }
 
   function render(state: AuthState): void {
     if (previousOwner !== state.ownerId) {
@@ -160,6 +272,7 @@ export function mountAccount(
       busy || loading || !cloudConfigured || mode === "recover";
     username.disabled = busy || loading || !cloudConfigured || mode !== "register";
     logout.disabled = busy || loading;
+    updateResendUi(state);
   }
   async function run(action: () => Promise<void>): Promise<void> {
     if (busy) return;
@@ -178,8 +291,7 @@ export function mountAccount(
   function select(next: EntryMode): void {
     mode = next;
     if (next !== "verify") {
-      localStorage.removeItem("autumn-pending-verification");
-      localStorage.removeItem("autumn-pending-email");
+      clearVerification();
     }
     message("");
     render(auth.state);
@@ -198,43 +310,25 @@ export function mountAccount(
     void run(async () => {
       if (mode === "recover") {
         await auth.recover(email);
-        mode = "verify";
-        verificationType = "recovery";
-        localStorage.setItem("autumn-pending-verification", verificationType);
-        localStorage.setItem("autumn-pending-email", email.trim());
-        tokenEmail.value = email.trim();
-        message(
-          t("authRecoverySent"),
-        );
+        beginVerification("recovery", email);
       } else if (mode === "register") {
         const signedIn = await auth.register(email, credential, String(values.get("username") ?? ""));
         password.value = "";
         if (!signedIn) {
-          mode = "verify";
-          verificationType = "signup";
-          localStorage.setItem("autumn-pending-verification", verificationType);
-          localStorage.setItem("autumn-pending-email", email.trim());
-          tokenEmail.value = email.trim();
-          message(t("authSignupSent"));
+          beginVerification("signup", email);
         }
       } else {
         try {
           await auth.login(email, credential);
         } catch (error: unknown) {
           if (error instanceof Error && "code" in error && error.code === "email_not_confirmed") {
-            verificationType = "signup";
-            mode = "verify";
-            localStorage.setItem("autumn-pending-verification", verificationType);
-            localStorage.setItem("autumn-pending-email", email.trim());
-            tokenEmail.value = email.trim();
+            beginVerification("signup", email);
             password.value = "";
-            message(t("authSignupPending"));
             return;
           }
           throw error;
         }
-        localStorage.removeItem("autumn-pending-verification");
-        localStorage.removeItem("autumn-pending-email");
+        clearVerification();
         form.reset();
       }
     });
@@ -244,13 +338,29 @@ export function mountAccount(
     const values = new FormData(tokenForm);
     void run(async () => {
       await auth.verifyEmail(
-        String(values.get("email")),
+        pendingEmail(),
         String(values.get("token")),
         verificationType,
       );
-      localStorage.removeItem("autumn-pending-verification");
-      localStorage.removeItem("autumn-pending-email");
+      clearVerification();
       tokenForm.reset();
+    });
+  });
+  resendButton.addEventListener("click", () => {
+    const resend = readResendState();
+    if (
+      resend.count >= maxResends ||
+      resend.availableAt > Date.now() ||
+      !resend.email
+    ) return;
+    void run(async () => {
+      await auth.resendEmail(resend.email, verificationType);
+      saveResendState({
+        ...resend,
+        count: resend.count + 1,
+        availableAt: Date.now() + resendCooldownMs,
+      });
+      message(t("authResendSent"));
     });
   });
   passwordForm.addEventListener("submit", (event) => {
@@ -264,8 +374,7 @@ export function mountAccount(
   logout.addEventListener("click", () => {
     enteredOwner = undefined;
     mode = "login";
-    localStorage.removeItem("autumn-pending-verification");
-    localStorage.removeItem("autumn-pending-email");
+    clearVerification();
     void run(async () => {
       if (cloudConfigured) await auth.logout();
       form.reset();
@@ -273,11 +382,12 @@ export function mountAccount(
       passwordForm.reset();
     });
   });
-  const pendingVerification = localStorage.getItem("autumn-pending-verification");
-  tokenEmail.value = localStorage.getItem("autumn-pending-email") ?? "";
+  const pendingVerification = localStorage.getItem(pendingVerificationKey);
   if (pendingVerification === "signup" || pendingVerification === "recovery") {
     mode = "verify";
     verificationType = pendingVerification;
+    const resend = readResendState();
+    saveResendState(resend);
   }
   auth.subscribe(render);
   window.addEventListener("online", () => render(auth.state));
