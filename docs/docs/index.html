@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#3b211f">
+  <meta name="description" content="Guides and documentation for Autumn Reader.">
+  <title>Documentation · Autumn Reader</title>
+  <link rel="canonical" href="https://autumnreader.lat/docs/">
+  <link rel="icon" type="image/png" href="../autumn-leaf.png">
+  <link rel="stylesheet" href="../site.css">
+  <script src="../site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#doc-content">Skip to article</a>
+  <header class="top">
+    <a class="logo" href="../" aria-label="Autumn Reader, home"><img src="../autumn-leaf.png" alt=""><span>Autumn Reader</span></a>
+    <nav aria-label="Main navigation"><a href="../">Home</a><a class="selected" aria-current="page" href="./">Documentation</a><a href="../privacidad.html">Privacy</a><a class="github-link" href="https://github.com/fserlik/autumn-reader">GitHub</a></nav>
+    <button class="theme-toggle" type="button" aria-label="Use dark theme" aria-pressed="false"><span aria-hidden="true">◐</span></button>
+  </header>
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <a href="../" class="back">← Back to home</a>
+      <p class="eyebrow">HELP CENTER</p>
+      <label class="visually-hidden" for="search">Search the documentation</label>
+      <input id="search" type="search" placeholder="Search guides… (/)" autocomplete="off">
+      <nav id="nav" aria-label="Documentation topics"></nav>
+    </aside>
+    <main class="article" id="article">
+      <div id="doc-content"></div>
+      <div class="doc-bottom"><button id="prev" type="button">← Previous</button><button id="next" type="button">Next →</button></div>
+    </main>
+    <aside class="toc"><p class="eyebrow">ON THIS PAGE</p><nav id="toc" aria-label="On this page"></nav></aside>
+  </div>
+</body>
+</html>

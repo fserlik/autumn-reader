@@ -1,186 +1,96 @@
 <!doctype html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#351b1f" />
-  <meta name="google-site-verification" content="bMVblw3qWXpeBr09_p-U8lsUp-gSlDzpxYfw-4q9Y2s" />
-  <meta name="description"
-    content="Download Autumn Reader for desktop and mobile. Read, organize your books, save notes, and keep your library with you."
-    data-i18n-content="meta.description" />
-  <title data-i18n="meta.title">Autumn Reader · Your library, wherever you read</title>
-  <link rel="canonical" href="https://autumnreader.lat/" />
-  <link rel="icon" type="image/png" href="./autumn-leaf.png" />
-  <link rel="stylesheet" href="./styles.css" />
-  <script src="./i18n.js" defer></script>
-  <script src="./platform.js" defer></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#3b211f">
+  <meta name="google-site-verification" content="bMVblw3qWXpeBr09_p-U8lsUp-gSlDzpxYfw-4q9Y2s">
+  <meta name="description" content="Autumn Reader is a personal library for Windows and Android. Organize PDF and EPUB books, tailor your reading space, and keep your notes close.">
+  <title>Autumn Reader · Your library, your way</title>
+  <link rel="canonical" href="https://autumnreader.lat/">
+  <link rel="icon" type="image/png" href="./autumn-leaf.png">
+  <link rel="stylesheet" href="./site.css">
+  <script src="./site.js" defer></script>
 </head>
-
-<body data-page="home">
-  <a class="skip-link" href="#contenido" data-i18n="skip">Skip to content</a>
-  <header class="site-header">
-    <div class="header-inner">
-      <a class="brand" href="./" aria-label="Autumn Reader, home" data-i18n-aria-label="brand.aria"><img
-          src="./autumn-leaf.png" alt="" /><span>Autumn
-          Reader</span></a>
-      <nav aria-label="Main navigation" data-i18n-aria-label="nav.aria">
-        <a href="#descargas" data-i18n="nav.downloads">Downloads</a>
-        <a href="#funciones" data-i18n="nav.app">The app</a>
-        <a href="./privacidad.html" data-i18n="nav.privacy">Privacy</a>
-        <a class="nav-github" href="https://github.com/fserlik/autumn-reader">GitHub</a>
-        <div class="language-switcher" role="group" aria-label="Language"><button type="button" data-lang="en"
-            aria-pressed="true">EN</button><span aria-hidden="true">/</span><button type="button" data-lang="es"
-            aria-pressed="false">ES</button></div>
-      </nav>
-    </div>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="top">
+    <a class="logo" href="./" aria-label="Autumn Reader, home">
+      <img src="./autumn-leaf.png" alt="">
+      <span>Autumn Reader</span>
+    </a>
+    <nav aria-label="Main navigation">
+      <a href="#funciones">Features</a>
+      <a href="./docs/">Documentation</a>
+      <a href="#descargas">Downloads</a>
+      <a href="./privacidad.html">Privacy</a>
+      <a class="github-link" href="https://github.com/fserlik/autumn-reader">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Use dark theme" aria-pressed="false"><span aria-hidden="true">◐</span></button>
   </header>
 
-  <main id="contenido">
+  <main id="main-content">
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="hero-overline" data-i18n="hero.overline">A place for your books</p>
-        <h1 id="hero-title" data-i18n="hero.title">Your books. Your notes. Your reading space.</h1>
-        <p class="hero-lead" data-i18n="hero.lead">Import PDF and EPUB books, keep your progress, favorites and notes
-          together, and read from a library that feels like your own.</p>
-        <div class="hero-actions">
-          <a class="button button-primary" href="#descargas" data-i18n="hero.choose">Get the app</a>
-          <a class="text-link" href="#funciones" data-i18n="hero.learn">Explore the app</a>
+        <p class="eyebrow">A NEW WAY TO READ</p>
+        <h1 id="hero-title">A place for every <em>story.</em></h1>
+        <p class="lead">Bring your books, notes, and preferences together in a library that adapts to you. Read at your pace, on your device, in your own style.</p>
+        <div class="actions">
+          <a class="primary" href="#descargas">Start reading</a>
+          <a class="secondary" href="./docs/">Explore the documentation</a>
+        </div>
+        <div class="hero-note" aria-label="Supported features">
+          <span>PDF and EPUB</span>
+          <span>Windows and Android</span>
+          <span>A reading space of your own</span>
         </div>
       </div>
-      <div class="hero-art" aria-hidden="true">
-        <span class="art-ring art-ring-one"></span><span class="art-ring art-ring-two"></span>
-        <img src="./autumn-leaf.png" alt="" />
-        <span class="art-caption" data-i18n="hero.caption">Stories for every season.</span>
+      <div class="hero-visual" aria-label="Two illustrated book covers from the Autumn Reader collection" role="img">
+        <div class="book book-one"><small>AUTUMN COLLECTION</small><strong>Between<br>the pages</strong><span>Vol. I · 2026</span></div>
+        <div class="book book-two"><small>THE READER'S EDITION</small><strong>Quiet<br>chapters</strong><span>Literary classics</span></div>
+        <span class="leaf-mark" aria-hidden="true"></span>
+        <p>Your library. Your space.</p>
       </div>
     </section>
 
-    <section id="descargas" class="downloads-section content-width" aria-labelledby="downloads-title">
-      <div class="downloads-heading">
-        <div>
-          <p class="section-label" data-i18n="downloads.label">Start reading</p>
-          <h2 id="downloads-title" data-i18n="downloads.title">Get Autumn Reader</h2>
-        </div>
-        <p data-i18n="downloads.choose">Get the version made for the device you are using.</p>
-      </div>
-      <div class="store-downloads">
-        <article class="store-card" data-desktop-download>
-          <div class="store-card-icon" aria-hidden="true">⊞</div>
-          <div class="store-card-copy">
-            <span class="availability" data-i18n="downloads.available">Available</span>
-            <h3 data-i18n="downloads.microsoft.title">Autumn Reader for PC</h3>
-            <p data-i18n="downloads.microsoft.body">Download Autumn Reader securely from the Microsoft Store for
-              Windows.</p>
-          </div>
-          <a class="button store-button" href="ms-windows-store://search/?query=Autumn%20Reader"
-            data-i18n="downloads.microsoft.button">Get it from Microsoft Store</a>
-        </article>
-        <article class="store-card store-card-mobile" data-mobile-download hidden>
-          <div class="store-card-icon play-store-icon" aria-hidden="true">▶</div>
-          <div class="store-card-copy">
-            <span class="availability availability-pending" data-i18n="downloads.soon">Coming soon</span>
-            <h3 data-i18n="downloads.play.title">Autumn Reader for mobile</h3>
-            <p data-i18n="downloads.play.body">The Android version is on its way. It will be available on Google Play
-              soon.</p>
-          </div>
-          <button class="button store-button store-button-disabled" type="button" disabled
-            data-i18n="downloads.play.button">Coming soon to Google Play</button>
-        </article>
-      </div>
-      <p class="platform-note" data-desktop-note data-i18n="downloads.desktop.note">Using a phone? Visit this page from
-        your mobile device to see the mobile version.</p>
-    </section>
-
-    <section id="funciones" class="product-section content-width" aria-labelledby="features-title">
-      <div class="product-intro">
-        <p class="section-label" data-i18n="features.label">Built around your library</p>
-        <h2 id="features-title" data-i18n="features.title">More than a reader. A home for the books you already own.
-        </h2>
-        <p data-i18n="features.intro">Import PDF and EPUB files, keep them organized, and return to the exact place
-          where you stopped. Autumn Reader is designed to stay out of the way while you read.</p>
-      </div>
-      <div class="feature-grid">
-        <article class="feature-card feature-card-wide"><span class="feature-number">01</span>
-          <div>
-            <p class="feature-kicker" data-i18n="features.formats.kicker">PDF + EPUB</p>
-            <h3 data-i18n="features.formats.title">Your books, in one library</h3>
-            <p data-i18n="features.formats.body">Add multiple PDF and EPUB books from your device. Covers, recent reads
-              and favorites make it easy to find your way back.</p>
-          </div>
-        </article>
-        <article class="feature-card"><span class="feature-number">02</span>
-          <div>
-            <p class="feature-kicker" data-i18n="features.progress.kicker">Reading progress</p>
-            <h3 data-i18n="features.progress.title">Continue where you left off</h3>
-            <p data-i18n="features.progress.body">Autumn Reader saves your position as you read, so reopening a book
-              takes you back to your last page or section.</p>
-          </div>
-        </article>
-        <article class="feature-card"><span class="feature-number">03</span>
-          <div>
-            <p class="feature-kicker" data-i18n="features.notes.kicker">Notes</p>
-            <h3 data-i18n="features.notes.title">Keep ideas attached to the text</h3>
-            <p data-i18n="features.notes.body">Select a passage, choose a marker color and write a note. Open your notes
-              later and jump straight back to the passage.</p>
-          </div>
-        </article>
-        <article class="feature-card"><span class="feature-number">04</span>
-          <div>
-            <p class="feature-kicker" data-i18n="features.reader.kicker">Reader controls</p>
-            <h3 data-i18n="features.reader.title">Make the page comfortable</h3>
-            <p data-i18n="features.reader.body">Adjust text size and book font when the format allows it, and switch
-              between light and dark themes from the app settings.</p>
-          </div>
-        </article>
-        <article class="feature-card feature-card-accent"><span class="feature-number">05</span>
-          <div>
-            <p class="feature-kicker" data-i18n="features.languages.kicker">4 languages</p>
-            <h3 data-i18n="features.languages.title">Use Autumn Reader in your language</h3>
-            <p data-i18n="features.languages.body">The app interface is available in English, Spanish, Italian and
-              French.</p>
-          </div>
-        </article>
+    <section class="intro" id="funciones" aria-labelledby="features-title">
+      <p class="eyebrow">DESIGNED FOR READERS</p>
+      <h2 id="features-title">Far more than opening a book.</h2>
+      <p>Organize your collection, shape every detail of the page, and keep the ideas you discover along the way.</p>
+      <div class="features">
+        <a href="./docs/#library"><span>01 / LIBRARY</span><h3>Everything in its place</h3><p>Import books, arrange them in folders, edit metadata, and find your favorites again.</p></a>
+        <a href="./docs/#appearance"><span>02 / READING</span><h3>A page made for you</h3><p>Adjust fonts, spacing, margins, and themes to make every reading session comfortable.</p></a>
+        <a href="./docs/#notes"><span>03 / ANNOTATIONS</span><h3>Ideas that stay with you</h3><p>Mark passages, write notes, and return to the lines that matter.</p></a>
+        <a href="./docs/#cloud"><span>04 / SYNC</span><h3>Your library travels with you</h3><p>Manage local and cloud books and review the devices connected to your account.</p></a>
+        <a href="./docs/#voice"><span>05 / AUDIO</span><h3>Listen to your books</h3><p>Use voices installed on your device and learn about the premium voice option.</p></a>
+        <a href="./docs/#plans"><span>06 / PLANS</span><h3>Choose how you read</h3><p>Compare Free, Autumn+, and Autumn Pro before choosing a plan.</p></a>
       </div>
     </section>
 
-    <section class="workflow-section" aria-labelledby="workflow-title">
-      <div class="content-width workflow-inner">
-        <div class="workflow-heading">
-          <p class="section-label" data-i18n="workflow.label">How it works</p>
-          <h2 id="workflow-title" data-i18n="workflow.title">From file to reading in a few steps.</h2>
-        </div>
-        <div class="workflow-steps">
-          <article><span>1</span>
-            <h3 data-i18n="workflow.add.title">Add your books</h3>
-            <p data-i18n="workflow.add.body">Choose one or several PDF or EPUB files from your device.</p>
-          </article>
-          <article><span>2</span>
-            <h3 data-i18n="workflow.organize.title">Build your space</h3>
-            <p data-i18n="workflow.organize.body">Your library keeps covers, favorites and recent books together.</p>
-          </article>
-          <article><span>3</span>
-            <h3 data-i18n="workflow.read.title">Read and return</h3>
-            <p data-i18n="workflow.read.body">Your progress and notes stay ready for the next time you open the book.
-            </p>
-          </article>
-        </div>
-      </div>
+    <section class="statement" aria-labelledby="privacy-title">
+      <p class="eyebrow">PRIVATE BY DESIGN</p>
+      <h2 id="privacy-title">Your books are personal.<br><em>Their privacy should be too.</em></h2>
+      <p>Your library stays tied to your account on each device, and you choose which books to sync.</p>
+      <a href="./privacidad.html" class="primary">Read the privacy policy</a>
     </section>
 
-
+    <section class="downloads" id="descargas" aria-labelledby="download-title">
+      <div>
+        <p class="eyebrow">START TODAY</p>
+        <h2 id="download-title">Take Autumn Reader with you.</h2>
+        <p>Choose the version available for your device. The documentation is open to everyone.</p>
+      </div>
+      <div class="download-actions">
+        <a class="primary" href="ms-windows-store://search/?query=Autumn%20Reader">Microsoft Store</a>
+        <span>Android: check availability on Google Play</span>
+        <a class="secondary" href="./docs/">Read the guides</a>
+      </div>
+    </section>
   </main>
 
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <div><a class="footer-brand" href="./">Autumn Reader</a>
-        <p data-i18n="footer.tagline">An open project for reading your way.</p>
-      </div>
-      <div class="footer-links"><a href="#descargas" data-i18n="nav.downloads">Downloads</a><a href="./privacidad.html"
-          data-i18n="footer.privacy">Privacy policy</a><a href="https://github.com/fserlik/autumn-reader"
-          data-i18n="footer.source">Source code</a><a href="mailto:contact@autumnreader.lat"
-          data-i18n="footer.contact">Contact</a></div>
-    </div>
+  <footer>
+    <div><strong>Autumn Reader</strong><p>Stories for every season.</p></div>
+    <div><a href="./docs/">Documentation</a><a href="./privacidad.html">Privacy</a><a href="mailto:contact@autumnreader.lat">Contact</a><a href="https://github.com/fserlik/autumn-reader">Source code</a></div>
   </footer>
 </body>
-
 </html>

@@ -1,125 +1,85 @@
 <!doctype html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#351b1f" />
-    <meta name="description"
-        content="Learn how Autumn Reader handles books, reading data and preferences on your device." />
-    <title>Privacy policy · Autumn Reader</title>
-    <link rel="icon" type="image/png" href="./autumn-leaf.png" />
-    <link rel="stylesheet" href="./styles.css" />
-    <script src="./privacy-i18n.js" defer></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#3b211f">
+  <meta name="description" content="Learn how Autumn Reader handles books, reading data, account information, and preferences.">
+  <title>Privacy policy · Autumn Reader</title>
+  <link rel="canonical" href="https://autumnreader.lat/privacidad.html">
+  <link rel="icon" type="image/png" href="./autumn-leaf.png">
+  <link rel="stylesheet" href="./site.css">
+  <script src="./site.js" defer></script>
+  <script src="./privacy-i18n.js" defer></script>
 </head>
-
-<body data-page="privacy"><a class="skip-link" href="#content">Skip to content</a>
-    <header class="site-header">
-        <div class="header-inner"><a class="brand" href="./" aria-label="Autumn Reader, home"><img
-                    src="./autumn-leaf.png" alt="" /><span>Autumn Reader</span></a>
-            <nav aria-label="Main navigation"><a href="./">Home</a><a aria-current="page"
-                    href="./privacidad.html">Privacy</a><a class="nav-download" href="./#descargas">Download</a>
-                <div class="language-switcher" role="group" aria-label="Language"><button type="button" data-lang="en"
-                        aria-pressed="true">EN</button><span aria-hidden="true">/</span><button type="button"
-                        data-lang="es" aria-pressed="false">ES</button></div>
-            </nav>
-        </div>
-    </header>
-    <main id="content" class="policy-page content-width">
-        <div class="policy-intro">
-            <p>Autumn Reader</p>
-            <h1>Privacy policy</h1>
-            <p class="policy-summary">Your library is stored on your device and scoped to your account. You choose which books to sync across devices.</p><span>Last updated: October 1, 2026</span>
-        </div>
-        <div class="policy-layout">
-            <nav class="policy-toc" aria-label="On this page">
-                <p>Contents</p><a href="#overview">Overview</a><a href="#local">Data stored on your device</a><a
-                    href="#platforms">Platforms and permissions</a><a href="#sharing">Data sharing</a><a
-                    href="#retention">Retention and deletion</a><a href="#website">Website</a><a href="#contact">Contact
-                    and changes</a>
-            </nav>
-            <div class="policy-content">
-                <section id="overview">
-                    <h2>Overview</h2>
-                    <p>Autumn Reader is an open-source reader for PDF and EPUB files. An account is required to access
-                        the library. Local books are associated with that account on each device; signing out hides
-                        them without deleting their local files.</p>
-                    <p>You can choose which books to sync between devices. The app uses Supabase for authentication
-                        and account data, and Cloudflare R2 for synced book files.</p>
-                </section>
-                <section id="local">
-                    <h2>Data stored on your device</h2>
-                    <p>When you use Autumn Reader, the application may store the books you add, book titles and covers,
-                        file format, favorites, dates related to adding or opening a book, reading position and
-                        progress, font-size preferences, notes, selected quotations associated with notes, and
-                        application preferences such as language, theme and reading font.</p>
-                    <p>This information supports your library, reading progress, favorites, notes and reader settings.
-                        Local books and their personal metadata are accessible in the app only to the account that owns
-                        them on that device. Selected data may also be synchronized when cloud features are enabled.</p>
-                </section>
-
-                <section id="platforms">
-                    <h2>Platforms and permissions</h2>
-                    <p>Autumn Reader is distributed across desktop and mobile platforms, and some features may differ
-                        depending on the operating system and application version.</p>
-                    <p>The application needs access to files you choose in order to import and read PDF or EPUB books.
-                        Platform stores and operating systems may also process technical information needed to download,
-                        install, update or run the application under their own privacy terms. Those platform processes
-                        are separate from Autumn Reader's local library data.</p>
-                </section>
-                <section id="sharing">
-                    <h2>Data sharing and third parties</h2>
-                    <p>Autumn Reader does not include advertising functionality in the current project and does not use
-                        your library to serve personalized ads. The current application code does not include a
-                        first-party analytics or telemetry system that uploads your reading activity to an Autumn Reader
-                        server.</p>
-                    <p>Supabase processes account credentials and synchronized metadata. Book files selected for cloud
-                        sync are stored in Cloudflare R2. If you request a translation, only the selected text fragment
-                        is sent to the configured translation service; the entire book is not sent.</p>
-                    <p>Distribution platforms such as Microsoft Store or Google Play may separately process account,
-                        device, download or diagnostic information according to their own policies.</p>
-                </section>
-                <section id="retention">
-                    <h2>Retention, deletion and control</h2>
-                    <p>Local library data remains on the device until you remove the relevant content or clear the
-                        application's data. The exact effect of uninstalling the application can depend on the operating
-                        system and its storage rules.</p>
-                    <p>Signing out does not delete local books. Removing a book from cloud storage leaves its local
-                        copy on that device if one exists; it may no longer be downloadable on other devices.</p>
-                </section>
-                <section id="website">
-                    <h2>This website</h2>
-                    <p>The Autumn Reader website is a static informational and download page. It does not require an
-                        account and the current site does not include advertising or first-party analytics. It stores
-                        your selected website language locally in your browser so the site can remember whether you
-                        chose English or Spanish.</p>
-                    <p>The website is hosted through GitHub Pages. GitHub may process technical information associated
-                        with visits to hosted pages according to GitHub's own privacy practices. Links to Microsoft
-                        Store, Google services, GitHub or other external services take you to services governed by their
-                        respective privacy policies.</p>
-                </section>
-                <section id="contact">
-                    <h2>Contact and changes</h2>
-                    <p><span>Autumn Reader is an open-source project maintained by</span> <a
-                            href="https://github.com/fserlik">fserlik</a><span>. For privacy questions, contact</span> <a
-                            href="mailto:contact@autumnreader.lat">contact@autumnreader.lat</a><span>. You can also inspect
-                        the</span> <a href="https://github.com/fserlik/autumn-reader">source code</a>.</p>
-                    <p>This policy may be updated when Autumn Reader adds platforms, integrations or features that
-                        change how information is handled. The date at the top of this page identifies the current
-                        version.</p>
-                </section>
-            </div>
-        </div>
-    </main>
-    <footer class="site-footer">
-        <div class="footer-inner">
-            <div><a class="footer-brand" href="./">Autumn Reader</a>
-                <p>An open project for reading your way.</p>
-            </div>
-            <div class="footer-links"><a href="./">Home</a><a href="./privacidad.html">Privacy policy</a><a
-                    href="mailto:facundojavierserlik@gmail.com">Contact</a></div>
-        </div>
-    </footer>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <header class="top">
+    <a class="logo" href="./" aria-label="Autumn Reader, home"><img src="./autumn-leaf.png" alt=""><span>Autumn Reader</span></a>
+    <nav aria-label="Main navigation">
+      <a href="./">Home</a>
+      <a href="./docs/">Documentation</a>
+      <a aria-current="page" href="./privacidad.html">Privacy</a>
+      <a href="./#descargas">Download</a>
+      <div class="language-switcher" role="group" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">EN</button><span aria-hidden="true">/</span><button type="button" data-lang="es" aria-pressed="false">ES</button></div>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Use dark theme" aria-pressed="false"><span aria-hidden="true">◐</span></button>
+  </header>
+  <main id="content" class="policy-page">
+    <div class="policy-intro">
+      <p class="eyebrow">AUTUMN READER</p>
+      <h1>Privacy policy</h1>
+      <p class="policy-summary">Your library is stored on your device and scoped to your account. You choose which books to sync across devices.</p>
+      <span>Last updated: October 14, 2026</span>
+    </div>
+    <div class="policy-layout">
+      <nav class="policy-toc" aria-label="On this page">
+        <p class="eyebrow">Contents</p>
+        <a href="#overview">Overview</a><a href="#local">Data stored on your device</a><a href="#platforms">Platforms and permissions</a><a href="#sharing">Data sharing</a><a href="#retention">Retention and deletion</a><a href="#website">Website</a><a href="#contact">Contact and changes</a>
+      </nav>
+      <div class="policy-content">
+        <section id="overview">
+          <h2>Overview</h2>
+          <p>Autumn Reader is an open-source reader for PDF and EPUB files. An account is required to access the library. Local books are associated with that account on each device; signing out hides them without deleting their local files.</p>
+          <p>You can choose which books to sync between devices. The app uses Supabase for authentication and account data, and Cloudflare R2 for synced book files.</p>
+        </section>
+        <section id="local">
+          <h2>Data stored on your device</h2>
+          <p>When you use Autumn Reader, the application may store the books you add, book titles and covers, file format, favorites, dates related to adding or opening a book, reading position and progress, font-size preferences, notes, selected quotations associated with notes, and application preferences such as language, theme and reading font.</p>
+          <p>This information supports your library, reading progress, favorites, notes and reader settings. Local books and their personal metadata are accessible in the app only to the account that owns them on that device. Selected data may also be synchronized when cloud features are enabled.</p>
+        </section>
+        <section id="platforms">
+          <h2>Platforms and permissions</h2>
+          <p>Autumn Reader is distributed across desktop and mobile platforms, and some features may differ depending on the operating system and application version.</p>
+          <p>The application needs access to files you choose in order to import and read PDF or EPUB books. Platform stores and operating systems may also process technical information needed to download, install, update or run the application under their own privacy terms. Those platform processes are separate from Autumn Reader's local library data.</p>
+        </section>
+        <section id="sharing">
+          <h2>Data sharing and third parties</h2>
+          <p>Autumn Reader does not include advertising functionality in the current project and does not use your library to serve personalized ads. The current application code does not include a first-party analytics or telemetry system that uploads your reading activity to an Autumn Reader server.</p>
+          <p>Supabase processes account credentials and synchronized metadata. If you choose Google sign-in, Google and Supabase process the authentication information supplied by Google, such as your email address, name and profile image. Book files selected for cloud sync are stored in Cloudflare R2. If you request a translation, only the selected text fragment is sent to the configured translation service; the entire book is not sent.</p>
+          <p>Distribution platforms such as Microsoft Store or Google Play may separately process account, device, download or diagnostic information according to their own policies.</p>
+        </section>
+        <section id="retention">
+          <h2>Retention, deletion and control</h2>
+          <p>Local library data remains on the device until you remove the relevant content or clear the application's data. The exact effect of uninstalling the application can depend on the operating system and its storage rules.</p>
+          <p>Signing out does not delete local books. Removing a book from cloud storage leaves its local copy on that device if one exists; it may no longer be downloadable on other devices.</p>
+        </section>
+        <section id="website">
+          <h2>This website</h2>
+          <p>The Autumn Reader website is a static informational and download page. It does not require an account and the current site does not include advertising or first-party analytics. It stores your selected website language locally in your browser so the site can remember whether you chose English or Spanish.</p>
+          <p>The website is hosted through GitHub Pages. GitHub may process technical information associated with visits to hosted pages according to GitHub's own privacy practices. Links to Microsoft Store, Google services, GitHub or other external services take you to services governed by their respective privacy policies.</p>
+        </section>
+        <section id="contact">
+          <h2>Contact and changes</h2>
+          <p><span>Autumn Reader is an open-source project maintained by</span> <a href="https://github.com/fserlik">fserlik</a><span>. For privacy questions, contact</span> <a href="mailto:contact@autumnreader.lat">contact@autumnreader.lat</a><span>. You can also inspect the</span> <a href="https://github.com/fserlik/autumn-reader">source code</a>.</p>
+          <p>This policy may be updated when Autumn Reader adds platforms, integrations or features that change how information is handled. The date at the top of this page identifies the current version.</p>
+        </section>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <div><strong>Autumn Reader</strong><p>An open project for reading your way.</p></div>
+    <div><a href="./">Home</a><a href="./docs/">Documentation</a><a href="./privacidad.html">Privacy policy</a><a href="mailto:contact@autumnreader.lat">Contact</a></div>
+  </footer>
 </body>
-
 </html>
