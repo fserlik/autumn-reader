@@ -8,7 +8,17 @@ Global Font and Layout values live in the existing `autumn-page-spacing` local p
 
 EPUB layout changes and viewport rotations capture the current CFI before EPUB.js resizes, then redisplay that CFI after repagination. The saved percentage is held stable during this operation. PDF original pages retain their real page number and zoom; PDF text mode retains its page and text offset. EPUB shows a percentage rather than invented page counts. The two-column setting uses EPUB.js spreads; Auto considers available width and height, while an explicit two-column choice still needs enough width for readable pages.
 
+PDF text mode uses the same editorial reading measure as a reflowable book: a centered inset, responsive columns and book-level typography controls. Increasing the text size repaginates the extracted text inside the existing sheet rather than scaling the whole page. Original mode continues to render the authored PDF canvas and exposes zoom instead of controls that cannot affect it.
+
 Mobile Reader bars occupy compact rows and hide after six seconds without interaction. A neutral tap reveals them. Selection, links, scrolling, page swipes and dialogs keep their own gesture behavior. During an EPUB horizontal swipe, the adjacent page is prepared as soon as the gesture locks; committing the turn still requires the normal distance or flick threshold on release.
+
+On desktop, the custom title bar, reader sidebar and bottom navigation share one window frame. The sidebar tabs stay inside the viewport at short heights. The Font and layout and Appearance panels use the same compact scrollable height; their scrollbars are visually hidden without disabling keyboard, wheel or touch scrolling.
+
+## Notes and temporary navigation
+
+The book Appearance panel includes **Show notes**. Turning it off suppresses the in-page note marks without deleting notes or removing them from the Notes list. Selecting a note still navigates to its stored EPUB range or PDF text offset.
+
+Temporary navigation keeps the reading place separate from a note or internal-link destination. After following a note, the compact return panel offers only **Return to page…** and **Continue reading here**. Choosing the first action restores the previous reading position; choosing the second promotes the destination to the current reading place.
 
 ## Fonts
 
@@ -26,4 +36,4 @@ Wiktionary content is licensed under CC BY-SA 4.0 and GFDL; the Reader attribute
 
 Desktop uses the offline voices reported by Web Speech. Android uses a Tauri mobile bridge to `android.speech.tts.TextToSpeech`, because Android WebView does not expose Web Speech synthesis, and filters out voices that require a network connection. Settings also provides verified Piper and Kokoro models executed locally by sherpa-onnx; see [local-tts.md](local-tts.md).
 
-The global engine and default voice are stored under `autumn-tts-preferences-v2`. Reading speed, pitch and the optional installed-voice override use a separate key per account and book. The Reader speaks visible EPUB/PDF text in paragraph-sized fragments, pre-generates the next neural fragment, advances pages, highlights the current position and cancels outstanding work when stopped. Its compact player exposes previous fragment/page, play/pause/resume, stop, next fragment/page, installed voices, speed and pitch when the selected engine supports it. Labels, live status and voice previews follow the saved interface language.
+The global engine and default voice are stored under `autumn-tts-preferences-v2`. Reading speed, pitch and the optional installed-voice override use a separate key per account and book. The Reader speaks visible EPUB/PDF text in paragraph-sized fragments, pre-generates the next neural fragment, advances pages, highlights the current position and cancels outstanding work when stopped. Pausing preserves the marker so the visible page remains the source of truth. Its compact player exposes previous fragment/page, play/pause/resume, stop, next fragment/page, installed voices, speed and pitch when the selected engine supports it. Labels, live status and voice previews follow the saved interface language.

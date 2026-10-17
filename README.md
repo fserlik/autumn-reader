@@ -11,6 +11,10 @@ A simple place to read and organize your books on desktop and Android. Sign in o
 - Keep your books in one library and quickly return to recent reads or favorites.
 - Adjust the reading view and pick up where you left off.
 - Select text to add colored notes that open from the page margin.
+- Hide note markers per book without deleting the annotations.
+- Read the visible EPUB or adaptable PDF page aloud with an on-page position marker.
+- Use offline system voices or import compatible Piper and Kokoro models locally.
+- Sign in with Google or email while keeping local libraries separated by account.
 - Choose English, Spanish, Italian, or French in Settings.
 - Choose which books to sync across devices within your cloud quota; share reviews and book lists.
 

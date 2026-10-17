@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#3b211f">
   <meta name="google-site-verification" content="bMVblw3qWXpeBr09_p-U8lsUp-gSlDzpxYfw-4q9Y2s">
-  <meta name="description" content="Autumn Reader is a personal library for Windows and Android. Organize PDF and EPUB books, tailor your reading space, and keep your notes close.">
-  <title>Autumn Reader · Your library, your way</title>
+  <meta name="description" content="Read PDF and EPUB books with a flexible page, notes, cloud sync, and private offline text-to-speech on Windows and Android.">
+  <title>Autumn Reader · Read, listen, and keep your place</title>
   <link rel="canonical" href="https://autumnreader.lat/">
   <link rel="icon" type="image/png" href="./autumn-leaf.png">
   <link rel="stylesheet" href="./site.css">
@@ -20,6 +20,7 @@
       <span>Autumn Reader</span>
     </a>
     <nav aria-label="Main navigation">
+      <a href="#novedades">What's new</a>
       <a href="#funciones">Features</a>
       <a href="./docs/">Documentation</a>
       <a href="#descargas">Downloads</a>
@@ -32,9 +33,9 @@
   <main id="main-content">
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow">A NEW WAY TO READ</p>
+        <p class="eyebrow">YOUR BOOKS, IN YOUR OWN RHYTHM</p>
         <h1 id="hero-title">A place for every <em>story.</em></h1>
-        <p class="lead">Bring your books, notes, and preferences together in a library that adapts to you. Read at your pace, on your device, in your own style.</p>
+        <p class="lead">Bring your PDF and EPUB books, notes, and preferences together. Shape the page, listen with local voices, and always return to the passage that matters.</p>
         <div class="actions">
           <a class="primary" href="#descargas">Start reading</a>
           <a class="secondary" href="./docs/">Explore the documentation</a>
@@ -42,7 +43,7 @@
         <div class="hero-note" aria-label="Supported features">
           <span>PDF and EPUB</span>
           <span>Windows and Android</span>
-          <span>A reading space of your own</span>
+          <span>Local and offline speech</span>
         </div>
       </div>
       <div class="hero-visual" aria-label="Two illustrated book covers from the Autumn Reader collection" role="img">
@@ -53,24 +54,95 @@
       </div>
     </section>
 
+    <section class="edition" id="novedades" aria-labelledby="edition-title">
+      <header class="edition-heading">
+        <div>
+          <p class="eyebrow">THE LATEST EDITION</p>
+          <h2 id="edition-title">The page now reads <em>with you.</em></h2>
+        </div>
+        <p>Autumn Reader's newest tools keep narration private, preserve your visual place, and make long-form reading more comfortable without crowding the book.</p>
+      </header>
+
+      <article class="release-story">
+        <div class="story-copy">
+          <span class="folio">01 / OFFLINE VOICES</span>
+          <h3>A voice library that belongs to your device.</h3>
+          <p>Choose a system voice or import compatible Piper and Kokoro models. The library lists only voices that are installed and ready to use—there is no online voice shop and no automatic model download.</p>
+          <ul>
+            <li>Import sherpa-onnx packages and individual Kokoro voice files.</li>
+            <li>Share one compatible Kokoro base model across several voices.</li>
+            <li>Preview, set a default, inspect storage, or remove imported voices.</li>
+          </ul>
+          <a class="secondary" href="./docs/#voice-library">Open the voice guide</a>
+        </div>
+        <figure class="screen-print">
+          <img src="./assets/screenshots/offline-voice-library.png" alt="Autumn Reader TTS settings showing only installed system voices and the import voice action" width="1200" height="800" loading="lazy">
+          <figcaption>Installed voices stay together in Settings → Text to speech.</figcaption>
+        </figure>
+      </article>
+
+      <article class="release-story release-story-reverse">
+        <div class="story-copy">
+          <span class="folio">02 / FOLLOW THE TEXT</span>
+          <h3>Pause the voice. Keep the line.</h3>
+          <p>Read aloud begins at the visible part of an EPUB or adaptable PDF. The current word or passage is marked on the page and remains marked while paused, so resuming never means searching for your place.</p>
+          <ul>
+            <li>Play, pause, stop, and move between coherent fragments.</li>
+            <li>Remember speed, pitch, and an optional installed voice per book.</li>
+            <li>Prepare the next local fragment without blocking the reader.</li>
+          </ul>
+          <a class="secondary" href="./docs/#voice">Learn about read aloud</a>
+        </div>
+        <figure class="screen-print screen-print-dark">
+          <img src="./assets/screenshots/tts-reading-highlight.png" alt="Dark Autumn Reader book view with the current narrated word highlighted and compact playback controls in the sidebar" width="1200" height="800" loading="lazy">
+          <figcaption>The narration marker stays visible when playback is paused.</figcaption>
+        </figure>
+      </article>
+
+      <article class="release-story">
+        <div class="story-copy">
+          <span class="folio">03 / ADAPTABLE PDF</span>
+          <h3>PDF text with the breathing room of an EPUB.</h3>
+          <p>When a PDF contains selectable text, adaptable mode lays it out as a calm editorial page instead of stretching lines across the window. Original-page mode remains available whenever the authored layout matters.</p>
+          <ul>
+            <li>Readable measure, columns, margins, type, and book themes.</li>
+            <li>Text size changes without enlarging the paper itself.</li>
+            <li>Notes, search, progress, and read aloud follow the adapted text.</li>
+          </ul>
+          <a class="secondary" href="./docs/#formats">Compare PDF reading modes</a>
+        </div>
+        <figure class="screen-print">
+          <img src="./assets/screenshots/pdf-adaptable.png" alt="Autumn Reader displaying a PDF as a spacious two-column editorial page" width="1200" height="800" loading="lazy">
+          <figcaption>Adaptable PDF mode uses a focused page inset and an editorial text measure.</figcaption>
+        </figure>
+      </article>
+
+      <div class="edition-notes" aria-label="More recent improvements">
+        <p><strong>Google sign-in</strong><span>Use Google or email and return securely to the packaged app.</span></p>
+        <p><strong>Quieter annotations</strong><span>Hide note markers without deleting notes, then show them again from Appearance.</span></p>
+        <p><strong>A unified window</strong><span>The Windows title bar and reader controls now share the same visual frame.</span></p>
+        <p><strong>Plan-aware audio</strong><span>Free accounts see local read-aloud controls without an irrelevant premium tab.</span></p>
+      </div>
+    </section>
+
     <section class="intro" id="funciones" aria-labelledby="features-title">
       <p class="eyebrow">DESIGNED FOR READERS</p>
       <h2 id="features-title">Far more than opening a book.</h2>
       <p>Organize your collection, shape every detail of the page, and keep the ideas you discover along the way.</p>
       <div class="features">
         <a href="./docs/#library"><span>01 / LIBRARY</span><h3>Everything in its place</h3><p>Import books, arrange them in folders, edit metadata, and find your favorites again.</p></a>
-        <a href="./docs/#appearance"><span>02 / READING</span><h3>A page made for you</h3><p>Adjust fonts, spacing, margins, and themes to make every reading session comfortable.</p></a>
-        <a href="./docs/#notes"><span>03 / ANNOTATIONS</span><h3>Ideas that stay with you</h3><p>Mark passages, write notes, and return to the lines that matter.</p></a>
-        <a href="./docs/#cloud"><span>04 / SYNC</span><h3>Your library travels with you</h3><p>Manage local and cloud books and review the devices connected to your account.</p></a>
-        <a href="./docs/#voice"><span>05 / AUDIO</span><h3>Listen to your books</h3><p>Use voices installed on your device and learn about the premium voice option.</p></a>
-        <a href="./docs/#plans"><span>06 / PLANS</span><h3>Choose how you read</h3><p>Compare Free, Autumn+, and Autumn Pro before choosing a plan.</p></a>
+        <a href="./docs/#appearance"><span>02 / READING</span><h3>A page made for you</h3><p>Adjust fonts, spacing, margins, columns, book themes, and whether note marks are visible.</p></a>
+        <a href="./docs/#notes"><span>03 / ANNOTATIONS</span><h3>Ideas that stay with you</h3><p>Mark passages, write notes, hide their markers when you want a quieter page, and return later.</p></a>
+        <a href="./docs/#cloud"><span>04 / SYNC</span><h3>Your library travels with you</h3><p>Choose which books live only on this device and which ones sync to your account.</p></a>
+        <a href="./docs/#voice"><span>05 / LOCAL AUDIO</span><h3>Listen without sending the book away</h3><p>Use installed System, Piper, or Kokoro voices and follow the narration on the page.</p></a>
+        <a href="./docs/#account"><span>06 / ACCOUNT</span><h3>Enter with Google or email</h3><p>Sign in securely, manage authorized devices, and keep each account's local library separate.</p></a>
       </div>
     </section>
 
     <section class="statement" aria-labelledby="privacy-title">
       <p class="eyebrow">PRIVATE BY DESIGN</p>
       <h2 id="privacy-title">Your books are personal.<br><em>Their privacy should be too.</em></h2>
-      <p>Your library stays tied to your account on each device, and you choose which books to sync.</p>
+      <p>Your library stays tied to your account on each device, you choose which books to sync, and local text-to-speech keeps the book text on the device.</p>
       <a href="./privacidad.html" class="primary">Read the privacy policy</a>
     </section>
 
