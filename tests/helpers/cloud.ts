@@ -168,8 +168,8 @@ export async function mockCloud(page: Page, emptyLibrary = false, cloudFile?: Bu
         await route.fulfill({status:400,contentType:"application/json",headers:{"Access-Control-Allow-Origin":"*","X-Supabase-Api-Version":"2024-01-01"},body:JSON.stringify({code:"invalid_credentials",error_code:"invalid_credentials",msg:"Invalid login credentials"})});
         return;
       }
-      const payload = req.postDataJSON() as { email: string };
-      current = payload.email.startsWith("b") ? b : a;
+      const payload = req.postDataJSON() as { email?: string };
+      if (payload.email) current = payload.email.startsWith("b") ? b : a;
       if (url.searchParams.get("grant_type") !== "refresh_token") sessionId = randomUUID();
       const token = [
         { alg: "HS256", typ: "JWT" },

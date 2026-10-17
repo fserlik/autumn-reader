@@ -5,18 +5,19 @@ import { clickReaderOption, selectReaderOption } from "./helpers/reader-options"
 test.beforeEach(async ({page}) => { await page.addInitScript(() => localStorage.setItem("autumn-language", "es")); });
 test.afterEach(async ({page}) => { await page.unrouteAll({behavior:"wait"}); });
 
-test("TTS discovers local voices, persists voice and speed, and controls book playback offline", async ({page,context}, info) => {
+async function mockDeviceSpeech(page: Page): Promise<void> {
   await page.addInitScript(() => {
     class MockUtterance {
       text: string; lang = ""; rate = 1; voice: SpeechSynthesisVoice | null = null;
       onend: (() => void) | null = null; onerror: (() => void) | null = null;
+      onboundary: ((event: {charIndex:number;charLength:number;name:string}) => void) | null = null;
       constructor(text: string) { this.text = text; }
     }
     const voices = [
       { voiceURI: "local-es", name: "Lucía local", lang: "es-ES", localService: true, default: true },
       { voiceURI: "local-en", name: "Autumn English", lang: "en-US", localService: true, default: false },
     ] as SpeechSynthesisVoice[];
-    const state = { speaking: false, paused: false, calls: [] as {text:string;rate:number;voice:string|null}[] };
+    const state = { speaking: false, paused: false, calls: [] as {text:string;rate:number;voice:string|null}[], utterances: [] as MockUtterance[] };
     const synthesis = new EventTarget();
     Object.defineProperties(synthesis, {
       speaking: { get: () => state.speaking }, paused: { get: () => state.paused },
@@ -24,6 +25,7 @@ test("TTS discovers local voices, persists voice and speed, and controls book pl
       speak: { value: (utterance: MockUtterance) => {
         state.speaking = true; state.paused = false;
         state.calls.push({ text: utterance.text, rate: utterance.rate, voice: utterance.voice?.voiceURI ?? null });
+        state.utterances.push(utterance);
       } },
       cancel: { value: () => { state.speaking = false; state.paused = false; } },
       pause: { value: () => { state.paused = true; } },
@@ -33,26 +35,85 @@ test("TTS discovers local voices, persists voice and speed, and controls book pl
     Object.defineProperty(window, "speechSynthesis", { configurable: true, value: synthesis });
     Object.defineProperty(window, "__ttsMock", { value: state });
   });
+}
+
+async function epubSpeechHighlight(page: Page): Promise<string> {
+  return page.frameLocator(".epub-frame iframe").locator("body").evaluate(() => {
+    const registry = (CSS as typeof CSS & {highlights?: {get(name:string): Iterable<Range> | undefined}}).highlights;
+    return [...(registry?.get("autumn-tts-current") ?? [])].map(range => range.toString()).join(" ");
+  });
+}
+
+async function pageSpeechHighlight(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const registry = (CSS as typeof CSS & {highlights?: {get(name:string): Iterable<Range> | undefined}}).highlights;
+    return [...(registry?.get("autumn-tts-current") ?? [])].map(range => range.toString()).join(" ");
+  });
+}
+
+async function firstVisibleEpubPassage(page: Page): Promise<string> {
+  return page.frameLocator(".epub-frame iframe").locator("body").evaluate(() => {
+    const frame = window.frameElement as HTMLElement | null;
+    const frameRect = frame?.getBoundingClientRect();
+    const clipRect = frame?.closest<HTMLElement>(".epub-frame")?.getBoundingClientRect();
+    const scaleX = frameRect?.width ? innerWidth / frameRect.width : 1;
+    const scaleY = frameRect?.height ? innerHeight / frameRect.height : 1;
+    const bounds = frameRect && clipRect ? {
+      left: Math.max(0, clipRect.left - frameRect.left) * scaleX,
+      top: Math.max(0, clipRect.top - frameRect.top) * scaleY,
+      right: Math.min(frameRect.width, clipRect.right - frameRect.left) * scaleX,
+      bottom: Math.min(frameRect.height, clipRect.bottom - frameRect.top) * scaleY,
+    } : { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+    const visible = (rect: DOMRect) => rect.right > bounds.left + 1 && rect.left < bounds.right - 1
+      && rect.bottom > bounds.top + 1 && rect.top < bounds.bottom - 1;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+      const node = current as Text;
+      if (!node.data.trim() || node.parentElement?.closest("script,style,noscript,[hidden],[aria-hidden='true']")) continue;
+      const range = document.createRange();
+      for (let offset = 0; offset < node.data.length; offset += 1) {
+        if (/\s/u.test(node.data[offset])) continue;
+        range.setStart(node, offset); range.setEnd(node, offset + 1);
+        if (!visible(range.getBoundingClientRect())) continue;
+        let end = offset;
+        while (end < node.data.length && end - offset < 54) end += 1;
+        return node.data.slice(offset, end).replace(/\s+/g, " ").trim();
+      }
+    }
+    return "";
+  });
+}
+
+test("TTS catalogs local voices, keeps book controls in the reader, and plays offline", async ({page,context}, info) => {
+  await mockDeviceSpeech(page);
   const cloud = await mockCloud(page, true); cloud.setPlan("plus");
   await page.goto("/"); await login(page);
   if (info.project.name === "android") await page.setViewportSize({ width: 375, height: 667 });
   await page.locator('.nav-button[data-view="settings"]').click();
   await page.locator("#settings-tts-tab").click();
-  await expect(page.locator("#tts-voice-select option")).toHaveCount(3);
-  await expect(page.locator("#tts-voice-status")).toHaveText("2 voces disponibles");
-  await page.locator("#tts-voice-select").selectOption("local-es");
-  await page.locator("#tts-rate-settings").fill("1.3");
-  await page.locator("#tts-rate-settings").dispatchEvent("change");
-  await page.locator("#tts-preview").click();
+  await expect(page.locator('#tts-voice-library .tts-voice-entry[data-engine="system"]')).toHaveCount(2);
+  await expect(page.locator('#tts-voice-library .tts-voice-entry[data-engine="piper"], #tts-voice-library .tts-voice-entry[data-engine="kokoro"]')).toHaveCount(0);
+  await expect(page.locator('#tts-voice-catalog')).toHaveCount(0);
+  await expect(page.locator('[data-tts-action="install"], [data-tts-action="cancel"]')).toHaveCount(0);
+  await expect(page.locator('[data-tts-action="preview"]')).toHaveCount(2);
+  await expect(page.locator("#settings-tts-panel #tts-rate-reader")).toHaveCount(0);
+  await page.locator('button[data-tts-action="default"][data-voice-id="local-es"]').click();
   await page.screenshot({ path: info.outputPath("tts-settings.png"), fullPage: true });
   await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
   await page.screenshot({ path: info.outputPath("tts-settings-dark.png"), fullPage: true });
   await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+  await page.locator("#tts-import-dialog").evaluate((dialog: HTMLDialogElement) => dialog.showModal());
+  await expect(page.locator("#tts-import-pick")).toBeVisible();
+  await expect(page.locator("#tts-import-fields")).toBeHidden();
+  await expect(page.locator("#tts-import-speaker")).toHaveCount(0);
+  await expect(page.locator("#tts-import-submit")).toBeVisible();
+  await page.screenshot({ path: info.outputPath("tts-import-dialog.png") });
+  await page.locator("#tts-import-dialog").evaluate((dialog: HTMLDialogElement) => dialog.close());
   expect(await page.evaluate(() => {
-    const value = localStorage.getItem("autumn-tts-preferences");
+    const value = localStorage.getItem("autumn-tts-preferences-v2");
     const mock = (window as unknown as {__ttsMock:{calls:{rate:number;voice:string|null}[]}}).__ttsMock;
-    return { saved: value && JSON.parse(value), preview: mock.calls.at(-1) };
-  })).toMatchObject({ saved: { voiceUri: "local-es", rate: 1.3 }, preview: { rate: 1.3, voice: "local-es" } });
+    return { saved: value && JSON.parse(value), previewCalls: mock.calls.length };
+  })).toMatchObject({ saved: { engine: "system", voices: { system: "local-es" } }, previewCalls: 0 });
 
   await page.locator("#file-input").setInputFiles({name:"Narración.epub",mimeType:"application/epub+zip",buffer:await epubFixture("narration", "Narración")});
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
@@ -60,15 +121,12 @@ test("TTS discovers local voices, persists voice and speed, and controls book pl
   await expect(speechEntry).toBeVisible();
   await speechEntry.click();
   await expect(page.locator("#tts-active-voice")).toContainText("Lucía local");
-  await page.locator("#tts-engine-premium").click();
-  await expect(page.locator("#tts-premium-options")).toBeVisible();
-  await expect(page.locator("#tts-premium-voice option")).toHaveCount(1);
-  await expect(page.locator("#tts-premium-preview")).toBeVisible();
-  await page.screenshot({ path: info.outputPath("tts-premium-player.png") });
-  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
-  await page.screenshot({ path: info.outputPath("tts-premium-player-dark.png") });
-  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
-  await page.locator("#tts-engine-local").click();
+  await expect(page.locator("#tts-reader-voice option")).toHaveCount(2);
+  await expect(page.locator("#speech-panel [data-tts-engine], #speech-panel [data-tts-action]")).toHaveCount(0);
+  await page.locator("#tts-rate-reader").fill("1.3");
+  await page.locator("#tts-rate-reader").dispatchEvent("change");
+  await page.locator("#tts-pitch-reader").fill("1.2");
+  await page.locator("#tts-pitch-reader").dispatchEvent("change");
   if (info.project.name === "desktop") {
     const sidebar = (await page.locator("#reader-sidebar").boundingBox())!;
     const rate = (await page.locator("#tts-rate-reader-value").boundingBox())!;
@@ -78,13 +136,28 @@ test("TTS discovers local voices, persists voice and speed, and controls book pl
   await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
   await page.screenshot({ path: info.outputPath("tts-player-dark.png") });
   await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+  expect(await page.evaluate(() => Object.entries(localStorage).find(([key]) => key.startsWith("autumn-tts-book:"))?.[1] ?? "")).toContain('"rate":1.3');
   await context.setOffline(true);
   await page.locator("#tts-play-pause").click();
   await expect(page.locator("#tts-player-status")).toHaveText("Leyendo esta página");
-  await expect.poll(() => page.evaluate(() => (window as unknown as {__ttsMock:{calls:unknown[]}}).__ttsMock.calls.length)).toBeGreaterThan(1);
+  await expect.poll(() => page.evaluate(() => (window as unknown as {__ttsMock:{calls:unknown[]}}).__ttsMock.calls.length)).toBeGreaterThan(0);
+  await expect.poll(() => epubSpeechHighlight(page)).toBe("Cloud");
+  await page.evaluate(() => {
+    const mock = (window as unknown as {__ttsMock:{utterances:{onboundary:((event:{charIndex:number;charLength:number;name:string})=>void)|null}[]}}).__ttsMock;
+    mock.utterances.at(-1)?.onboundary?.({ charIndex: 6, charLength: 7, name: "word" });
+  });
+  await expect.poll(() => epubSpeechHighlight(page)).toBe("chapter");
   await page.locator("#tts-play-pause").click();
   await expect(page.locator("#tts-player-status")).toHaveText("Lectura en pausa");
   expect(await page.evaluate(() => (window as unknown as {__ttsMock:{paused:boolean}}).__ttsMock.paused)).toBe(true);
+  await expect.poll(() => epubSpeechHighlight(page)).toBe("chapter");
+  await page.screenshot({ path: info.outputPath("tts-paused-highlight.png") });
+  if (info.project.name === "desktop") {
+    await page.evaluate(() => document.querySelector<HTMLButtonElement>('[data-book-theme="dark"]')!.click());
+    await expect(page.locator("#view-reader")).toHaveAttribute("data-book-theme", "dark");
+    await page.screenshot({ path: info.outputPath("tts-paused-highlight-dark.png") });
+    await page.evaluate(() => document.querySelector<HTMLButtonElement>('[data-book-theme="light"]')!.click());
+  }
   await page.locator("#tts-play-pause").click();
   await expect(page.locator("#tts-player-status")).toHaveText("Leyendo esta página");
   expect(await page.evaluate(() => (window as unknown as {__ttsMock:{paused:boolean}}).__ttsMock.paused)).toBe(false);
@@ -92,12 +165,139 @@ test("TTS discovers local voices, persists voice and speed, and controls book pl
   const beforeNext = await page.evaluate(() => (window as unknown as {__ttsMock:{calls:unknown[]}}).__ttsMock.calls.length);
   await page.locator("#tts-next").click();
   await expect.poll(() => page.evaluate(() => (window as unknown as {__ttsMock:{calls:unknown[]}}).__ttsMock.calls.length)).toBeGreaterThan(beforeNext);
+  await expect.poll(() => epubSpeechHighlight(page)).not.toBe("");
+  await page.locator("#tts-stop").click();
+  await expect.poll(() => epubSpeechHighlight(page)).toBe("");
   if (info.project.name === "android") {
     await page.setViewportSize({ width: 667, height: 375 });
     await expect(page.locator("#speech-panel")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath("tts-player-landscape.png") });
   }
+});
+
+test("voice import dialog remains usable on an Android landscape viewport", async ({page}, info) => {
+  test.skip(info.project.name !== "android");
+  await mockDeviceSpeech(page);
+  await mockCloud(page, true);
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.goto("/"); await login(page);
+  await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-tts-tab").click();
+  await page.locator("#tts-import-dialog").evaluate((dialog: HTMLDialogElement) => dialog.showModal());
+  await expect(page.locator("#tts-import-submit")).toBeVisible();
+  await expect(page.locator("#tts-import-cancel")).toBeVisible();
+  expect(await page.locator("#tts-import-dialog").evaluate(dialog => dialog.scrollWidth <= dialog.clientWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath("tts-import-dialog-landscape.png") });
+});
+
+test("Free plan shows the same local reader controls without premium speech", async ({page}, info) => {
+  await mockDeviceSpeech(page);
+  await mockCloud(page, true);
+  await page.goto("/");
+  await login(page);
+  if (info.project.name === "android") await page.setViewportSize({ width: 375, height: 667 });
+  await page.locator("#file-input").setInputFiles({
+    name: "Lectura.epub",
+    mimeType: "application/epub+zip",
+    buffer: await epubFixture("free-speech", "Lectura"),
+  });
+  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  const speechEntry = page.locator(info.project.name === "desktop" ? "#reader-tts-tab" : "#speech-toggle");
+  await expect(speechEntry).toBeVisible();
+  await speechEntry.click();
+  await expect(page.locator("#speech-panel .tts-engine-choice")).toHaveCount(0);
+  await expect(page.locator("#tts-engine-premium, #tts-premium-options")).toHaveCount(0);
+  await expect(page.locator("#tts-reader-voice")).toBeVisible();
+  await expect(page.locator("#tts-active-voice")).toContainText(/^Voz:/);
+  await expect(page.locator("#tts-active-voice")).not.toContainText(/premium/i);
+  await page.screenshot({ path: info.outputPath("tts-free-plan.png") });
+  if (info.project.name === "desktop") {
+    await page.evaluate(() => document.documentElement.classList.add("windows-desktop"));
+    await expect(page.locator("#app-titlebar")).toBeVisible();
+    await expect(page.locator("#app-titlebar")).toHaveCSS("height", "34px");
+    await expect(page.locator(".app-window-control")).toHaveCount(3);
+    const viewport = page.viewportSize()!;
+    const sidebarTabs = (await page.locator(".reader-sidebar-tabs").boundingBox())!;
+    const readerBottom = (await page.locator(".reader-bottom").boundingBox())!;
+    expect(sidebarTabs.y + sidebarTabs.height).toBeLessThanOrEqual(viewport.height + 1);
+    expect(readerBottom.y + readerBottom.height).toBeLessThanOrEqual(viewport.height + 1);
+    await expect(page.locator("#reader-contents-tab")).toBeInViewport();
+    await expect(page.locator("#reader-notes-tab")).toBeInViewport();
+    await page.screenshot({ path: info.outputPath("tts-free-windows-frame.png") });
+    await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+    await page.screenshot({ path: info.outputPath("tts-free-windows-frame-dark.png") });
+  }
+});
+
+test("TTS highlight marks and retains the current PDF passage while paused", async ({page}, info) => {
+  await mockDeviceSpeech(page);
+  await mockCloud(page, true);
+  await page.goto("/");
+  await login(page);
+  if (info.project.name === "android") await page.setViewportSize({ width: 375, height: 667 });
+  await page.locator("#file-input").setInputFiles({ name: "Narrated.pdf", mimeType: "application/pdf", buffer: samplePdf() });
+  await expect(page.locator(".pdf-reading-text")).toBeVisible();
+  await page.locator(info.project.name === "desktop" ? "#reader-tts-tab" : "#speech-toggle").click();
+  await page.locator("#tts-play-pause").click();
+  await expect.poll(() => pageSpeechHighlight(page)).toBe("Chapter");
+  await page.evaluate(() => {
+    const mock = (window as unknown as {__ttsMock:{utterances:{onboundary:((event:{charIndex:number;charLength:number;name:string})=>void)|null}[]}}).__ttsMock;
+    mock.utterances.at(-1)?.onboundary?.({ charIndex: 10, charLength: 4, name: "word" });
+  });
+  await expect.poll(() => pageSpeechHighlight(page)).toBe("Line");
+  const playingHighlight = await pageSpeechHighlight(page);
+  await page.locator("#tts-play-pause").click();
+  await expect.poll(() => pageSpeechHighlight(page)).toBe(playingHighlight);
+  await page.screenshot({ path: info.outputPath("tts-pdf-paused-highlight.png") });
+  await page.locator("#tts-stop").click();
+  await expect.poll(() => pageSpeechHighlight(page)).toBe("");
+});
+
+test("EPUB TTS starts at the first text visible on the current reading page", async ({page}, info) => {
+  await mockDeviceSpeech(page);
+  await mockCloud(page, true);
+  await page.goto("/");
+  await login(page);
+  if (info.project.name === "android") await page.setViewportSize({ width: 375, height: 667 });
+  await page.locator("#file-input").setInputFiles({ name: "Visible.epub", mimeType: "application/epub+zip", buffer: await epubFixture("visible", "Visible") });
+  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  for (let turn = 0; turn < 2; turn += 1) {
+    const before = await saved(page);
+    await page.locator("#next-button").click();
+    await expect.poll(async () => (await saved(page)).cfi).not.toBe(before.cfi);
+  }
+  await page.locator(info.project.name === "desktop" ? "#reader-tts-tab" : "#speech-toggle").click();
+  const expected = await firstVisibleEpubPassage(page);
+  expect(expected.length).toBeGreaterThan(12);
+  await page.locator("#tts-play-pause").click();
+  await expect.poll(() => page.evaluate(() => {
+    const mock = (window as unknown as {__ttsMock:{calls:{text:string}[]}}).__ttsMock;
+    return mock.calls.at(-1)?.text ?? "";
+  })).not.toBe("");
+  const spoken = await page.evaluate(() => {
+    const mock = (window as unknown as {__ttsMock:{calls:{text:string}[]}}).__ttsMock;
+    return mock.calls.at(-1)?.text ?? "";
+  });
+  expect(spoken.startsWith(expected)).toBe(true);
+  expect(spoken).not.toContain("Cloud chapter");
+});
+
+test("PDF adaptable uses an editorial reading inset instead of spanning the canvas", async ({page}, info) => {
+  await mockCloud(page, true);
+  await page.goto("/");
+  await login(page);
+  if (info.project.name === "android") await page.setViewportSize({ width: 375, height: 667 });
+  await page.locator("#file-input").setInputFiles({ name: "Editorial.pdf", mimeType: "application/pdf", buffer: samplePdf() });
+  await expect(page.locator(".pdf-reading-text")).toBeVisible();
+  const surface = (await page.locator("#reading-surface").boundingBox())!;
+  const sheet = (await page.locator(".pdf-reading-sheet").boundingBox())!;
+  const viewport = (await page.locator(".pdf-reading-viewport").boundingBox())!;
+  expect(sheet.x).toBeGreaterThan(surface.x);
+  expect(sheet.width).toBeLessThan(surface.width);
+  expect(viewport.x - surface.x).toBeGreaterThan(info.project.name === "android" ? 20 : 70);
+  expect(viewport.y - surface.y).toBeGreaterThan(info.project.name === "android" ? 15 : 40);
+  await page.screenshot({ path: info.outputPath("pdf-editorial-reflow.png") });
 });
 async function saved(page: Page) {
   return page.evaluate(() => new Promise<{page:number;cfi:string|null;pdfTextOffset:number;percentage:number}>(resolve => {
@@ -156,7 +356,7 @@ test("EPUB search supports a phrase and history without overwriting offline read
   await page.locator("#book-search-close").click();await page.locator("#reading-return").click();await expect(page.locator("#reader-history")).toBeHidden();
   expect((await saved(page)).cfi).toBe(anchor.cfi);
 });
-test("PDF search navigates real pages, back/forward restores offsets, and keeps reading progress",async({page})=>{
+test("PDF search navigates real pages, back/forward restores offsets, and keeps reading progress",async({page},info)=>{
   await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:"Search.pdf",mimeType:"application/pdf",buffer:samplePdf()});
   await expect(page.locator(".pdf-reading-text")).toBeVisible();await selectReaderOption(page, "#pdf-reading-mode", "original");
@@ -167,9 +367,9 @@ test("PDF search navigates real pages, back/forward restores offsets, and keeps 
   expect((await saved(page)).page).toBe(2);await page.locator("#history-back").click();await expect(page.locator("#position-label")).toContainText("2");
   await page.locator("#history-forward").click();await expect(page.locator("#position-label")).toContainText("1");
   await page.locator("#book-search-close").click();await page.locator("#reading-return").click();await expect(page.locator("#position-label")).toContainText("2");
-  await page.locator("#back-button").click();await page.locator("#library-list .book-title").click();await expect(page.locator("#position-label")).toContainText("2");
+  await page.locator(info.project.name==="desktop"?"#desktop-reader-back":"#back-button").click();await page.locator("#library-list .book-title").click();await expect(page.locator("#position-label")).toContainText("2");
 });
-test("spacing persists in PDF reflow and EPUB, while the original PDF canvas stays unchanged",async({page})=>{
+test("spacing persists in PDF reflow and EPUB, while the original PDF canvas stays unchanged",async({page},info)=>{
   await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-page-tab").click();
   await page.locator("#line-spacing").fill("2");await page.locator("#line-spacing").dispatchEvent("change");
@@ -178,12 +378,12 @@ test("spacing persists in PDF reflow and EPUB, while the original PDF canvas sta
   await expect(page.locator(".pdf-reading-text")).toHaveCSS("line-height","36px");
   await expect(page.locator(".pdf-reading-text p").first()).toHaveCSS("margin-bottom","23.4px");
   await selectReaderOption(page, "#pdf-reading-mode", "original");const before=await page.locator(".pdf-page").boundingBox();
-  await page.locator("#back-button").click();
+  await page.locator(info.project.name === "desktop" ? "#desktop-reader-back" : "#back-button").click();
   await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#spacing-reset").click();
   await page.locator("#file-input").setInputFiles({name:"SpacingEPUB.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
   expect(await page.frameLocator(".epub-frame iframe").locator("#autumn-spacing").textContent()).toContain("1.6");
-  await page.locator("#back-button").click();await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list").getByRole("button",{name:"SpacingPDF",exact:true}).click();
+  await page.locator(info.project.name === "desktop" ? "#desktop-reader-back" : "#back-button").click();await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list").getByRole("button",{name:"SpacingPDF",exact:true}).click();
   await expect(page.locator(".pdf-page")).toBeVisible();expect(Math.abs((await page.locator(".pdf-page").boundingBox())!.width-before!.width)).toBeLessThan(8);
   await page.reload();await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-page-tab").click();await expect(page.locator("#line-spacing")).toHaveValue("1.6");
 });
@@ -477,7 +677,7 @@ test("EPUB spacing survives a new chapter, theme/font changes and reopening",asy
   await expect(page.frameLocator(".epub-frame iframe").locator("body")).toHaveCSS("background-color","rgb(41, 35, 34)");
 });
 
-for(const format of ["pdf","epub"] as const)test(`${format} adding a note preserves its highlight, progress and return navigation`,async({page})=>{
+for(const format of ["pdf","epub"] as const)test(`${format} adding a note preserves its highlight, progress and return navigation`,async({page},info)=>{
   await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:`Highlight.${format}`,mimeType:format==="pdf"?"application/pdf":"application/epub+zip",buffer:format==="pdf"?samplePdf():await epubFixture()});
   const select=(element:Element)=>{const node=element.querySelector("span")?.firstChild??element.firstChild;const range=document.createRange();range.selectNodeContents(node!);window.getSelection()!.removeAllRanges();window.getSelection()!.addRange(range);element.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:80}));};
@@ -485,13 +685,16 @@ for(const format of ["pdf","epub"] as const)test(`${format} adding a note preser
   else{await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.frameLocator(".epub-frame iframe").locator("p").first().evaluate(select);}
   await expect(page.locator("#selection-highlight")).toHaveCount(0);await page.locator("#note-add").click();
   await page.locator("#note-text").fill("Mi nota sobre este fragmento");await page.locator("#note-save").click();await expect(page.locator("#notes-count")).toHaveText("1");
-  for(let i=0;i<2;i++){const before=await saved(page);await page.locator("#next-button").click();await expect.poll(async()=>{const after=await saved(page);return format==="epub"?after.cfi!==before.cfi:after.pdfTextOffset!==before.pdfTextOffset;}).toBe(true);}
-  const anchor=await saved(page);await clickReaderOption(page, "#all-notes-button");await page.locator(".notes-go-button").click();await expect(page.locator("#reading-return")).toBeEnabled();
+  if(format==="pdf")await selectReaderOption(page,"#pdf-reading-mode","original");
+  for(let i=0;i<(format==="pdf"?1:2);i++){const before=await saved(page);await page.locator("#next-button").click();await expect.poll(async()=>{const after=await saved(page);return format==="epub"?after.cfi!==before.cfi:after.page!==before.page||after.pdfTextOffset!==before.pdfTextOffset;}).toBe(true);}
+  const anchor=await saved(page);await clickReaderOption(page, "#all-notes-button");await page.locator("#all-notes-list .notes-go-button").click();await expect(page.locator("#reading-return")).toBeEnabled();
+  await expect(page.locator("#history-back")).toBeHidden();await expect(page.locator("#history-forward")).toBeHidden();await expect(page.locator("#reading-adopt")).toBeVisible();
+  if(info.project.name==="desktop"&&format==="pdf")await page.screenshot({path:info.outputPath("note-return-actions.png")});
   const readingAnchor={page:anchor.page,cfi:anchor.cfi,percentage:anchor.percentage,...(format==="pdf"?{pdfTextOffset:anchor.pdfTextOffset}:{})};
   expect(await saved(page)).toMatchObject(readingAnchor);await expect(page.locator(".note-marker")).toHaveCount(1);await page.locator("#reading-return").click();await expect(page.locator("#reader-history")).toBeHidden();
-  expect(await saved(page)).toMatchObject(readingAnchor);await page.locator("#back-button").click();await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list .book-title").click();await expect(page.locator("#notes-count")).toHaveText("1");
+  expect(await saved(page)).toMatchObject(readingAnchor);await page.locator(info.project.name==="desktop"?"#desktop-reader-back":"#back-button").click();await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list .book-title").click();await expect(page.locator("#notes-count")).toHaveText("1");
   // Existing standalone highlights used the same note schema. Removing their menu action must not delete them.
-  await page.locator("#back-button").click();
+  await page.locator(info.project.name==="desktop"?"#desktop-reader-back":"#back-button").click();
   // Unload the app before restoring legacy data so pending in-memory reader writes cannot replace the fixture.
   await page.route("**/__legacy-highlight-fixture",route=>route.fulfill({contentType:"text/html",body:"<html><body>Legacy fixture</body></html>"}));
   await page.goto("/__legacy-highlight-fixture");
@@ -504,7 +707,7 @@ for(const format of ["pdf","epub"] as const)test(`${format} adding a note preser
   await expect(page.locator("#notes-count")).toHaveText("1");await clickReaderOption(page, "#all-notes-button");
   await expect(page.locator("#all-notes-list")).toContainText("Resaltado");
 });
-for(const format of ["pdf","epub"] as const)test(`saved note appearance is selected in settings and applied to ${format.toUpperCase()} notes`,async({page})=>{
+for(const format of ["pdf","epub"] as const)test(`saved note appearance is selected in settings and applied to ${format.toUpperCase()} notes`,async({page},info)=>{
   await mockCloud(page,true);await page.addInitScript(()=>{localStorage.setItem("autumn-language","es");localStorage.setItem("autumn-note-style","strikethrough");});await page.goto("/");await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-interface-tab").click();
   await expect(page.locator('[data-note-style="strikethrough"]')).toHaveAttribute("aria-pressed","true");
@@ -513,7 +716,17 @@ for(const format of ["pdf","epub"] as const)test(`saved note appearance is selec
   if(format==="pdf"){await expect(page.locator(".pdf-reading-text")).toBeVisible();await page.locator(".pdf-reading-text p").first().evaluate(select);}
   else{await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.frameLocator(".epub-frame iframe").locator("p").first().evaluate(select);}
   await page.locator("#note-add").click();await page.locator("#note-text").fill("Nota con estilo");await page.locator("#note-save").click();
-  await expect(page.locator(format==="pdf"?'.note-highlight[data-note-style="strikethrough"]':'g[ref="autumn-note-strikethrough"]')).toHaveCount(1);
+  const noteMark=page.locator(format==="pdf"?'.note-highlight[data-note-style="strikethrough"]':'g[ref="autumn-note-strikethrough"]');
+  await expect.poll(async()=>noteMark.count()).toBeGreaterThan(0);
+  if(info.project.name==="desktop"){
+    await page.locator("#reader-settings-toggle").click();await expect(page.locator("#reader-show-notes")).toBeChecked();
+    await page.locator("#reader-show-notes").uncheck();await expect(noteMark).toHaveCount(0);await expect(page.locator(".note-marker")).toHaveCount(0);
+    expect(await page.evaluate(()=>Object.entries(localStorage).find(([key])=>key.startsWith("autumn-reader-notes:"))?.[1])).toBe("hidden");
+    await page.locator("#reader-settings-toggle").click();await page.locator("#desktop-reader-back").click();await page.locator('.nav-button[data-view="library"]').click();
+    await page.locator("#library-list .book-title").click();await page.locator("#reader-settings-toggle").click();
+    await expect(page.locator("#reader-show-notes")).not.toBeChecked();await expect(noteMark).toHaveCount(0);
+    await page.locator("#reader-show-notes").check();await expect.poll(async()=>noteMark.count()).toBeGreaterThan(0);
+  }
 });
 for(const format of ["pdf","epub"] as const)test(`${format} note accepts blue and custom colours, edits and reopens with its saved colour`,async({page},info)=>{
   await mockCloud(page,true);await page.goto("/");await login(page);

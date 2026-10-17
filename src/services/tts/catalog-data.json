@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "runtimeVersion": "1.13.8",
+  "packages": [
+    {
+      "id": "piper-es-es-carlfm-x-low-int8",
+      "engine": "piper",
+      "size": 13356095,
+      "sha256": "fe5b74e55254e2a568a4e4d73fcfcc02580c7957fc337777adf46e5fdfe10218"
+    },
+    {
+      "id": "piper-en-us-ljspeech-medium-int8",
+      "engine": "piper",
+      "size": 21090429,
+      "sha256": "24dc3bd77dd48c291e52c297878d3437c9492f245d823d7f6a06c4bbb67f4b6b"
+    },
+    {
+      "id": "piper-fr-fr-siwis-low-int8",
+      "engine": "piper",
+      "size": 13317962,
+      "sha256": "c001d38068a316c93601a7d10d0b983c9e61adf2af0c4533595483c7f6cba614"
+    },
+    {
+      "id": "piper-it-it-paola-medium-int8",
+      "engine": "piper",
+      "size": 21143212,
+      "sha256": "2b975ed305391c056944a4dde67ee754dd824099503a860295bb4c1d724662d8"
+    },
+    {
+      "id": "kokoro-multilingual-v1-int8",
+      "engine": "kokoro",
+      "size": 132303094,
+      "sha256": "4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e"
+    }
+  ],
+  "voices": [
+    { "id": "piper-es-carlfm", "packageId": "piper-es-es-carlfm-x-low-int8", "engine": "piper", "name": "Carl FM", "locale": "es-ES", "region": "España", "speakerId": 0, "quality": "Ligera" },
+    { "id": "piper-en-ljspeech", "packageId": "piper-en-us-ljspeech-medium-int8", "engine": "piper", "name": "LJ Speech", "locale": "en-US", "region": "United States", "speakerId": 0, "quality": "Media" },
+    { "id": "piper-fr-siwis", "packageId": "piper-fr-fr-siwis-low-int8", "engine": "piper", "name": "SIWIS", "locale": "fr-FR", "region": "France", "speakerId": 0, "quality": "Ligera" },
+    { "id": "piper-it-paola", "packageId": "piper-it-it-paola-medium-int8", "engine": "piper", "name": "Paola", "locale": "it-IT", "region": "Italia", "speakerId": 0, "quality": "Media" },
+    { "id": "kokoro-es-dora", "packageId": "kokoro-multilingual-v1-int8", "engine": "kokoro", "name": "Dora", "locale": "es-ES", "region": "España", "speakerId": 28, "quality": "Neuronal" },
+    { "id": "kokoro-es-alex", "packageId": "kokoro-multilingual-v1-int8", "engine": "kokoro", "name": "Alex", "locale": "es-ES", "region": "España", "speakerId": 29, "quality": "Neuronal" },
+    { "id": "kokoro-es-santa", "packageId": "kokoro-multilingual-v1-int8", "engine": "kokoro", "name": "Santa", "locale": "es-ES", "region": "España", "speakerId": 53, "quality": "Neuronal" },
+    { "id": "kokoro-en-heart", "packageId": "kokoro-multilingual-v1-int8", "engine": "kokoro", "name": "Heart", "locale": "en-US", "region": "United States", "speakerId": 3, "quality": "Neural" },
+    { "id": "kokoro-en-daniel", "packageId": "kokoro-multilingual-v1-int8", "engine": "kokoro", "name": "Daniel", "locale": "en-GB", "region": "United Kingdom", "speakerId": 24, "quality": "Neural" },
+    { "id": "kokoro-fr-siwis", "packageId": "kokoro-multilingual-v1-int8", "engine": "kokoro", "name": "SIWIS", "locale": "fr-FR", "region": "France", "speakerId": 30, "quality": "Neuronale", "attribution": "SIWIS, CC BY 4.0" },
+    { "id": "kokoro-it-sara", "packageId": "kokoro-multilingual-v1-int8", "engine": "kokoro", "name": "Sara", "locale": "it-IT", "region": "Italia", "speakerId": 35, "quality": "Neurale" },
+    { "id": "kokoro-it-nicola", "packageId": "kokoro-multilingual-v1-int8", "engine": "kokoro", "name": "Nicola", "locale": "it-IT", "region": "Italia", "speakerId": 36, "quality": "Neurale" }
+  ]
+}

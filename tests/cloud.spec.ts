@@ -112,12 +112,15 @@ test("entry precedes the library, settings only contains logout, and profile edi
   await page.goto("/");
   await expect(page.locator("#auth-entry")).toBeVisible();
   await expect(page.locator(".shell")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Continuar con Google" })).toBeVisible();
+  await expect(page.locator(".auth-divider")).toHaveText("o con email");
   await expect(page.locator("#email-token-form")).toBeHidden();
   await expect(page.locator("#auth-local, #auth-verify, .drive-panel")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await page.screenshot({ path: testInfo.outputPath("entry.png"), fullPage: true });
   await login(page);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.getByRole("tab", { name: "Cuenta" }).click();
   await expect(page.locator("#account-logout")).toBeVisible();
   await expect(page.locator("#view-settings #account-form, #view-settings #email-token-form, #view-settings #profile-form")).toHaveCount(0);
   await expect(page.locator('.nav-button[data-view="community"]')).toHaveCount(0);
@@ -127,6 +130,29 @@ test("entry precedes the library, settings only contains logout, and profile edi
   await page.reload();
   await expect(page.locator("#auth-entry")).toBeHidden();
   await expect(page.locator(".shell")).toBeVisible();
+});
+
+test("Google sign-in completes a PKCE authorization request with the current web callback", async ({ page }) => {
+  await mockCloud(page, true);
+  await page.route("https://autumn-test.supabase.co/auth/v1/authorize**", async route => {
+    const authorization = new URL(route.request().url());
+    const redirect = new URL(authorization.searchParams.get("redirect_to")!);
+    redirect.searchParams.set("code", "google-auth-code");
+    await route.fulfill({ status: 302, headers: { Location: redirect.toString() } });
+  });
+  await page.goto("/");
+  const requestPromise = page.waitForRequest(request => request.url().includes("/auth/v1/authorize"));
+  await page.getByRole("button", { name: "Continuar con Google" }).click();
+  const request = await requestPromise;
+  const authorization = new URL(request.url());
+  expect(authorization.searchParams.get("provider")).toBe("google");
+  expect(authorization.searchParams.get("code_challenge_method")).toBe("s256");
+  const redirect = new URL(authorization.searchParams.get("redirect_to")!);
+  expect(redirect.origin).toBe("http://127.0.0.1:1420");
+  expect(redirect.searchParams.get("sb_flow_id")).toMatch(/^[a-zA-Z0-9_-]{8,64}$/);
+  await expect(page.locator("#auth-entry")).toBeHidden();
+  await expect(page.locator(".shell")).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("autumn-google-oauth-flow"))).toBeNull();
 });
 
 test("registration verifies email and recovery requires a new password before entering", async ({ page }, testInfo) => {

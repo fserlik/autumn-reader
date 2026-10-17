@@ -1,7 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js";
 import { AwsClient } from "npm:aws4fetch";
+import he from "npm:he@1.2.0";
 import JSZip from "npm:jszip@3.10.2";
-import { estimateSpeechSeconds, validateAiSpeechRequest } from "../../../shared/ai-speech.ts";
+import { estimateSpeechSeconds, speechTextValidationKey, validateAiSpeechRequest } from "../../../shared/ai-speech.ts";
 import { diagnosticError, logDiagnostic, rpcFailure, ServiceError, type DiagnosticStage } from "./diagnostics.ts";
 import { validatePdfFragment } from "./pdf-validator.ts";
 import { amazonPollyNeural } from "./providers/polly.ts";
@@ -59,13 +60,13 @@ async function getPrivateObject(key:string,expected:number):Promise<{bytes:Uint8
   const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.length!==expected)throw new ServiceError("book_text_unverified","book_size_mismatch","book_parser");return {bytes,httpStatus:response.status};
 }
 const comparable=(value:string)=>value.normalize("NFKC").replace(/\s+/gu," ").trim();
-function decodeHtml(value:string):string{return value.replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu," ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/giu," ").replace(/<[^>]+>/gu," ").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([a-f0-9]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16))).replace(/&(nbsp|amp|lt|gt|quot|apos);/gi,(_,name)=>({nbsp:" ",amp:"&",lt:"<",gt:">",quot:'"',apos:"'"}[String(name).toLowerCase()]??" "));}
+function decodeHtml(value:string):string{return he.decode(value.replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu," ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/giu," ").replace(/<[^>]+>/gu," "));}
 export async function textBelongsToBook(bytes:Uint8Array<ArrayBuffer>,format:"epub"|"pdf",fragmentId:string,text:string):Promise<boolean>{
-  const needle=comparable(text);if(!needle)return false;
+  const needle=comparable(text),validationNeedle=speechTextValidationKey(needle);if(!needle)return false;
   if(format==="epub"){
     try{const zip=await JSZip.loadAsync(bytes);let scanned=0;
       const entries=Object.values(zip.files).filter(entry=>!entry.dir&&/\.(xhtml|html|htm)$/i.test(entry.name));
-      for(const entry of entries){const html=await entry.async("string");scanned+=html.length;if(scanned>20_000_000)throw new ServiceError("book_text_unverified","epub_scan_limit","book_parser");if(comparable(decodeHtml(html)).includes(needle))return true;}
+      for(const entry of entries){const html=await entry.async("string");scanned+=html.length;if(scanned>20_000_000)throw new ServiceError("book_text_unverified","epub_scan_limit","book_parser");const source=comparable(decodeHtml(html));if(source.includes(needle)||(validationNeedle&&speechTextValidationKey(source).includes(validationNeedle)))return true;}
       return false;
     }catch(reason){if(reason instanceof ServiceError)throw reason;throw new ServiceError("book_text_unverified","epub_parse_error","book_parser");}
   }

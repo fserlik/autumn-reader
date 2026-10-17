@@ -8,6 +8,8 @@ export function mountSettings(parent: HTMLElement): void {
       item.tabIndex = selected ? 0 : -1;
     }
     for (const panel of panels) panel.hidden = panel.id !== tab.getAttribute("aria-controls");
+    const scroller = parent.closest<HTMLElement>(".content-area");
+    if (scroller) scroller.scrollTop = 0;
     const strip = tab.closest<HTMLElement>('[role="tablist"]');
     if (strip) {
       const tabRect = tab.getBoundingClientRect();

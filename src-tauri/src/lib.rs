@@ -1,9 +1,16 @@
-#[cfg(any(target_os = "android", target_os = "windows"))]
+#[cfg(any(
+    target_os = "android",
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "macos"
+))]
 use tauri::Manager;
-#[cfg(target_os = "android")]
-use tauri::State;
+#[cfg(any(target_os = "android", target_os = "windows"))]
+mod tts;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+#[cfg(target_os = "android")]
+use tauri::State;
 
 #[cfg(target_os = "android")]
 const MAX_LOCAL_BOOK_BYTES: usize = 250 * 1024 * 1024;
@@ -74,12 +81,13 @@ async fn native_tts_speak(
     voice_uri: String,
     language: String,
     rate: f32,
+    pitch: f32,
     native: State<'_, AndroidLocalLibrary>,
 ) -> Result<serde_json::Value, String> {
     if text.trim().is_empty() || text.chars().count() > 4_000 {
         return Err("TTS_INVALID_TEXT".into());
     }
-    if !(0.5..=2.0).contains(&rate) {
+    if !(0.5..=2.0).contains(&rate) || !(0.5..=2.0).contains(&pitch) {
         return Err("TTS_INVALID_RATE".into());
     }
     native
@@ -91,6 +99,7 @@ async fn native_tts_speak(
                 "voiceUri": voice_uri,
                 "language": language,
                 "rate": rate
+                ,"pitch": pitch
             }),
         )
         .await
@@ -295,9 +304,38 @@ fn system_font_families() -> Vec<String> {
     Vec::new()
 }
 
+fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // Windows portable builds do not go through an installer, so they must
+    // register the custom OAuth callback scheme at runtime as well.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    {
+        use tauri_plugin_deep_link::DeepLinkExt;
+        app.deep_link().register_all()?;
+    }
+    #[cfg(target_os = "android")]
+    app.manage(NativeBookFiles(
+        app.path()
+            .app_data_dir()?
+            .join("files/drive-library/objects"),
+    ));
+    #[cfg(any(target_os = "android", target_os = "windows"))]
+    app.manage(tts::TtsManager::new(
+        app.path().app_data_dir()?.join("tts-models"),
+    )?);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }));
     #[cfg(target_os = "windows")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         restart_app,
@@ -305,7 +343,16 @@ pub fn run() {
         set_prevent_screen_blanking,
         set_launch_on_startup,
         set_tray_enabled,
-        exit_app
+        exit_app,
+        tts::local_tts_runtime_status,
+        tts::local_tts_installed,
+        tts::local_tts_import,
+        tts::local_tts_inspect_import,
+        tts::local_tts_imported_voices,
+        tts::local_tts_remove,
+        tts::local_tts_remove_voice,
+        tts::local_tts_synthesize,
+        tts::local_tts_cancel_synthesis
     ]);
     #[cfg(not(any(target_os = "windows", target_os = "android")))]
     let builder =
@@ -321,17 +368,17 @@ pub fn run() {
             native_tts_speak,
             native_tts_pause,
             native_tts_resume,
-            native_tts_stop
+            native_tts_stop,
+            tts::local_tts_runtime_status,
+            tts::local_tts_installed,
+            tts::local_tts_import,
+            tts::local_tts_inspect_import,
+            tts::local_tts_imported_voices,
+            tts::local_tts_remove,
+            tts::local_tts_remove_voice,
+            tts::local_tts_synthesize,
+            tts::local_tts_cancel_synthesis
         ])
-        .setup(|app| {
-            // Keep the existing directory to preserve already-imported books.
-            app.manage(NativeBookFiles(
-                app.path()
-                    .app_data_dir()?
-                    .join("files/drive-library/objects"),
-            ));
-            Ok(())
-        })
         .register_asynchronous_uri_scheme_protocol("book-file", |context, request, responder| {
             let root = context.app_handle().state::<NativeBookFiles>().0.clone();
             tauri::async_runtime::spawn_blocking(move || {
@@ -390,7 +437,11 @@ pub fn run() {
                 .build(),
         );
     builder
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(setup_app)
         .run(tauri::generate_context!())
         .expect("Could not start Autumn Reader");
 }

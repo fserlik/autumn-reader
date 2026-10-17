@@ -19,6 +19,7 @@ export function cloud(): SupabaseClient<Database> {
       detectSessionInUrl: false,
       flowType: "pkce",
       storageKey: "autumn-auth",
+      experimental: { appendPkceFlowIdToRedirects: true },
     },
   }));
 }

@@ -42,6 +42,13 @@ export function mountAccount(
         <button id="auth-login-tab" type="button" aria-pressed="true">${t("authSignIn")}</button>
         <button id="auth-register-tab" type="button" aria-pressed="false">${t("authRegister")}</button>
       </div>
+      <div id="auth-google-block" class="auth-google-block">
+        <button id="auth-google" class="auth-google-button" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285f4" d="M21.6 12.2c0-.7-.1-1.5-.2-2.2H12v4.3h5.4a4.7 4.7 0 0 1-2 3v2.8h3.3c1.9-1.8 2.9-4.4 2.9-7.9Z"/><path fill="#34a853" d="M12 22c2.7 0 5-.9 6.7-2.4l-3.3-2.7c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3v2.8A10 10 0 0 0 12 22Z"/><path fill="#fbbc05" d="M6.4 13.8A6 6 0 0 1 6.1 12c0-.6.1-1.2.3-1.8V7.4H3A10 10 0 0 0 3 16.6l3.4-2.8Z"/><path fill="#ea4335" d="M12 6.1c1.5 0 2.8.5 3.8 1.5l2.9-2.8A9.7 9.7 0 0 0 12 2a10 10 0 0 0-9 5.4l3.4 2.8A6 6 0 0 1 12 6.1Z"/></svg>
+          <span>${t("authContinueGoogle")}</span>
+        </button>
+        <div class="auth-divider"><span>${t("authOrEmail")}</span></div>
+      </div>
       <form id="account-form" class="cloud-form">
         <label id="auth-username-label" hidden>${t("username")}<input name="username" autocomplete="username" minlength="3" maxlength="30" pattern="[a-z0-9_]{3,30}" autocapitalize="none" spellcheck="false" required disabled /><small>${t("authUsernameHelp")}</small></label>
         <label>${t("authEmail")}<input name="email" type="email" autocomplete="email" maxlength="254" required /></label>
@@ -76,6 +83,8 @@ export function mountAccount(
   const find = <T extends HTMLElement>(selector: string): T =>
     entry.querySelector<T>(selector)!;
   const form = find<HTMLFormElement>("#account-form");
+  const googleButton = find<HTMLButtonElement>("#auth-google");
+  const googleLabel = googleButton.querySelector<HTMLElement>("span")!;
   const password = form.querySelector<HTMLInputElement>('[name="password"]')!;
   const tokenForm = find<HTMLFormElement>("#email-token-form");
   const resendButton = find<HTMLButtonElement>("#auth-resend");
@@ -88,6 +97,7 @@ export function mountAccount(
     accountSettings.querySelector<HTMLButtonElement>("#account-logout")!;
   let mode: EntryMode = "login";
   let busy = false;
+  let googleBusy = false;
   let enteredOwner: string | undefined;
   let previousOwner: string | null | undefined;
   let resendTimer: number | undefined;
@@ -232,6 +242,8 @@ export function mountAccount(
     passwordForm.hidden = !state.recovery;
     find(".auth-switch").hidden =
       loading || state.recovery || mode === "recover" || mode === "verify";
+    find("#auth-google-block").hidden =
+      loading || state.recovery || mode === "recover" || mode === "verify";
     find("#auth-password-label").hidden = mode === "recover";
     find("#auth-username-label").hidden = mode !== "register";
     password.autocomplete =
@@ -271,6 +283,8 @@ export function mountAccount(
     password.disabled =
       busy || loading || !cloudConfigured || mode === "recover";
     username.disabled = busy || loading || !cloudConfigured || mode !== "register";
+    googleButton.disabled = busy || loading || !cloudConfigured || !navigator.onLine;
+    googleLabel.textContent = googleBusy ? t("authGoogleOpening") : t("authContinueGoogle");
     logout.disabled = busy || loading;
     updateResendUi(state);
   }
@@ -302,6 +316,13 @@ export function mountAccount(
   );
   find("#auth-recover").addEventListener("click", () => select("recover"));
   find("#auth-back").addEventListener("click", () => select("login"));
+  googleButton.addEventListener("click", () => {
+    googleBusy = true;
+    void run(() => auth.loginWithGoogle()).finally(() => {
+      googleBusy = false;
+      render(auth.state);
+    });
+  });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const values = new FormData(form);
@@ -390,6 +411,12 @@ export function mountAccount(
     saveResendState(resend);
   }
   auth.subscribe(render);
+  auth.subscribeOAuth((oauth) => {
+    if (oauth.status === "waiting") message(t("authGoogleWaiting"));
+    else if (oauth.status === "exchanging") message(t("authGoogleFinishing"));
+    else if (oauth.status === "error") message(errorMessage(oauth.error));
+    render(auth.state);
+  });
   window.addEventListener("online", () => render(auth.state));
   window.addEventListener("offline", () => render(auth.state));
 }

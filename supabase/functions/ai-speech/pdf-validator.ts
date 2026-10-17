@@ -1,4 +1,5 @@
 import { ServiceError } from "./diagnostics.ts";
+import { speechTextValidationKey } from "../../../shared/ai-speech.ts";
 import "./pdf-runtime.ts";
 import * as serverlessPdfJs from "npm:unpdf@1.8.0/pdfjs";
 
@@ -167,7 +168,7 @@ export async function validatePdfFragment(
 
     const pageText = comparable(extractedPageText(content));
     if (!pageText) throw parserError("pdf_no_extractable_text", "pdf_no_extractable_text", "text_extraction");
-    return pageText.includes(needle);
+    return pageText.includes(needle) || speechTextValidationKey(pageText).includes(speechTextValidationKey(needle));
   } finally {
     try { await task?.destroy(); } catch { /* Cleanup must not mask the classified parser result. */ }
   }

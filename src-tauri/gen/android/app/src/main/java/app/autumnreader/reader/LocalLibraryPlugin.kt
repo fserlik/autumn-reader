@@ -28,6 +28,7 @@ class NativeTtsSpeakArgs {
   var voiceUri: String = ""
   var language: String = ""
   var rate: Double = 1.0
+  var pitch: Double = 1.0
 }
 
 private data class PendingTtsInitialization(
@@ -41,6 +42,7 @@ private data class ActiveSpeech(
   val voiceUri: String,
   val language: String,
   val rate: Float,
+  val pitch: Float,
   var utteranceId: String,
 )
 
@@ -154,6 +156,7 @@ class LocalLibraryPlugin(private val activity: Activity) : Plugin(activity), Tex
 
   private fun configureSpeech(engine: TextToSpeech, speech: ActiveSpeech): Boolean {
     if (engine.setSpeechRate(speech.rate.coerceIn(0.5f, 2.0f)) == TextToSpeech.ERROR) return false
+    if (engine.setPitch(speech.pitch.coerceIn(0.5f, 2.0f)) == TextToSpeech.ERROR) return false
     val selected = engine.voices?.firstOrNull { it.name == speech.voiceUri }
     if (selected != null) return engine.setVoice(selected) != TextToSpeech.ERROR
     if (speech.language.isNotBlank()) {
@@ -202,7 +205,7 @@ class LocalLibraryPlugin(private val activity: Activity) : Plugin(activity), Tex
   fun nativeTtsVoices(invoke: Invoke) = withTts(invoke) { engine ->
     val all = engine.voices?.toList().orEmpty()
     val local = all.filterNot { it.isNetworkConnectionRequired }
-    val available = (if (local.isNotEmpty()) local else all).sortedWith(
+    val available = local.sortedWith(
       compareByDescending<Voice> { it.name == engine.voice?.name }
         .thenBy { languageTag(it) }
         .thenBy { it.name }
@@ -238,6 +241,7 @@ class LocalLibraryPlugin(private val activity: Activity) : Plugin(activity), Tex
         voiceUri = args.voiceUri,
         language = args.language,
         rate = args.rate.toFloat(),
+        pitch = args.pitch.toFloat(),
         utteranceId = UUID.randomUUID().toString(),
       )
       synchronized(ttsLock) { activeSpeech = speech }

@@ -21,7 +21,7 @@ const name = (code: PlanDefinition["code"]): string =>
   t(code === "free" ? "planFree" : code === "plus" ? "planPlus" : "planPro");
 const price = (cents: number): string => cents === 0 ? "0" : (cents / 100).toFixed(2);
 
-export function mountAccountPlans(accountParent: HTMLElement, ttsParent: HTMLElement): { actions: HTMLElement; open(): Promise<void> } {
+export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLElement; open(): Promise<void> } {
   const section = document.createElement("section");
   section.id = "settings-plan";
   section.className = "account-feature plan-feature";
@@ -49,8 +49,7 @@ export function mountAccountPlans(accountParent: HTMLElement, ttsParent: HTMLEle
   deviceDialog.className = "account-dialog devices-dialog";
   deviceDialog.innerHTML = `<header><h2>${t("deviceListTitle")}</h2><button class="note-close" type="button" aria-label="${t("close")}">×</button></header>
     <p class="device-limit-message" role="status"></p><div class="device-rows"></div><p class="device-message" role="status"></p>`;
-  accountParent.append(section);
-  ttsParent.querySelector(".settings-section-heading")?.after(aiUsage);
+  accountParent.append(section, aiUsage);
   document.body.append(comparison, deviceDialog);
   const find = <T extends HTMLElement>(root: HTMLElement, selector: string): T => root.querySelector<T>(selector)!;
   const planName = find<HTMLElement>(section, ".plan-name");

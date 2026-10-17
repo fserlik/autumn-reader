@@ -183,7 +183,10 @@ test("settings separate account, page, and interface and support keyboard naviga
   await page.keyboard.press("ArrowRight");
   await expect(page.locator("#settings-tts-tab")).toHaveAttribute("aria-selected","true");
   await expect(page.locator("#settings-tts-tab")).toHaveText("TTS");
-  await expect(page.locator("#settings-tts-panel #tts-voice-select")).toBeVisible();
+  await expect(page.locator("#settings-tts-panel .tts-engine-options")).toBeVisible();
+  await expect(page.locator("#settings-tts-panel #tts-voice-library")).toBeVisible();
+  await expect(page.locator("#settings-tts-panel #tts-voice-catalog")).toHaveCount(0);
+  await expect(page.locator("#settings-tts-panel #tts-rate-reader")).toHaveCount(0);
   await expect(page.locator(".tts-settings-sheet")).toHaveCSS("border-top-width", "1px");
   if (desktop) await page.screenshot({path:testInfo.outputPath("settings-tts.png"), fullPage:true});
   await page.keyboard.press("ArrowRight");

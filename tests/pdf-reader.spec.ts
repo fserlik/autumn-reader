@@ -69,18 +69,18 @@ test("keeps a note on its reading page and jumps back to its selected text", asy
   await page.locator("#next-button").click();
   await expect(page.locator(".note-marker")).toHaveCount(0);
   await clickReaderOption(page, "#all-notes-button");
-  await page.locator(".notes-go-button").click();
+  await page.locator("#all-notes-list .notes-go-button").click();
   await expect(page.locator("#position-label")).toHaveText(savedPosition!);
   await expect(page.locator(".note-marker")).toHaveCount(1);
 });
 
-test("restores the text size and keeps the original view for graphic pages", async ({ page }) => {
+test("restores the text size and keeps the original view for graphic pages", async ({ page }, testInfo) => {
   await openPdf(page);
   await largeText(page);
   await page.locator("#next-button").click();
   await expect(page.locator("#position-label")).toContainText("2/");
   const position = await page.locator("#position-label").textContent();
-  await page.locator("#back-button").click();
+  await page.locator(testInfo.project.name === "desktop" ? "#desktop-reader-back" : "#back-button").click();
   await page.locator(".book-title:visible").first().click();
   await expect(page.locator("#size-value")).toHaveText("180%");
   await expect(page.locator(".pdf-reading-text")).toHaveCSS("font-size", "32.4px");

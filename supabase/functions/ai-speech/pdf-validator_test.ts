@@ -57,6 +57,7 @@ Deno.test("serverless PDF.js validates referenced pages and multiple content str
   const bytes = multiStructurePdf();
   assertEquals(await validatePdfFragment(bytes, "pdf-1-0-0", "Primera pagina"), true);
   assertEquals(await validatePdfFragment(bytes, "pdf-2-0-0", "Segunda estructura distinta"), true);
+  assertEquals(await validatePdfFragment(bytes, "pdf-2-0-0", "Segunda, estructura—distinta"), true);
   assertEquals(await validatePdfFragment(bytes, "pdf-2-0-0", "texto enviado arbitrariamente"), false);
 });
 

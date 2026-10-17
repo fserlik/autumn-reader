@@ -1,20 +1,18 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { defaultTtsPreferences, loadTtsPreferences, localDeviceVoices, preferredVoice, saveTtsPreferences } from "../../src/services/tts";
-import { loadBookAiSpeechPreferences, saveBookAiSpeechPreferences } from "../../src/services/ai-speech";
+import { defaultTtsPreferences, loadBookTtsPreferences, loadTtsPreferences, localDeviceVoices, preferredVoice, saveBookTtsPreferences, saveTtsPreferences } from "../../src/services/tts";
 
 afterEach(() => vi.unstubAllGlobals());
 
-test("TTS preferences persist valid voice and speed and repair invalid values", () => {
+test("TTS preferences persist the engine and one default voice per engine", () => {
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value),
   });
   expect(loadTtsPreferences()).toEqual(defaultTtsPreferences);
-  expect(saveTtsPreferences({ voiceUri: "voice-es", rate: 1.4 })).toEqual({ voiceUri: "voice-es", rate: 1.4 });
-  expect(loadTtsPreferences()).toEqual({ voiceUri: "voice-es", rate: 1.4 });
-  values.set("autumn-tts-preferences", JSON.stringify({ voiceUri: 4, rate: 8 }));
-  expect(loadTtsPreferences()).toEqual(defaultTtsPreferences);
+  const saved = { engine: "piper" as const, voices: { system: "voice-es", piper: "piper-es-carlfm", kokoro: "" } };
+  expect(saveTtsPreferences(saved)).toEqual(saved);
+  expect(loadTtsPreferences()).toEqual(saved);
 });
 
 test("TTS lists local voices and prefers the saved voice, then the book language", () => {
@@ -25,16 +23,16 @@ test("TTS lists local voices and prefers the saved voice, then the book language
   ] as SpeechSynthesisVoice[];
   const synthesis = { getVoices: () => voices } as SpeechSynthesis;
   expect(localDeviceVoices(synthesis).map(voice => voice.voiceURI)).toEqual(["local-en", "local-es"]);
-  expect(preferredVoice(voices, { voiceUri: "local-en", rate: 1 }, "es")?.voiceURI).toBe("local-en");
-  expect(preferredVoice(voices, defaultTtsPreferences, "es")?.voiceURI).toBe("local-es");
+  expect(preferredVoice(voices, "local-en", "es")?.voiceURI).toBe("local-en");
+  expect(preferredVoice(voices, "", "es")?.voiceURI).toBe("local-es");
 });
 
-test("Premium AI voice preference is isolated per account and book", () => {
+test("reading speed, pitch and voice override are isolated per account and book", () => {
   const values = new Map<string,string>();
   vi.stubGlobal("localStorage", { getItem: (key:string)=>values.get(key)??null, setItem:(key:string,value:string)=>values.set(key,value) });
-  saveBookAiSpeechPreferences("owner-a","book-a",{voiceId:"Lucia",language:"es-ES"});
-  saveBookAiSpeechPreferences("owner-a","book-b",{voiceId:"Bianca",language:"it-IT"});
-  expect(loadBookAiSpeechPreferences("owner-a","book-a")).toEqual({voiceId:"Lucia",language:"es-ES"});
-  expect(loadBookAiSpeechPreferences("owner-a","book-b")).toEqual({voiceId:"Bianca",language:"it-IT"});
-  expect(loadBookAiSpeechPreferences("owner-b","book-a")).toEqual({voiceId:"Lucia",language:"es-ES"});
+  saveBookTtsPreferences("owner-a","book-a",{voiceId:"kokoro-es-dora",rate:1.2,pitch:1});
+  saveBookTtsPreferences("owner-a","book-b",{voiceId:"system:local-en",rate:.8,pitch:1.3});
+  expect(loadBookTtsPreferences("owner-a","book-a")).toEqual({voiceId:"kokoro-es-dora",rate:1.2,pitch:1});
+  expect(loadBookTtsPreferences("owner-a","book-b")).toEqual({voiceId:"system:local-en",rate:.8,pitch:1.3});
+  expect(loadBookTtsPreferences("owner-b","book-a")).toEqual({voiceId:"",rate:1,pitch:1});
 });

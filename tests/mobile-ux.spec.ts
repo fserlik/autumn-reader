@@ -29,12 +29,19 @@ test("auth shares Android top inset and theme tokens across its modes", async ({
     expect(styles.background).not.toBe(styles.heading);
   };
   await check();
+  await page.screenshot({ path: info.outputPath("auth-entry.png"), fullPage: true });
   await page.locator("#auth-register-tab").click(); await expect(heading).toContainText("cuenta"); await check();
   await page.locator("#auth-login-tab").click(); await page.locator("#auth-recover").click(); await expect(heading).toContainText("contraseña"); await check();
   await page.locator("#auth-back").click();
   await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
   await expect(heading).toBeVisible();
   expect(await page.locator(".auth-brand").evaluate(el => el.getBoundingClientRect().top)).toBeGreaterThanOrEqual(50);
+  for (const viewport of [{ width: 375, height: 667 }, { width: 667, height: 375 }]) {
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    await expect(page.getByRole("button", { name: "Continuar con Google" })).toBeVisible();
+    expect(await page.locator("#auth-google").evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(48);
+  }
 });
 
 test("mobile reader dedicates the top bar to tools and the bottom bar to navigation", async ({ page }, info) => {

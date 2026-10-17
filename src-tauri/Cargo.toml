@@ -17,9 +17,23 @@ tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-opener = "=2.5.3"
+tauri-plugin-deep-link = "2.6.1"
+tauri-plugin-dialog = "2.8.3"
+tauri-plugin-fs = "2.4"
+sherpa-onnx = "1.13.8"
+sha2 = "0.10"
+bzip2 = "0.4"
+tar = "0.4"
+hound = "3.5"
+base64 = "0.22"
+fs2 = "0.4"
+tokio = { version = "1", features = ["macros", "time"] }
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 percent-encoding = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Power"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_SystemInformation"] }

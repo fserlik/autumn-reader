@@ -18,6 +18,34 @@ export function normalizeSpeechText(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
 }
 
+/** Match rendered speech against its source while ignoring layout-only punctuation spacing. */
+export function speechTextValidationKey(value: string): string {
+  return value.normalize("NFKC").replace(/[^\p{L}\p{M}\p{N}]+/gu, "");
+}
+
+/** Split speech without reconstructing sentences or changing their punctuation. */
+export function splitSpeechText(value: string, preferredCharacters: number, maximumCharacters: number): string[] {
+  const text = normalizeSpeechText(value);
+  const maximum = Math.max(1, Math.floor(maximumCharacters));
+  const preferred = Math.max(1, Math.min(maximum, Math.floor(preferredCharacters)));
+  if (!text) return [];
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > maximum) {
+    const candidate = remaining.slice(0, preferred + 1);
+    let boundary = 0;
+    for (const match of candidate.matchAll(/[.!?…]+(?:["'”’»)}\]]+)?(?=\s|$)/gu))
+      boundary = (match.index ?? 0) + match[0].length;
+    if (boundary < preferred / 2) boundary = remaining.lastIndexOf(" ", maximum);
+    if (boundary < 1) boundary = maximum;
+    const chunk = remaining.slice(0, boundary).trim();
+    if (chunk) chunks.push(chunk);
+    remaining = remaining.slice(boundary).trimStart();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
 export function validateAiSpeechRequest(value: unknown): AiSpeechRequest {
   if (!value || typeof value !== "object") throw new Error("invalid_request");
   const input = value as Record<string, unknown>;

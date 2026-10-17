@@ -49,9 +49,43 @@ test("desktop reader has an immersive sidebar and book settings", async ({ page 
   await expect(page.locator("#reader-brightness")).toBeVisible();
   await page.locator('[data-book-theme="sepia"]').click();
   await expect(page.locator("#view-reader")).toHaveAttribute("data-book-theme", "sepia");
+  await expect(page.locator("#reader-show-notes")).toBeChecked();
+  const appearanceGeometry = await page.locator("#reader-options").evaluate(element => ({
+    height: element.getBoundingClientRect().height,
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+    scrollbar: getComputedStyle(element, "::-webkit-scrollbar").display,
+  }));
+  expect(appearanceGeometry.scrollHeight).toBeGreaterThan(appearanceGeometry.clientHeight);
+  expect(appearanceGeometry.overflowY).toBe("auto");
+  expect(appearanceGeometry.scrollbar).toBe("none");
   await page.screenshot({ path: info.outputPath("desktop-reader-appearance.png") });
+  await page.locator("#reader-options").evaluate(element => { element.scrollTop = element.scrollHeight; });
+  await expect(page.locator("#reader-show-notes")).toBeInViewport();
+  const scrolledGeometry = await page.evaluate(() => ({
+    windowY: window.scrollY,
+    optionsTop: document.querySelector("#reader-options")!.getBoundingClientRect().top,
+    tabsTop: document.querySelector(".reader-settings-tabs")!.getBoundingClientRect().top,
+  }));
+  expect(scrolledGeometry.windowY).toBe(0);
+  expect(scrolledGeometry.optionsTop).toBeGreaterThan(50);
+  expect(Math.abs(scrolledGeometry.tabsTop - scrolledGeometry.optionsTop)).toBeLessThanOrEqual(2);
+  await page.screenshot({ path: info.outputPath("desktop-reader-appearance-notes.png") });
+  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+  await page.screenshot({ path: info.outputPath("desktop-reader-appearance-notes-dark.png") });
+  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
   await page.locator("#reader-settings-layout-tab").click();
   await expect(page.locator("#book-layout-details")).toBeVisible();
+  const layoutGeometry = await page.locator("#reader-options").evaluate(element => ({
+    height: element.getBoundingClientRect().height,
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    scrollTop: element.scrollTop,
+  }));
+  expect(Math.abs(layoutGeometry.height - appearanceGeometry.height)).toBeLessThanOrEqual(1);
+  expect(layoutGeometry.scrollHeight).toBeGreaterThan(layoutGeometry.clientHeight);
+  expect(layoutGeometry.scrollTop).toBe(0);
   const search = (await page.locator("#book-search-button").boundingBox())!;
   const settings = (await page.locator("#reader-settings-toggle").boundingBox())!;
   expect(search.x).toBeLessThan(settings.x);
@@ -218,11 +252,28 @@ test("global typography and per-book overrides repaginate without returning to t
   expect(await page.evaluate(() => Object.entries(localStorage).some(([key, value]) => key.startsWith("autumn-book-page:") && value.includes('"columns":"two"')))).toBe(true);
 });
 
-test("PDF original exposes zoom but hides typography, with real page progress", async ({ page }) => {
+test("PDF adaptable exposes working typography while original exposes only zoom", async ({ page }, info) => {
   await mockCloud(page, true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Pages.pdf", mimeType: "application/pdf", buffer: samplePdf() });
   await expect(page.locator(".pdf-reading-text")).toBeVisible();
   await showReaderSettings(page, "layout");
+  await expect(page.locator("#book-layout-details")).toBeVisible();
+  const lineHeight = page.locator('#book-layout-fields [data-layout-key="lineHeight"]');
+  await expect(lineHeight).toBeVisible();
+  await lineHeight.locator('input[type="checkbox"]').uncheck();
+  await lineHeight.locator('input[type="range"]').fill("2.1");
+  await expect.poll(() => page.locator(".pdf-reading-text").evaluate(element => {
+    const style = getComputedStyle(element); return Math.round(parseFloat(style.lineHeight) / parseFloat(style.fontSize) * 10) / 10;
+  })).toBe(2.1);
+  if (info.project.name === "desktop") {
+    const columns = page.locator('#book-layout-fields [data-layout-key="columns"]');
+    await columns.locator('input[type="checkbox"]').uncheck();
+    await columns.locator("select").selectOption("two");
+    await expect.poll(() => page.locator(".pdf-reading-text").evaluate(element => {
+      const viewport = element.parentElement!; return parseFloat(getComputedStyle(element).columnWidth) / viewport.clientWidth;
+    })).toBeLessThan(.65);
+    await page.screenshot({ path: info.outputPath("pdf-adaptable-settings.png") });
+  }
   await page.locator("#pdf-reading-mode").selectOption("original");
   await expect(page.locator(".pdf-page")).toBeVisible();
   await expect(page.locator("#book-layout-details")).toBeHidden();

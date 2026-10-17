@@ -20,6 +20,8 @@ if (-not $UseExistingApk) {
         if (-not $installedNdk) { throw 'No se encontro una version instalada del Android NDK.' }
         $env:NDK_HOME = $installedNdk.FullName
     }
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'prepare-android-sherpa.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar las bibliotecas Android de sherpa-onnx.' }
     & npm run tauri -- android build --debug --target aarch64 --apk --ci
     if ($LASTEXITCODE -ne 0) { throw 'La compilacion de Android fallo; no se borro ningun archivo.' }
     if (-not (Test-Path -LiteralPath $generatedApk -PathType Leaf)) {

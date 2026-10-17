@@ -4,6 +4,7 @@ local-builds/
 test-results/
 playwright-report/
 src-tauri/target/
+src-tauri/gen/android/app/src/main/jniLibs/
 *.log
 .env*
 !.env.example

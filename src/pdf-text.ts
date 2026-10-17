@@ -1,5 +1,5 @@
 import type { PDFPageProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { defaultPagePreferences, type PagePreferences } from "./services/preferences/page";
+import { columnCount, defaultPagePreferences, type PagePreferences } from "./services/preferences/page";
 
 type TextContent = Awaited<ReturnType<PDFPageProxy["getTextContent"]>>;
 type Viewport = ReturnType<PDFPageProxy["getViewport"]>;
@@ -83,8 +83,10 @@ export class PdfTextView {
     sheet.append(this.viewport);
     const width = this.viewport.clientWidth;
     const gap = 40;
+    const columns = columnCount(spacing.columns, width, this.viewport.clientHeight);
+    const columnWidth = (width - gap * (columns - 1)) / columns;
     this.step = width + gap;
-    this.flow.style.columnWidth = `${width}px`;
+    this.flow.style.columnWidth = `${columnWidth}px`;
     this.flow.style.columnGap = `${gap}px`;
     this.count = Math.max(1, Math.ceil((this.flow.scrollWidth + gap - 1) / this.step));
   }
@@ -92,6 +94,9 @@ export class PdfTextView {
   show(index: number): void {
     this.index = Math.max(0, Math.min(this.count - 1, index));
     this.flow.style.transform = `translateX(${-this.index * this.step}px)`;
+    // Position capture can run in the same task as a page turn. Flush the
+    // transform so caret hit-testing reads the newly visible columns.
+    void this.flow.getBoundingClientRect();
   }
 
   private sourceSpan(y: number): HTMLElement | undefined {
@@ -169,25 +174,9 @@ export class PdfTextView {
     const rect = this.viewport.getBoundingClientRect();
     const spans = [...this.flow.querySelectorAll<HTMLElement>("[data-source-y]")];
     const total = spans.reduce((sum, span) => sum + (span.textContent?.length ?? 0), 0);
-    const document = this.flow.ownerDocument as Document & {
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
-      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-    };
-    // Use a character near the visual center as the semantic position. Anchoring
-    // the first visible character can move backward after a small height change.
-    for (const fraction of [.5, .35, .65, .2, .8]) {
-      const x = rect.left + rect.width / 2, y = rect.top + rect.height * fraction;
-      const range = document.caretRangeFromPoint?.(x, y);
-      const caret = range ? { node: range.startContainer, offset: range.startOffset }
-        : document.caretPositionFromPoint?.(x, y) ? { node: document.caretPositionFromPoint!(x, y)!.offsetNode, offset: document.caretPositionFromPoint!(x, y)!.offset } : undefined;
-      const element = caret?.node.nodeType === Node.ELEMENT_NODE ? caret.node as Element : caret?.node.parentElement;
-      const activeSpan = element?.closest<HTMLElement>("[data-source-y]");
-      if (activeSpan && this.flow.contains(activeSpan)) {
-        let preceding = 0;
-        for (const span of spans) { if (span === activeSpan) break; preceding += span.textContent?.length ?? 0; }
-        return (preceding + Math.max(0, Math.min(activeSpan.textContent?.length ?? 0, caret!.offset)) + .25) / Math.max(1, total);
-      }
-    }
+    // Chromium caret hit-testing can report the untransformed column when a
+    // multi-column flow is translated. Resolve the first visible character
+    // geometrically so reopening always returns to the same reading sheet.
     let prefix = 0;
     for (const span of spans) {
       const length = span.textContent?.length ?? 0;

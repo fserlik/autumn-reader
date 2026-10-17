@@ -18,7 +18,6 @@ import { mountAccount } from "./ui/account";
 import { mountAccountSecurity } from "./ui/account-security";
 import { mountAccountStorage } from "./ui/account-storage";
 import { mountAccountPlans } from "./ui/account-plans";
-import { plans } from "./services/plans";
 import { cloudStorage } from "./services/books/cloud-storage";
 import { bookStorage, requestPersistentCache } from "./services/storage";
 import { ensureBookContentMetadata } from "./services/books/content-metadata";
@@ -52,8 +51,8 @@ import { loadPagePreferences, savePagePreferences, defaultPagePreferences, pageS
 import { loadDesktopGeneralPreferences, saveDesktopGeneralPreferences, type DesktopGeneralPreferences } from "./services/preferences/general";
 import { availableSystemFonts, fontCss } from "./services/preferences/fonts";
 import { dictionaryService, type DictionarySource } from "./services/dictionary";
-import { loadTtsPreferences, localDeviceVoices, nativeDeviceVoices, nativePause, nativeResume, nativeSpeak, nativeStop, preferredVoice, refreshDeviceVoices, saveTtsPreferences, usesNativeTts, type TtsPreferences, type TtsVoice } from "./services/tts";
-import { aiSpeech, loadBookAiSpeechPreferences, saveBookAiSpeechPreferences, type AiSpeechVoice, type BookAiSpeechPreferences } from "./services/ai-speech";
+import { cancelLocalSynthesis, chooseVoiceFile, discardPreparedVoiceImport, formatModelBytes, importedVoices, installPreparedVoice, installedPackages, knownVoices, loadBookTtsPreferences, loadTtsPreferences, localDeviceVoices, LocalTtsPlayer, nativeDeviceVoices, nativePause, nativeResume, nativeSpeak, nativeStop, prepareVoiceImport, preferredVoice, refreshDeviceVoices, removeImportedVoice, runtimeStatus, saveBookTtsPreferences, saveTtsPreferences, supportsLocalNeuralTts, synthesizeLocal, ttsEngines, usesNativeSystemTts, type BookTtsPreferences, type CatalogVoice, type InstalledPackage, type PreparedVoiceImport, type TtsEngineId, type TtsGlobalPreferences, type TtsRuntimeStatus, type TtsVoice } from "./services/tts";
+import { clearSpeechHighlight, collectVisibleSpeechSource, locateSpeechChunks, setSpeechHighlight, type SpeechSource, type SpeechSourceRegion } from "./services/tts/highlight";
 import { ReaderHistory, type ReaderPosition } from "./readers/history";
 import { epubSearch, pdfSearch, quoteRects, type BookSearch, type SearchResult } from "./readers/search";
 import { mountBookSearch, type SearchUI } from "./ui/book-search";
@@ -63,6 +62,7 @@ import { translationService } from "./services/translation";
 import { mountTranslation, type TranslationUI } from "./ui/translation";
 import { pdfDestination, pdfPageLinks } from "./readers/pdf-navigation";
 import { readingActivity } from "./services/reading/activity";
+import { splitSpeechText } from "../shared/ai-speech";
 
 const icons = {
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
@@ -91,6 +91,10 @@ const icons = {
   more: '<circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.2" fill="currentColor" stroke="none"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
   cloud: '<path d="M7 19h11a4 4 0 0 0 .4-8A6.5 6.5 0 0 0 6 9a5 5 0 0 0 1 10z"/>',
+  windowMinimize: '<path d="M6 12h12"/>',
+  windowMaximize: '<rect x="6.5" y="6.5" width="11" height="11" rx=".5"/>',
+  windowRestore: '<path d="M8 9V6.5h9.5V16H15M6.5 9.5H15V18H6.5z"/>',
+  windowClose: '<path d="m7 7 10 10M17 7 7 17"/>',
 };
 
 function svg(name: keyof typeof icons, size = 19): string {
@@ -98,10 +102,26 @@ function svg(name: keyof typeof icons, size = 19): string {
 }
 
 const isAndroid = /\bAndroid\b/i.test(navigator.userAgent);
+const isWindowsDesktop = isTauri() && !isAndroid && /\bWindows\b/i.test(navigator.userAgent);
+const windowLabels = {
+  en: { minimize: "Minimize", maximize: "Maximize", restore: "Restore", close: "Close" },
+  es: { minimize: "Minimizar", maximize: "Maximizar", restore: "Restaurar", close: "Cerrar" },
+  it: { minimize: "Riduci a icona", maximize: "Ingrandisci", restore: "Ripristina", close: "Chiudi" },
+  fr: { minimize: "Réduire", maximize: "Agrandir", restore: "Restaurer", close: "Fermer" },
+}[language];
 const app = document.querySelector<HTMLDivElement>("#app")!;
 document.documentElement.lang = language;
 if (isAndroid) document.documentElement.classList.add("android-app");
+if (isWindowsDesktop) document.documentElement.classList.add("windows-desktop");
 app.innerHTML = `
+  <header id="app-titlebar" class="app-titlebar" data-tauri-drag-region="deep">
+    <div class="app-titlebar-brand" data-tauri-drag-region="deep"><img src="${leafUrl}" alt="" /><span data-tauri-drag-region="deep">Autumn Reader</span></div>
+    <div class="app-window-controls" data-tauri-drag-region="false">
+      <button id="window-minimize" class="app-window-control" type="button" aria-label="${windowLabels.minimize}" title="${windowLabels.minimize}" data-tauri-drag-region="false">${svg("windowMinimize", 16)}</button>
+      <button id="window-maximize" class="app-window-control" type="button" aria-label="${windowLabels.maximize}" title="${windowLabels.maximize}" data-tauri-drag-region="false"><span class="window-maximize-icon">${svg("windowMaximize", 15)}</span><span class="window-restore-icon">${svg("windowRestore", 15)}</span></button>
+      <button id="window-close" class="app-window-control app-window-close" type="button" aria-label="${windowLabels.close}" title="${windowLabels.close}" data-tauri-drag-region="false">${svg("windowClose", 16)}</button>
+    </div>
+  </header>
   <div class="shell" hidden>
     <aside class="sidebar">
       <button class="brand" id="brand-home" type="button" aria-label="${t("goHome")}">
@@ -194,18 +214,42 @@ app.innerHTML = `
 
           </section>
           <section id="settings-tts-panel" class="settings-section tts-settings" role="tabpanel" aria-labelledby="settings-tts-tab" tabindex="0" hidden>
-            <div class="settings-section-heading"><h2>${t("ttsSettingsTitle")}</h2><p>${t("ttsSettingsHelp")}</p></div>
+            <div class="settings-section-heading"><h2>${t("ttsSettingsTitle")}</h2><p>${t("ttsVoiceLibraryHelp")}</p></div>
             <div class="tts-settings-sheet">
-              <div class="tts-setting-row tts-voice-row">
-                <div class="settings-copy"><h3>${t("ttsDeviceVoices")}</h3><p>${t("ttsDeviceVoicesHelp")}</p></div>
-                <div class="tts-setting-control"><label for="tts-voice-select">${t("ttsVoiceLabel")}</label><select id="tts-voice-select"></select><button id="tts-refresh-voices" class="secondary-button" type="button">${svg("refresh", 17)}<span>${t("ttsImportVoices")}</span></button><p id="tts-voice-status" role="status" aria-live="polite"></p></div>
+              <div class="tts-engine-ledger">
+                <div class="settings-copy"><h3>${t("ttsEngine")}</h3><p id="tts-engine-help"></p></div>
+                <div class="tts-engine-options" role="radiogroup" aria-label="${t("ttsEngine")}">
+                  <button type="button" data-tts-engine="system" role="radio">${t("ttsEngineSystem")}</button>
+                  <button type="button" data-tts-engine="piper" role="radio">${t("ttsEnginePiper")}</button>
+                  <button type="button" data-tts-engine="kokoro" role="radio">${t("ttsEngineKokoro")}</button>
+                </div>
               </div>
-              <div class="tts-setting-row">
-                <div class="settings-copy"><h3>${t("ttsReadingPace")}</h3><p>${t("ttsReadingPaceHelp")}</p></div>
-                <label class="tts-rate-control" for="tts-rate-settings"><span>${t("ttsNormalSpeed")}</span><input id="tts-rate-settings" type="range" min="0.5" max="2" step="0.1" /><output id="tts-rate-settings-value">1×</output></label>
+              <div class="tts-catalog-heading"><div><h3>${t("ttsVoiceLibrary")}</h3><p>${t("ttsInstalledLibraryHelp")}</p></div><div class="tts-library-actions"><button id="tts-refresh-voices" class="text-link" type="button">${svg("refresh", 16)}<span>${t("ttsFindDeviceVoices")}</span></button><button id="tts-import-voice" class="text-link" type="button">${svg("plus", 16)}<span>${t("ttsImportVoice")}</span></button></div></div>
+              <div class="tts-catalog-filters">
+                <label><span>${t("ttsFilterLanguage")}</span><select id="tts-language-filter"></select></label>
+                <label><span>${t("ttsFilterRegion")}</span><select id="tts-region-filter"></select></label>
+                <label><span>${t("ttsFilterEngine")}</span><select id="tts-engine-filter"><option value="all">${t("ttsFilterAll")}</option><option value="system">${t("ttsEngineSystem")}</option><option value="piper">${t("ttsEnginePiper")}</option><option value="kokoro">${t("ttsEngineKokoro")}</option></select></label>
               </div>
-              <div class="tts-preview-row"><button id="tts-preview" class="secondary-button" type="button">${svg("play", 17)}<span>${t("ttsPreview")}</span></button><p id="tts-preview-status" role="status" aria-live="polite"></p></div>
+              <div id="tts-voice-library" class="tts-voice-catalog"></div>
+              <p id="tts-voice-status" class="tts-catalog-status" role="status" aria-live="polite"></p>
             </div>
+            <dialog id="tts-import-dialog" class="account-dialog tts-import-dialog" aria-labelledby="tts-import-title">
+              <form id="tts-import-form">
+                <header><div><h2 id="tts-import-title">${t("ttsImportVoice")}</h2><p>${t("ttsImportHelp")}</p></div><button id="tts-import-close" class="note-close" type="button" aria-label="${t("close")}">×</button></header>
+                <div class="tts-import-body">
+                  <div class="tts-import-file-row"><button id="tts-import-pick" class="secondary-button" type="button">${t("ttsChooseFile")}</button><output id="tts-import-file">${t("ttsNoModelSelected")}</output></div>
+                  <div id="tts-import-detected" class="tts-import-detected" hidden></div>
+                  <div id="tts-import-base" class="tts-import-base" hidden><div><strong>${t("ttsKokoroBaseRequired")}</strong><p>${t("ttsKokoroBaseHelp")}</p></div><button id="tts-import-base-pick" class="secondary-button" type="button">${t("ttsImportBaseModel")}</button></div>
+                  <div id="tts-import-fields" class="tts-import-fields" hidden>
+                    <label data-import-field="name"><span>${t("ttsImportName")}</span><input id="tts-import-name" maxlength="80" /></label>
+                    <label data-import-field="locale"><span>${t("ttsImportLocale")}</span><input id="tts-import-locale" value="${language === "en" ? "en-US" : `${language}-${language.toUpperCase()}`}" maxlength="35" pattern="[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*" /></label>
+                  </div>
+                  <p class="tts-import-note">${t("ttsImportFormatHelp")}</p>
+                  <p id="tts-import-error" class="tts-import-error" role="alert" tabindex="-1"></p>
+                </div>
+                <footer><button id="tts-import-cancel" class="secondary-button" type="button">${t("cancel")}</button><button id="tts-import-submit" class="primary-button" type="submit">${t("ttsImportAction")}</button></footer>
+              </form>
+            </dialog>
           </section>
           <section id="settings-interface-panel" class="settings-section" role="tabpanel" aria-labelledby="settings-interface-tab" tabindex="0" hidden>
             <div class="settings-section-heading"><h2>${t("interfaceSettings")}</h2><p>${t("interfaceSettingsHelp")}</p></div>
@@ -272,17 +316,13 @@ app.innerHTML = `
               </section>
               <section id="speech-panel" class="reader-option-panel" data-reader-panel="speech" hidden>
                 <div class="reader-panel-heading"><span>${svg("speech", 18)}</span><h3>${t("textToSpeech")}</h3><output id="tts-player-status" aria-live="polite">${t("ttsPlayerReady")}</output></div>
-                <div class="tts-engine-choice" role="group" aria-label="${t("aiSpeechEngine")}"><button id="tts-engine-local" type="button" aria-pressed="true">${t("aiSpeechLocal")}</button><button id="tts-engine-premium" type="button" aria-pressed="false">${t("aiSpeechPremium")}</button></div>
-                <div id="tts-premium-options" class="tts-premium-options" hidden>
-                  <label><span>${t("aiSpeechLanguage")}</span><select id="tts-premium-language"></select></label>
-                  <label><span>${t("aiSpeechVoices")}</span><select id="tts-premium-voice"></select></label>
-                  <div class="tts-premium-sample"><button id="tts-premium-preview" class="text-link" type="button">${svg("play", 14)}<span>${t("aiSpeechPreview")}</span></button><small>${t("aiSpeechPreviewHint")}</small></div>
-                  <p id="tts-premium-message" role="status" aria-live="polite"></p>
-                  <div id="tts-premium-recovery" class="tts-premium-recovery" hidden><button id="tts-premium-retry" class="text-link" type="button">${t("aiSpeechRetry")}</button><button id="tts-use-local" class="text-link" type="button">${t("aiSpeechUseLocal")}</button></div>
-                </div>
+                <label class="tts-reader-voice"><span>${t("ttsReaderVoice")}</span><select id="tts-reader-voice"></select></label>
                 <div class="tts-current"><span id="tts-page-context">${t("ttsCurrentPage")}</span><p id="tts-passage"></p><small id="tts-active-voice"></small></div>
                 <div class="tts-transport" role="group" aria-label="${t("textToSpeech")}"><button id="tts-previous" type="button" aria-label="${t("ttsPreviousPage")}">${svg("previousTrack", 20)}</button><button id="tts-play-pause" class="tts-play" type="button" aria-label="${t("ttsPlay")}">${svg("play", 23)}</button><button id="tts-stop" type="button" aria-label="${t("speechStop")}">${svg("stop", 18)}</button><button id="tts-next" type="button" aria-label="${t("ttsNextPage")}">${svg("nextTrack", 20)}</button></div>
                 <label class="reader-option-line tts-player-rate" for="tts-rate-reader"><span>${t("ttsReadingPace")}</span><input id="tts-rate-reader" type="range" min="0.5" max="2" step="0.1" /><output id="tts-rate-reader-value">1×</output></label>
+                <label class="reader-option-line tts-player-rate" for="tts-pitch-reader"><span>${t("ttsPitch")}</span><input id="tts-pitch-reader" type="range" min="0.5" max="2" step="0.1" aria-describedby="tts-pitch-help" /><output id="tts-pitch-reader-value">1×</output></label>
+                <small id="tts-pitch-help" class="tts-control-help"></small>
+                <button id="tts-system-fallback" class="text-link" type="button" hidden>${t("ttsFallbackSystem")}</button>
               </section>
               <section id="layout-panel" class="reader-option-panel reader-layout-panel" data-reader-panel="layout" hidden>
                 <div class="reader-panel-heading"><span>${svg("bookLayout", 18)}</span><h3>${t("bookLayout")}</h3></div>
@@ -297,6 +337,13 @@ app.innerHTML = `
                   <button type="button" data-book-theme="sepia"><span class="book-theme-swatch theme-sepia"></span>${t("readerThemeSepia")}</button>
                   <button type="button" data-book-theme="dark"><span class="book-theme-swatch theme-night"></span>${t("readerThemeDark")}</button>
                 </div>
+              </section>
+              <section id="note-visibility-panel" class="reader-option-panel reader-note-visibility-panel" data-reader-panel="notes" hidden>
+                <div class="reader-panel-heading"><span>${svg("notes", 18)}</span><h3>${t("readerNotes")}</h3></div>
+                <label class="reader-note-visibility-control" for="reader-show-notes">
+                  <span class="reader-note-visibility-copy"><strong>${t("readerShowNotes")}</strong><small>${t("readerShowNotesHelp")}</small></span>
+                  <span class="reader-switch"><input id="reader-show-notes" type="checkbox" checked /><span aria-hidden="true"></span></span>
+                </label>
               </section>
             </div>
           </div>
@@ -343,6 +390,26 @@ app.innerHTML = `
 `;
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
+
+function mountNativeTitlebar(): void {
+  if (!isWindowsDesktop) return;
+  const appWindow = getCurrentWindow();
+  const maximizeButton = $<HTMLButtonElement>("#window-maximize");
+  const updateMaximizeButton = async (): Promise<void> => {
+    const maximized = await appWindow.isMaximized();
+    maximizeButton.classList.toggle("is-maximized", maximized);
+    const label = maximized ? windowLabels.restore : windowLabels.maximize;
+    maximizeButton.setAttribute("aria-label", label);
+    maximizeButton.title = label;
+  };
+  $<HTMLButtonElement>("#window-minimize").addEventListener("click", () => void appWindow.minimize());
+  maximizeButton.addEventListener("click", () => void appWindow.toggleMaximize().then(updateMaximizeButton));
+  $<HTMLButtonElement>("#window-close").addEventListener("click", () => void appWindow.close());
+  void updateMaximizeButton();
+  void appWindow.onResized(() => void updateMaximizeButton());
+}
+
+mountNativeTitlebar();
 const fileInput = $<HTMLInputElement>("#file-input");
 const readerContent = $<HTMLDivElement>("#reader-content");
 const readingSurface = $<HTMLDivElement>("#reading-surface");
@@ -370,6 +437,7 @@ const storedNoteStyle = localStorage.getItem(noteStyleKey);
 let noteStyle: NoteStyle = storedNoteStyle === "underline" || storedNoteStyle === "strikethrough" || storedNoteStyle === "wavy" ? storedNoteStyle : "highlight";
 const noteHighlights = new Map<string,EpubNoteAnnotation>();
 const readerHistory = new ReaderHistory();
+let temporaryNavigationSource: "note" | "other" | null = null;
 let pdfPosition = { page: 1, offset: 0 };
 let epubPosition = { cfi: "", label: "" };
 let readerJumpBusy = false;
@@ -383,18 +451,21 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const animatePageTurn = (): boolean => pageTurnAnimationEnabled && !reducedMotion.matches;
 let globalPagePreferences = loadPagePreferences();
 let desktopGeneralPreferences = loadDesktopGeneralPreferences();
-let ttsPreferences: TtsPreferences = loadTtsPreferences();
+let ttsPreferences: TtsGlobalPreferences = loadTtsPreferences();
+let bookTtsPreferences: BookTtsPreferences = { rate: 1, pitch: 1, voiceId: "" };
 let ttsVoices: TtsVoice[] = [];
+let ttsInstalled: InstalledPackage[] = [];
+let ttsImportedVoices: CatalogVoice[] = [];
+let ttsRuntime: TtsRuntimeStatus = { available: false, version: "", platform: "web", architecture: "", supportsPiper: false, supportsKokoro: false, memoryMb: undefined };
 let ttsState: "idle" | "playing" | "paused" = "idle";
 let ttsSequence = 0;
 let ttsChunks: string[] = [];
 let ttsChunkIndex = 0;
-let ttsEngine: "local" | "premium" = "local";
-let aiSpeechAllowed = false;
-let aiSpeechVoices: AiSpeechVoice[] = [];
-let aiSpeechPreferences: BookAiSpeechPreferences = { voiceId: "Lucia", language: "es-ES" };
-let premiumAudio: HTMLAudioElement | undefined;
-let premiumPrefetch: { index: number; request: ReturnType<typeof aiSpeech.synthesize> } | undefined;
+let ttsSource: SpeechSource | undefined;
+let ttsChunkOffsets: { start: number; end: number }[] = [];
+const localTtsPlayer = new LocalTtsPlayer();
+const ttsPreviewPlayer = new LocalTtsPlayer();
+let localTtsPrefetch: { index: number; request: ReturnType<typeof synthesizeLocal> } | undefined;
 let bookPageOverrides: BookPageOverrides = {};
 let pagePreferences = globalPagePreferences;
 let view: View = "home";
@@ -426,6 +497,7 @@ let theme: "light" | "dark" = localStorage.getItem("autumn-theme") === "dark" ? 
 type BookReaderTheme = "system" | "light" | "sepia" | "dark";
 let bookReaderTheme: BookReaderTheme = "system";
 let readerBrightness = 100;
+let readerNotesVisible = true;
 let bookFont = pagePreferences.font;
 let layoutRevision = 0;
 let layoutBusy = false;
@@ -606,7 +678,7 @@ async function mountDesktopGeneralSettings(): Promise<void> {
   }
 }
 
-function readerPreferenceKey(kind: "theme" | "brightness", book = currentBook): string | null {
+function readerPreferenceKey(kind: "theme" | "brightness" | "notes", book = currentBook): string | null {
   if (!book) return null;
   return `autumn-reader-${kind}:${book.ownerId ?? auth.state.ownerId ?? "local"}:${book.id}`;
 }
@@ -644,6 +716,9 @@ function loadReaderBookAppearance(book: StoredBook): void {
   const brightnessKey = readerPreferenceKey("brightness", book);
   const storedBrightness = Number(brightnessKey ? localStorage.getItem(brightnessKey) : "");
   readerBrightness = Number.isFinite(storedBrightness) && storedBrightness >= 55 && storedBrightness <= 130 ? storedBrightness : 100;
+  const notesKey = readerPreferenceKey("notes", book);
+  readerNotesVisible = (notesKey ? localStorage.getItem(notesKey) : null) !== "hidden";
+  $<HTMLInputElement>("#reader-show-notes").checked = readerNotesVisible;
   const brightness = $<HTMLInputElement>("#reader-brightness");
   brightness.value = String(readerBrightness);
   $<HTMLOutputElement>("#brightness-value").textContent = `${readerBrightness}%`;
@@ -1055,7 +1130,9 @@ function updatePosition(): void {
   $<HTMLSpanElement>("#size-label").textContent = originalPdf ? t("zoom") : t("text");
   $<HTMLSpanElement>("#size-value").textContent = `${originalPdf ? pdfZoom : currentBook.fontSize}%`;
   $<HTMLElement>(".size-controls").hidden = false;
-  $<HTMLElement>("#book-layout-details").hidden = currentBook.format !== "epub";
+  // Reflowable PDFs use the same typography and page-layout preferences as EPUBs.
+  // Original PDF pages preserve their authored layout and therefore expose only zoom.
+  $<HTMLElement>("#book-layout-details").hidden = currentBook.format !== "epub" && !pdfTextView;
   const mode = $<HTMLSelectElement>("#pdf-reading-mode");
   mode.hidden = currentBook.format !== "pdf";
   mode.value = pdfTextView ? "text" : "original";
@@ -1093,8 +1170,12 @@ function epubReadingPercentage(location: Location): number {
 }
 function updateHistory(): void {
   $("#reader-history").hidden = !readerHistory.canBack && !readerHistory.canForward;
-  $<HTMLButtonElement>("#history-back").disabled = !readerHistory.canBack || readerJumpBusy;
-  $<HTMLButtonElement>("#history-forward").disabled = !readerHistory.canForward || readerJumpBusy;
+  const visitingNote = readerHistory.temporary && temporaryNavigationSource === "note";
+  const historyBack = $<HTMLButtonElement>("#history-back");
+  const historyForward = $<HTMLButtonElement>("#history-forward");
+  historyBack.hidden = historyForward.hidden = visitingNote;
+  historyBack.disabled = !readerHistory.canBack || readerJumpBusy;
+  historyForward.disabled = !readerHistory.canForward || readerJumpBusy;
   const origin = readerHistory.readingOrigin;
   $("#reading-return").hidden = $("#reading-adopt").hidden = !readerHistory.temporary;
   $<HTMLButtonElement>("#reading-return").disabled = $<HTMLButtonElement>("#reading-adopt").disabled = readerJumpBusy;
@@ -1137,6 +1218,7 @@ async function displayPosition(position: ReaderPosition): Promise<void> {
 async function jumpToSearch(result: SearchResult, source: BookSearch,signal?:AbortSignal): Promise<void> {
   const sequence = loadSequence, position = await source.position(result,signal);
   if (sequence !== loadSequence || !currentBook || signal?.aborted) return;
+  temporaryNavigationSource = "other";
   readerHistory.jump(capturePosition(), position); await displayPosition(position);
   if (position.format === "epub" && rendition) {
     searchHighlight = position.cfi;
@@ -1159,6 +1241,7 @@ async function jumpToSearch(result: SearchResult, source: BookSearch,signal?:Abo
 }
 async function jumpToContents(href: string): Promise<void> {
   if (!rendition || !href || readerJumpBusy) return;
+  temporaryNavigationSource = "other";
   const from = capturePosition(); readerHistory.jump(from, from); readerJumpBusy = true; updateHistory();
   try { ++readerPositionRevision; restoringRemotePosition = false; await displayEpub(href); readerHistory.observe(capturePosition()); }
   finally { readerJumpBusy = false; updateHistory(); }
@@ -1168,6 +1251,7 @@ async function jumpToPdfReference(destination: unknown): Promise<void> {
   const sequence = loadSequence, target = await pdfDestination(pdfDocument, destination);
   if (sequence !== loadSequence) return;
   const position: ReaderPosition = { format: "pdf", page: target.page, offset: 0, scrollTop: 0, scrollLeft: 0 };
+  temporaryNavigationSource = "other";
   readerHistory.jump(capturePosition(), position); await displayPosition(position);
   if (target.sourceY !== undefined) {
     if (pdfTextView) { pdfTextView.show(pdfTextView.pageForSourceY(target.sourceY)); pdfPosition.offset = pdfTextView.visibleOffset(); }
@@ -1390,6 +1474,7 @@ async function goToNote(note: BookNote): Promise<void> {
   if (!currentBook || readerJumpBusy) return;
   closeAllNotes();
   const from = capturePosition();
+  temporaryNavigationSource = "note";
   readerHistory.jump(from, note.format === "pdf" ? { format: "pdf", page: note.page, offset: 0, scrollTop: 0, scrollLeft: 0 } : { format: "epub", cfi: note.cfi, label: t("noteLocationLabel") });
   readerJumpBusy = true; updateHistory();
   try {
@@ -1426,7 +1511,8 @@ async function goToNote(note: BookNote): Promise<void> {
 function renderNoteMarkers(): void {
   readerContent.querySelectorAll(".note-highlight").forEach(e=>e.remove());
   if (rendition) {
-    const active = new Map((currentBook?.notes??[]).filter((n):n is BookNote & {format:"epub";cfi:string}=>n.format==="epub").map(n=>[n.cfi,n.color]));
+    const visibleNotes = readerNotesVisible ? currentBook?.notes ?? [] : [];
+    const active = new Map(visibleNotes.filter((n):n is BookNote & {format:"epub";cfi:string}=>n.format==="epub").map(n=>[n.cfi,n.color]));
     for(const [cfi,annotation]of noteHighlights) if(active.get(cfi)!==annotation.color||annotation.style!==noteStyle){rendition.annotations.remove(cfi,annotation.type);noteHighlights.delete(cfi);}
     for(const [cfi,color]of active)if(!noteHighlights.has(cfi)){
       if(noteStyle==="highlight")rendition.annotations.highlight(cfi,{},undefined,"autumn-note-highlight",{fill:color,"fill-opacity":".22"});
@@ -1449,7 +1535,7 @@ function renderNoteMarkers(): void {
     }
   }
   readerContent.querySelectorAll(".note-marker").forEach((marker) => marker.remove());
-  if (!currentBook || !currentBook.notes?.length || view !== "reader") return;
+  if (!readerNotesVisible || !currentBook || !currentBook.notes?.length || view !== "reader") return;
   const contentRect = readerContent.getBoundingClientRect();
   const placements: { note: BookNote; x: number; y: number }[] = [];
   for (const note of currentBook.notes) {
@@ -1510,7 +1596,7 @@ async function clearReader(): Promise<void> {
   translationUI?.close(); selectedTranslationText=""; noteHighlights.clear();
   ++pdfNavigationToken; pdfNavigationBusy = false;
   pageTurn?.snapshot.remove(); pageTurn?.preview?.destroy(); if(pageTurn?.live !== readerContent)pageTurn?.live.remove(); pageTurn = undefined; pagePreviewActive = false; resetPageTransform();
-  searchUI?.close(); searchUI?.setSource(); readerHistory.commit(); updateHistory();
+  searchUI?.close(); searchUI?.setSource(); readerHistory.commit(); temporaryNavigationSource = null; updateHistory();
   searchHighlight = undefined; $("#reader-toc").hidden = true; resetReaderToc(); pdfOutlineDestinations.clear();
   hideNoteMenu();
   closeNoteDialog();
@@ -1661,8 +1747,7 @@ async function openBook(book: StoredBook): Promise<void> {
   await clearReader();
   if (sequence !== loadSequence) return;
   currentBook = book;
-  aiSpeechPreferences = loadBookAiSpeechPreferences(book.ownerId ?? auth.state.ownerId ?? "local", book.id);
-  renderAiSpeechVoiceOptions();
+  bookTtsPreferences = loadBookTtsPreferences(book.ownerId ?? auth.state.ownerId ?? "local", book.id);
   pdfPosition = { page: book.page, offset: book.pdfTextOffset ?? 0 };
   epubPosition = { cfi: book.cfi ?? "", label: "" };
   const cached = hasLocalFile(book);
@@ -1764,7 +1849,7 @@ async function openBook(book: StoredBook): Promise<void> {
         contents.document.addEventListener("click", event => {
           const link = (event.target as Element | null)?.closest("a[href]");
           const href = link?.getAttribute("href");
-          if (href && !/^(?:[a-z]+:|\/\/)/i.test(href)) { const from = capturePosition(); readerHistory.jump(from, from); updateHistory(); }
+          if (href && !/^(?:[a-z]+:|\/\/)/i.test(href)) { temporaryNavigationSource = "other"; const from = capturePosition(); readerHistory.jump(from, from); updateHistory(); }
         }, { capture: true });
         return typographyReady;
       });
@@ -2259,6 +2344,8 @@ function showDesktopSettingsTab(tab: "layout" | "appearance"): void {
   $<HTMLElement>("#brightness-panel").hidden = layout;
   $<HTMLElement>("#size-panel").hidden = layout;
   $<HTMLElement>("#book-theme-panel").hidden = layout;
+  $<HTMLElement>("#note-visibility-panel").hidden = layout;
+  readerOptions.scrollTop = 0;
 }
 
 function openDesktopReaderSettings(tab: "layout" | "appearance" = "appearance"): void {
@@ -2285,17 +2372,12 @@ function openDesktopReaderSettings(tab: "layout" | "appearance" = "appearance"):
 async function refreshReaderTtsAccess(): Promise<void> {
   const trigger = $<HTMLButtonElement>("#speech-toggle");
   const sidebarTrigger = $<HTMLButtonElement>("#reader-tts-tab");
-  let premiumAllowed = false;
-  try {
-    premiumAllowed = auth.state.status === "authenticated" && (await plans.current()).premium_tts_tier !== "none";
-  } catch { premiumAllowed = false; }
-  aiSpeechAllowed = premiumAllowed;
-  const allowed = ttsAvailable() || premiumAllowed;
+  const allowed = ttsAvailable() || installedCatalogVoices().length > 0;
   trigger.hidden = !allowed;
   sidebarTrigger.hidden = !allowed;
   if (!allowed && activeReaderSidebarTab === "tts") setReaderSidebarTab("contents");
   if (!allowed && activeReaderOptionsTrigger === trigger) closeReaderOptions();
-  updateTtsEngineControls();
+  renderReaderVoiceOptions();
 }
 function closeReaderOptions(fromHistory = false): void {
   if (!readerOptions.classList.contains("is-open")) return;
@@ -2326,7 +2408,6 @@ function openReaderOptions(trigger: HTMLButtonElement): void {
   if (panelId === "speech-panel") {
     updateTtsPlayer();
     void refreshTtsVoices(false);
-    void refreshAiSpeechVoices();
   }
   if (!wasOpen) {
     history.pushState({ ...history.state, autumnReaderOptions: true }, "");
@@ -2361,8 +2442,13 @@ document.addEventListener("toggle", event => {
   if (menu instanceof HTMLDetailsElement && menu.matches(".book-menu") && menu.open)
     document.querySelectorAll<HTMLDetailsElement>(".book-menu[open]").forEach(other => { if (other !== menu) other.open = false; });
 }, true);
-$("#back-button").addEventListener("click", () => { closeReaderOptions(); setView(lastCollectionView); });
-$("#desktop-reader-back").addEventListener("click", () => { closeReaderOptions(); setView(lastCollectionView); });
+const leaveReader = async (): Promise<void> => {
+  closeReaderOptions();
+  await persistCurrent();
+  setView(lastCollectionView);
+};
+$("#back-button").addEventListener("click", () => void leaveReader());
+$("#desktop-reader-back").addEventListener("click", () => void leaveReader());
 $("#previous-button").addEventListener("click", () => void turnPage(-1));
 $("#next-button").addEventListener("click", () => void turnPage(1));
 $("#smaller-button").addEventListener("click", () => changeSize(-1));
@@ -2377,7 +2463,7 @@ $<HTMLInputElement>("#reader-brightness").addEventListener("input", event => {
   resetReaderChrome();
 });
 function ttsAvailable(): boolean {
-  return usesNativeTts() || Boolean(window.speechSynthesis && window.SpeechSynthesisUtterance);
+  return usesNativeSystemTts() || Boolean(window.speechSynthesis && window.SpeechSynthesisUtterance);
 }
 
 function ttsLanguage(): string {
@@ -2398,134 +2484,77 @@ function ttsVoiceLabel(voice: TtsVoice): string {
   return variant ? `${localizedLanguage} · ${variant}` : localizedLanguage;
 }
 
-function aiSpeechVoiceLabel(voice: AiSpeechVoice): string {
-  let localizedLanguage = voice.language;
-  try { localizedLanguage = new Intl.DisplayNames([language], { type: "language" }).of(voice.language) ?? voice.language; }
-  catch { /* Keep the BCP 47 tag as a reliable fallback. */ }
-  return `${localizedLanguage} · ${voice.name}`;
+function engineAvailable(engine: TtsEngineId): boolean {
+  if (engine === "system") return ttsAvailable();
+  return ttsRuntime.available && (engine === "piper" ? ttsRuntime.supportsPiper : ttsRuntime.supportsKokoro);
 }
 
-function updateTtsEngineControls(): void {
-  const local = document.querySelector<HTMLButtonElement>("#tts-engine-local");
-  const premium = document.querySelector<HTMLButtonElement>("#tts-engine-premium");
-  const options = document.querySelector<HTMLElement>("#tts-premium-options");
-  if (!local || !premium || !options) return;
-  local.setAttribute("aria-pressed", String(ttsEngine === "local"));
-  premium.setAttribute("aria-pressed", String(ttsEngine === "premium"));
-  options.hidden = ttsEngine !== "premium";
-  premium.classList.toggle("is-locked", !aiSpeechAllowed);
+function installedCatalogVoices(engine?: TtsEngineId): CatalogVoice[] {
+  const installed = new Set(ttsInstalled.filter(item => item.installed).map(item => item.packageId));
+  return [...knownVoices, ...ttsImportedVoices].filter(voice => installed.has(voice.packageId) && (!engine || voice.engine === engine));
 }
 
-function renderAiSpeechVoiceOptions(): void {
-  const languageSelect = document.querySelector<HTMLSelectElement>("#tts-premium-language");
-  const voiceSelect = document.querySelector<HTMLSelectElement>("#tts-premium-voice");
-  if (!languageSelect || !voiceSelect) return;
-  const languages = [...new Set(aiSpeechVoices.map(voice => voice.language))];
-  languageSelect.replaceChildren(...languages.map(code => {
-    let label = code;
-    try { label = new Intl.DisplayNames([language], { type: "language" }).of(code) ?? code; } catch { /* Keep code. */ }
-    return new Option(label, code);
-  }));
-  if (!languages.includes(aiSpeechPreferences.language)) aiSpeechPreferences.language = languages[0] ?? "es-ES";
-  languageSelect.value = aiSpeechPreferences.language;
-  const matching = aiSpeechVoices.filter(voice => voice.language === aiSpeechPreferences.language);
-  voiceSelect.replaceChildren(...matching.map(voice => new Option(voice.name, voice.id)));
-  if (!matching.some(voice => voice.id === aiSpeechPreferences.voiceId)) aiSpeechPreferences.voiceId = matching[0]?.id ?? "";
-  voiceSelect.value = aiSpeechPreferences.voiceId;
-  updateTtsPlayer();
+function activeCatalogVoice(): CatalogVoice | undefined {
+  if (ttsPreferences.engine === "system") return undefined;
+  const available = installedCatalogVoices(ttsPreferences.engine);
+  const local = available.find(voice => voice.id === bookTtsPreferences.voiceId);
+  const global = available.find(voice => voice.id === ttsPreferences.voices[ttsPreferences.engine]);
+  const code = ttsLanguage().slice(0, 2).toLowerCase();
+  return local ?? global ?? available.find(voice => voice.locale.toLowerCase().startsWith(code)) ?? available[0];
 }
 
-async function refreshAiSpeechVoices(): Promise<void> {
-  const message = $<HTMLElement>("#tts-premium-message");
-  if (!aiSpeechAllowed) { aiSpeechVoices = []; renderAiSpeechVoiceOptions(); message.textContent = t("aiSpeechSubscriberOnly"); return; }
-  if (!navigator.onLine) { message.textContent = t("aiSpeechOfflineFallback"); return; }
-  try {
-    const result = await aiSpeech.voices();
-    aiSpeechVoices = result.voices;
-    renderAiSpeechVoiceOptions();
-    message.textContent = currentBook?.cloudId ? "" : t("aiSpeechNeedsCloudBook");
-  } catch { message.textContent = t("aiSpeechGenerationError"); }
+function activeSystemVoice(): TtsVoice | undefined {
+  const override = bookTtsPreferences.voiceId.startsWith("system:") ? bookTtsPreferences.voiceId.slice(7) : "";
+  return preferredVoice(ttsVoices, override || ttsPreferences.voices.system, ttsLanguage());
 }
 
-function persistAiSpeechVoice(): void {
+function saveCurrentBookTts(): void {
   if (!currentBook) return;
-  saveBookAiSpeechPreferences(currentBook.ownerId ?? auth.state.ownerId ?? "local", currentBook.id, aiSpeechPreferences);
+  bookTtsPreferences = saveBookTtsPreferences(currentBook.ownerId ?? auth.state.ownerId ?? "local", currentBook.id, bookTtsPreferences);
 }
 
-function selectTtsEngine(engine: "local" | "premium"): void {
-  if (engine === "premium" && !aiSpeechAllowed) {
-    ttsEngine = "local";
-    $("#tts-premium-message").textContent = t("aiSpeechSubscriberOnly"); showToast(t("aiSpeechSubscriberOnly"));
-    updateTtsEngineControls();
-    return;
-  }
-  if (ttsEngine === engine) return;
-  stopTts(false);
-  ttsEngine = engine;
-  updateTtsEngineControls();
-  updateTtsPlayer();
-  if (engine === "premium") void refreshAiSpeechVoices();
-}
-
-function visibleText(root: HTMLElement, bounds: { left: number; right: number; top: number; bottom: number }): string {
-  const owner = root.ownerDocument;
-  const walker = owner.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const parts: string[] = [];
-  for (let node = walker.nextNode(); node && parts.length < 1500; node = walker.nextNode()) {
-    const text = node.textContent?.replace(/\s+/g, " ").trim();
-    const parent = node.parentElement;
-    if (!text || !parent || parent.closest("script,style,[hidden],[aria-hidden='true']")) continue;
-    const range = owner.createRange(); range.selectNodeContents(node);
-    if ([...range.getClientRects()].some(rect => rect.right > bounds.left + 1 && rect.left < bounds.right - 1
-      && rect.bottom > bounds.top + 1 && rect.top < bounds.bottom - 1)) parts.push(text);
-  }
-  return parts.join(" ").replace(/\s+/g, " ").trim();
-}
-
-function currentTtsText(): string {
+function currentTtsSource(): SpeechSource {
+  const regions: SpeechSourceRegion[] = [];
   if (currentBook?.format === "pdf") {
-    if (pdfTextView) return pdfTextView.visibleText().slice(0, 12_000);
+    if (pdfTextView) regions.push({ root: pdfTextView.flow, bounds: pdfTextView.viewport.getBoundingClientRect() });
     const layer = readerContent.querySelector<HTMLElement>(".pdf-text-layer");
     const bounds = readerContent.querySelector<HTMLElement>(".pdf-page")?.getBoundingClientRect();
-    return layer && bounds ? visibleText(layer, bounds).slice(0, 12_000) : "";
+    if (!pdfTextView && layer && bounds) regions.push({ root: layer, bounds });
+    return collectVisibleSpeechSource(regions);
   }
   const contents = rendition?.getContents();
-  if (!Array.isArray(contents)) return "";
-  return (contents as Contents[]).map(item => visibleText(item.document.body, {
-    left: 0, top: 0, right: item.window.innerWidth, bottom: item.window.innerHeight,
-  })).join(" ").replace(/\s+/g, " ").trim().slice(0, 12_000);
+  if (!Array.isArray(contents)) return { text: "", segments: [] };
+  for (const item of contents as Contents[]) {
+    const frame = item.document.defaultView?.frameElement as HTMLElement | null;
+    const frameRect = frame?.getBoundingClientRect();
+    const clipRect = frame?.closest<HTMLElement>(".epub-frame")?.getBoundingClientRect();
+    if (!frameRect || !clipRect || frameRect.width <= 0 || frameRect.height <= 0) {
+      regions.push({ root: item.document.body, bounds: { left: 0, top: 0, right: item.window.innerWidth, bottom: item.window.innerHeight } });
+      continue;
+    }
+    // EPUB.js paginates a section in one wide iframe and slides that iframe
+    // behind the reader frame. Convert the clipped host rectangle back into
+    // iframe coordinates so speech starts at the displayed spread, not x=0.
+    const scaleX = item.window.innerWidth / frameRect.width;
+    const scaleY = item.window.innerHeight / frameRect.height;
+    regions.push({ root: item.document.body, bounds: {
+      left: Math.max(0, clipRect.left - frameRect.left) * scaleX,
+      top: Math.max(0, clipRect.top - frameRect.top) * scaleY,
+      right: Math.min(frameRect.width, clipRect.right - frameRect.left) * scaleX,
+      bottom: Math.min(frameRect.height, clipRect.bottom - frameRect.top) * scaleY,
+    } });
+  }
+  return collectVisibleSpeechSource(regions);
 }
+
+function currentTtsText(): string { return currentTtsSource().text; }
 
 function speechChunks(text: string): string[] {
-  const sentences = text.match(/[^.!?…]+(?:[.!?…]+|$)/gu) ?? [text];
-  const chunks: string[] = [];
-  let current = "";
-  for (const sentence of sentences) {
-    const value = sentence.trim();
-    if (!value) continue;
-    if (current && `${current} ${value}`.length > 650) { chunks.push(current); current = value; }
-    else current = current ? `${current} ${value}` : value;
-  }
-  if (current) chunks.push(current);
-  return chunks.flatMap(chunk => chunk.length <= 700 ? [chunk] : chunk.match(/.{1,700}(?:\s|$)/gu)?.map(part => part.trim()).filter(Boolean) ?? [chunk]);
+  return splitSpeechText(text, 650, 700);
 }
 
-function premiumSpeechChunks(text: string): string[] {
-  const sentences = text.match(/[^.!?…]+(?:[.!?…]+|$)/gu) ?? [text];
-  const chunks: string[] = []; let current = "";
-  for (const sentence of sentences) {
-    const value = sentence.trim(); if (!value) continue;
-    if (current && `${current} ${value}`.length > 2800) { chunks.push(current); current = value; }
-    else current = current ? `${current} ${value}` : value;
-  }
-  if (current) chunks.push(current);
-  return chunks.flatMap(chunk => chunk.length <= 3000 ? [chunk] : chunk.match(/.{1,2800}(?:\s|$)/gu)?.map(part => part.trim()).filter(Boolean) ?? [chunk]);
-}
-
-function shortStableId(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index++) hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
-  return (hash >>> 0).toString(16).padStart(8, "0");
+function nativeSpeechChunks(text: string): string[] {
+  return splitSpeechText(text, 220, 280);
 }
 
 function updateTtsPlayer(text = currentTtsText()): void {
@@ -2538,35 +2567,69 @@ function updateTtsPlayer(text = currentTtsText()): void {
   play.setAttribute("aria-pressed", String(ttsState !== "idle"));
   $<HTMLButtonElement>("#tts-stop").disabled = ttsState === "idle";
   const epubLocation = currentBook?.format === "epub" ? rendition?.location : undefined;
-  $<HTMLButtonElement>("#tts-previous").disabled = $<HTMLButtonElement>("#previous-button").disabled || Boolean(epubLocation?.atStart);
-  $<HTMLButtonElement>("#tts-next").disabled = $<HTMLButtonElement>("#next-button").disabled || Boolean(epubLocation?.atEnd);
+  const pagePreviousDisabled = $<HTMLButtonElement>("#previous-button").disabled || Boolean(epubLocation?.atStart);
+  const pageNextDisabled = $<HTMLButtonElement>("#next-button").disabled || Boolean(epubLocation?.atEnd);
+  $<HTMLButtonElement>("#tts-previous").disabled = ttsState === "idle" ? pagePreviousDisabled : ttsChunkIndex <= 0 && pagePreviousDisabled;
+  $<HTMLButtonElement>("#tts-next").disabled = ttsState === "idle" ? pageNextDisabled : ttsChunkIndex >= ttsChunks.length - 1 && pageNextDisabled;
   const position = $("#position-label").textContent?.trim();
   $("#tts-page-context").textContent = position && position !== "—" ? `${t("ttsCurrentPage")} · ${position}` : t("ttsCurrentPage");
   $("#tts-passage").textContent = text ? `${text.slice(0, 165)}${text.length > 165 ? "…" : ""}` : t("noSelectableText");
-  const voice = preferredVoice(ttsVoices, ttsPreferences, ttsLanguage());
-  const premiumVoice = aiSpeechVoices.find(item => item.id === aiSpeechPreferences.voiceId);
-  $("#tts-active-voice").textContent = t("ttsVoiceActive", { voice: ttsEngine === "premium"
-    ? (premiumVoice ? aiSpeechVoiceLabel(premiumVoice) : t("aiSpeechPremium"))
-    : (voice ? ttsVoiceLabel(voice) : t("ttsDefaultVoice")) });
-  for (const id of ["#tts-rate-reader", "#tts-rate-settings"]) $<HTMLInputElement>(id).value = String(ttsPreferences.rate);
-  for (const id of ["#tts-rate-reader-value", "#tts-rate-settings-value"]) $<HTMLOutputElement>(id).textContent = formatTtsRate(ttsPreferences.rate);
+  const systemVoice = activeSystemVoice();
+  const catalogVoice = activeCatalogVoice();
+  $("#tts-active-voice").textContent = t("ttsVoiceActive", { voice: catalogVoice?.name ?? (systemVoice ? ttsVoiceLabel(systemVoice) : t("ttsDefaultVoice")) });
+  $<HTMLInputElement>("#tts-rate-reader").value = String(bookTtsPreferences.rate);
+  $<HTMLOutputElement>("#tts-rate-reader-value").textContent = formatTtsRate(bookTtsPreferences.rate);
+  const pitch = $<HTMLInputElement>("#tts-pitch-reader");
+  pitch.value = String(bookTtsPreferences.pitch);
+  pitch.disabled = !ttsEngines[ttsPreferences.engine].capabilities.pitch;
+  $<HTMLOutputElement>("#tts-pitch-reader-value").textContent = formatTtsRate(bookTtsPreferences.pitch);
+  $("#tts-pitch-help").textContent = pitch.disabled ? t("ttsPitchUnavailable") : "";
+  renderReaderVoiceOptions();
+}
+
+function cancelTtsWork(): number {
+  ttsSequence += 1;
+  if (usesNativeSystemTts()) void nativeStop().catch(error => console.warn("Native TTS stop failed", error));
+  void cancelLocalSynthesis().catch(error => console.warn("Local TTS cancellation failed", error));
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  localTtsPlayer.stop();
+  localTtsPrefetch = undefined;
+  const speechPanel = document.querySelector<HTMLElement>("#speech-panel");
+  speechPanel?.removeAttribute("aria-busy");
+  return ttsSequence;
 }
 
 function stopTts(update = true): void {
-  ttsSequence += 1;
-  if (usesNativeTts()) void nativeStop().catch(error => console.warn("Native TTS stop failed", error));
-  if (window.speechSynthesis) window.speechSynthesis.cancel();
-  if (premiumAudio) { premiumAudio.pause(); premiumAudio.removeAttribute("src"); premiumAudio.load(); premiumAudio = undefined; }
-  premiumPrefetch = undefined;
-  const speechPanel = document.querySelector<HTMLElement>("#speech-panel");
-  speechPanel?.removeAttribute("aria-busy");
-  ttsState = "idle"; ttsChunks = []; ttsChunkIndex = 0;
+  cancelTtsWork();
+  clearSpeechHighlight();
+  ttsState = "idle"; ttsChunks = []; ttsChunkIndex = 0; ttsSource = undefined; ttsChunkOffsets = [];
   if (update && document.querySelector("#tts-player-status")) updateTtsPlayer();
 }
 
 function ttsPageKey(): string {
   const position = capturePosition();
   return position.format === "pdf" ? `${position.page}:${pdfTextView?.index ?? position.offset}` : position.cfi;
+}
+
+function highlightTtsInterval(start: number, end: number): void {
+  setSpeechHighlight(ttsSource, start, end);
+}
+
+function highlightTtsChunk(index = ttsChunkIndex): void {
+  const offset = ttsChunkOffsets[index];
+  if (offset) highlightTtsInterval(offset.start, offset.end);
+}
+
+function highlightTtsWord(index: number, characterIndex: number, characterLength = 0): void {
+  const text = ttsChunks[index];
+  const chunk = ttsChunkOffsets[index];
+  if (!text || !chunk) return;
+  let wordStart = Math.max(0, Math.min(text.length - 1, characterIndex));
+  while (wordStart < text.length && /\s/u.test(text[wordStart])) wordStart += 1;
+  if (!characterLength) while (wordStart > 0 && !/\s/u.test(text[wordStart - 1])) wordStart -= 1;
+  let wordEnd = characterLength ? Math.min(text.length, wordStart + characterLength) : wordStart;
+  while (!characterLength && wordEnd < text.length && !/\s/u.test(text[wordEnd])) wordEnd += 1;
+  highlightTtsInterval(chunk.start + wordStart, Math.min(chunk.end, chunk.start + Math.max(wordStart + 1, wordEnd)));
 }
 
 async function advanceTtsPage(sequence: number): Promise<void> {
@@ -2582,9 +2645,10 @@ function speakTtsChunk(sequence: number): void {
   if (sequence !== ttsSequence || ttsState === "idle") return;
   const text = ttsChunks[ttsChunkIndex];
   if (!text) { void advanceTtsPage(sequence); return; }
-  const voice = preferredVoice(ttsVoices, ttsPreferences, ttsLanguage());
-  if (usesNativeTts()) {
-    void nativeSpeak({ text, voiceUri: voice?.voiceURI ?? "", language: voice?.lang ?? ttsLanguage(), rate: ttsPreferences.rate })
+  const voice = activeSystemVoice();
+  if (usesNativeSystemTts()) {
+    highlightTtsChunk();
+    void nativeSpeak({ text, voiceUri: voice?.voiceURI ?? "", language: voice?.lang ?? ttsLanguage(), rate: bookTtsPreferences.rate, pitch: bookTtsPreferences.pitch })
       .then(status => {
         if (sequence !== ttsSequence || status !== "done") return;
         ttsChunkIndex += 1;
@@ -2597,9 +2661,17 @@ function speakTtsChunk(sequence: number): void {
     return;
   }
   const speech = new SpeechSynthesisUtterance(text);
+  highlightTtsWord(ttsChunkIndex, 0);
   if (voice) speech.voice = voice;
   speech.lang = voice?.lang ?? ttsLanguage();
-  speech.rate = ttsPreferences.rate;
+  speech.rate = bookTtsPreferences.rate;
+  speech.pitch = bookTtsPreferences.pitch;
+  speech.onboundary = event => {
+    if (sequence !== ttsSequence || (ttsState as string) === "idle") return;
+    const chunk = ttsChunkOffsets[ttsChunkIndex];
+    if (!chunk || event.charIndex < 0 || event.charIndex >= text.length) return;
+    highlightTtsWord(ttsChunkIndex, event.charIndex, event.charLength);
+  };
   speech.onend = () => {
     if (sequence !== ttsSequence) return;
     ttsChunkIndex += 1;
@@ -2609,97 +2681,85 @@ function speakTtsChunk(sequence: number): void {
   window.speechSynthesis.speak(speech);
 }
 
-function premiumErrorMessage(error: unknown): string {
-  const code = error instanceof Error ? error.message : "provider_unavailable";
-  if (code.includes("ai_speech_quota")) return t("aiSpeechQuotaExhausted");
-  if (code.includes("global_budget")) return t("aiSpeechBudgetReached");
-  if (code.includes("generation_limit") || code.includes("rate_limited")) return t("aiSpeechRateLimited");
-  if (code.includes("offline")) return t("aiSpeechOfflineFallback");
-  return t("aiSpeechGenerationError");
+function localTtsError(error: unknown): string {
+  const code = error instanceof Error ? error.message : String(error);
+  if (code.includes("TTS_VOICE_NOT_INSTALLED")) return t("ttsVoiceRequired");
+  if (code.includes("TTS_MODEL_CORRUPT")) return t("ttsModelCorrupt");
+  if (code.includes("TTS_INSUFFICIENT") || code.includes("TTS_STORAGE_FAILED")) return t("ttsNoStorage");
+  if (code.includes("TTS_ENGINE_UNAVAILABLE")) return t("ttsUnavailableDevice");
+  if (code.includes("TTS_IMPORT_ARCHIVE_INVALID") || code.includes("TTS_IMPORT_MODEL_INVALID")) return t("ttsImportInvalidModel");
+  if (code.includes("TTS_IMPORT_VOICE_INVALID")) return t("ttsImportInvalidVoice");
+  if (code.includes("TTS_IMPORT_VOICE_LIMIT")) return t("ttsImportVoiceLimit");
+  if (code.includes("TTS_KOKORO_BASE_REQUIRED")) return t("ttsKokoroBaseRequired");
+  if (code.includes("TTS_KOKORO_BASE_INCOMPATIBLE")) return t("ttsKokoroBaseIncompatible");
+  if (code.includes("TTS_IMPORT_SYNTHESIS_FAILED")) return t("ttsImportSynthesisFailed");
+  if (code.includes("TTS_IMPORT_LOCALE_INVALID")) return t("ttsImportInvalidLocale");
+  if (code.includes("TTS_IMPORT_NAME_INVALID") || code.includes("TTS_IMPORT_SPEAKER_INVALID")) return t("ttsImportInvalidMetadata");
+  if (code.includes("TTS_IMPORT_READ_FAILED") || code.includes("TTS_IMPORT_PATH_INVALID")) return t("ttsImportReadFailed");
+  return t("ttsInitializeFailed");
 }
 
-function premiumChunkRequest(index: number): ReturnType<typeof aiSpeech.synthesize> {
-  if (!currentBook?.cloudId) return Promise.reject(new Error("book_not_synced"));
-  const text = ttsChunks[index];
-  return aiSpeech.synthesize({ bookId: currentBook.cloudId,
-    fragmentId: currentBook.format === "pdf" ? `pdf-${pdfPosition.page}-${pdfTextView?.index ?? 0}-${index}` : `epub-${shortStableId(ttsPageKey())}-${index}`, text,
-    voiceId: aiSpeechPreferences.voiceId, language: aiSpeechPreferences.language, rate: ttsPreferences.rate });
+function localChunkRequest(index: number): ReturnType<typeof synthesizeLocal> {
+  const voice = activeCatalogVoice();
+  if (!voice) return Promise.reject(new Error("TTS_VOICE_NOT_INSTALLED"));
+  return synthesizeLocal(voice.id, ttsChunks[index], bookTtsPreferences.rate);
 }
 
-function ttsStopped(): boolean { return ttsState === "idle"; }
-
-async function playPremiumChunk(sequence: number): Promise<void> {
+async function playLocalChunk(sequence: number): Promise<void> {
   if (sequence !== ttsSequence || ttsState === "idle") return;
   const text = ttsChunks[ttsChunkIndex];
   if (!text) { void advanceTtsPage(sequence); return; }
-  const panel = $<HTMLElement>("#speech-panel"), message = $<HTMLElement>("#tts-premium-message");
-  const recovery = $<HTMLElement>("#tts-premium-recovery");
-  panel.setAttribute("aria-busy", "true"); recovery.hidden = true; message.textContent = t("aiSpeechGenerating");
+  highlightTtsWord(ttsChunkIndex, 0);
+  const panel = $<HTMLElement>("#speech-panel");
+  panel.setAttribute("aria-busy", "true");
   try {
-    const request = premiumPrefetch?.index === ttsChunkIndex ? premiumPrefetch.request : premiumChunkRequest(ttsChunkIndex);
-    premiumPrefetch = undefined;
+    const request = localTtsPrefetch?.index === ttsChunkIndex ? localTtsPrefetch.request : localChunkRequest(ttsChunkIndex);
+    localTtsPrefetch = undefined;
     const result = await request;
-    if (sequence !== ttsSequence || ttsStopped()) return;
-    const audio = new Audio(result.audioUrl); premiumAudio = audio;
-    audio.preload = "auto";
-    audio.onended = () => {
-      if (sequence !== ttsSequence || ttsState === "idle") return;
-      premiumAudio = undefined; ttsChunkIndex += 1; void playPremiumChunk(sequence);
-    };
-    audio.onerror = () => {
-      if (sequence !== ttsSequence) return;
-      ttsState = "idle"; panel.removeAttribute("aria-busy"); message.textContent = t("aiSpeechGenerationError"); recovery.hidden = false; updateTtsPlayer();
-    };
-    audio.ontimeupdate = () => {
-      if (!premiumPrefetch && ttsChunks[ttsChunkIndex + 1] && Number.isFinite(audio.duration) && audio.duration - audio.currentTime < 20) {
-        const request = premiumChunkRequest(ttsChunkIndex + 1); request.catch(() => undefined);
-        premiumPrefetch = { index: ttsChunkIndex + 1, request };
-      }
-    };
-    message.textContent = result.cached ? t("aiSpeechCached") : "";
+    if (sequence !== ttsSequence || (ttsState as string) === "idle") return;
+    if (ttsChunks[ttsChunkIndex + 1]) {
+      const nextRequest = localChunkRequest(ttsChunkIndex + 1);
+      nextRequest.catch(() => undefined);
+      localTtsPrefetch = { index: ttsChunkIndex + 1, request: nextRequest };
+    }
     panel.removeAttribute("aria-busy");
-    if (ttsState === "playing") await audio.play();
+    await localTtsPlayer.load(result, {
+      ended: () => {
+        if (sequence !== ttsSequence || ttsState === "idle") return;
+        ttsChunkIndex += 1;
+        void playLocalChunk(sequence);
+      },
+      error: () => {
+        if (sequence !== ttsSequence) return;
+        stopTts();
+        $<HTMLButtonElement>("#tts-system-fallback").hidden = false;
+        showToast(t("ttsInitializeFailed"));
+      },
+      progress: ratio => highlightTtsWord(ttsChunkIndex, Math.floor(text.length * ratio)),
+    }, ttsState === "playing");
   } catch (error) {
     if (sequence !== ttsSequence) return;
-    console.error("Premium AI Speech failed", error);
-    ttsState = "idle"; panel.removeAttribute("aria-busy"); message.textContent = currentBook?.cloudId ? premiumErrorMessage(error) : t("aiSpeechNeedsCloudBook");
-    recovery.hidden = false; updateTtsPlayer();
+    console.error("Local neural TTS failed", error);
+    stopTts();
+    $<HTMLButtonElement>("#tts-system-fallback").hidden = false;
+    showToast(localTtsError(error));
   }
 }
 
-async function playPremiumSample(): Promise<void> {
-  const button = $<HTMLButtonElement>("#tts-premium-preview"), panel = $<HTMLElement>("#speech-panel");
-  const message = $<HTMLElement>("#tts-premium-message");
-  const visible = currentTtsText();
-  const sample = (visible.match(/^[\s\S]{1,220}?(?:[.!?…](?:\s|$)|$)/u)?.[0] ?? visible.slice(0, 220)).trim();
-  if (!currentBook?.cloudId) { message.textContent = t("aiSpeechNeedsCloudBook"); return; }
-  if (!sample) { showToast(t("noSelectableText")); return; }
-  stopTts(false); button.disabled = true; panel.setAttribute("aria-busy", "true"); message.textContent = t("aiSpeechGenerating");
-  try {
-    const fragmentId = currentBook.format === "pdf"
-      ? `pdf-${pdfPosition.page}-${pdfTextView?.index ?? 0}-sample`
-      : `epub-${shortStableId(ttsPageKey())}-sample`;
-    const result = await aiSpeech.synthesize({ bookId: currentBook.cloudId, fragmentId, text: sample,
-      voiceId: aiSpeechPreferences.voiceId, language: aiSpeechPreferences.language, rate: ttsPreferences.rate });
-    const audio = new Audio(result.audioUrl); premiumAudio = audio;
-    audio.onended = () => { if (premiumAudio === audio) premiumAudio = undefined; };
-    audio.onerror = () => { if (premiumAudio === audio) premiumAudio = undefined; message.textContent = t("aiSpeechGenerationError"); };
-    message.textContent = result.cached ? t("aiSpeechCached") : "";
-    await audio.play();
-  } catch (error) { message.textContent = premiumErrorMessage(error); }
-  finally { button.disabled = false; panel.removeAttribute("aria-busy"); }
-}
-
 function startTtsPage(): void {
-  if (ttsEngine === "local" && !ttsAvailable()) { showToast(t("speechUnavailable")); return; }
-  if (ttsEngine === "premium" && !aiSpeechAllowed) { showToast(t("aiSpeechSubscriberOnly")); return; }
-  const text = currentTtsText();
+  if (!engineAvailable(ttsPreferences.engine)) { showToast(t("speechUnavailable")); return; }
+  if (ttsPreferences.engine !== "system" && !activeCatalogVoice()) { showToast(t("ttsVoiceRequired")); return; }
+  const source = currentTtsSource();
+  const text = source.text;
   if (!text) { showToast(t("noSelectableText")); stopTts(); return; }
   const sequence = ++ttsSequence;
-  ttsChunks = ttsEngine === "premium" ? premiumSpeechChunks(text) : speechChunks(text); ttsChunkIndex = 0; ttsState = "playing";
+  ttsSource = source;
+  ttsChunks = ttsPreferences.engine === "system" && usesNativeSystemTts() ? nativeSpeechChunks(text) : speechChunks(text);
+  ttsChunkOffsets = locateSpeechChunks(text, ttsChunks);
+  ttsChunkIndex = 0; ttsState = "playing";
   updateTtsPlayer(text);
-  if (ttsEngine === "premium") { void playPremiumChunk(sequence); return; }
-  if (usesNativeTts()) {
+  if (ttsPreferences.engine !== "system") { void playLocalChunk(sequence); return; }
+  if (usesNativeSystemTts()) {
     void nativeStop().catch(() => undefined).then(() => {
       if (sequence === ttsSequence && ttsState === "playing") speakTtsChunk(sequence);
     });
@@ -2709,21 +2769,30 @@ function startTtsPage(): void {
   }
 }
 
+function restartCurrentTtsChunk(): void {
+  if (ttsState === "idle" || !ttsChunks[ttsChunkIndex]) return;
+  const sequence = cancelTtsWork();
+  ttsState = "playing";
+  updateTtsPlayer();
+  if (ttsPreferences.engine === "system") speakTtsChunk(sequence);
+  else void playLocalChunk(sequence);
+}
+
 async function toggleTtsPlayback(): Promise<void> {
-  if (ttsEngine === "local" && !ttsAvailable()) { showToast(t("speechUnavailable")); return; }
+  if (!engineAvailable(ttsPreferences.engine)) { showToast(t("speechUnavailable")); return; }
   if (ttsState === "playing") {
     try {
-      if (ttsEngine === "premium") premiumAudio?.pause();
-      else if (usesNativeTts()) await nativePause(); else window.speechSynthesis.pause();
+      if (ttsPreferences.engine !== "system") localTtsPlayer.pause();
+      else if (usesNativeSystemTts()) await nativePause(); else window.speechSynthesis.pause();
       ttsState = "paused"; updateTtsPlayer();
     } catch (error) { console.error("TTS pause failed", error); showToast(t("speechUnavailable")); }
     return;
   }
   if (ttsState === "paused") {
     try {
-      if (ttsEngine === "premium") {
-        if (premiumAudio) await premiumAudio.play(); else void playPremiumChunk(ttsSequence);
-      } else if (usesNativeTts()) await nativeResume(); else window.speechSynthesis.resume();
+      if (ttsPreferences.engine !== "system") {
+        if (localTtsPlayer.loaded) await localTtsPlayer.resume(); else void playLocalChunk(ttsSequence);
+      } else if (usesNativeSystemTts()) await nativeResume(); else window.speechSynthesis.resume();
       ttsState = "playing"; updateTtsPlayer();
     } catch (error) { console.error("TTS resume failed", error); showToast(t("speechUnavailable")); }
     return;
@@ -2733,98 +2802,327 @@ async function toggleTtsPlayback(): Promise<void> {
 
 async function navigateTts(direction: -1 | 1): Promise<void> {
   if ($(direction < 0 ? "#tts-previous" : "#tts-next").hasAttribute("disabled")) return;
+  if (ttsState !== "idle") {
+    const target = ttsChunkIndex + direction;
+    if (target >= 0 && target < ttsChunks.length) {
+      const sequence = cancelTtsWork();
+      ttsChunkIndex = target;
+      ttsState = "playing";
+      updateTtsPlayer();
+      if (ttsPreferences.engine === "system") speakTtsChunk(sequence); else await playLocalChunk(sequence);
+      return;
+    }
+  }
   stopTts(false);
   await turnPage(direction);
   if (view === "reader") startTtsPage();
 }
 
-function renderTtsVoiceOptions(): void {
-  const select = $<HTMLSelectElement>("#tts-voice-select");
-  select.replaceChildren(new Option(t("ttsDefaultVoice"), ""));
-  for (const voice of ttsVoices) select.add(new Option(ttsVoiceLabel(voice), voice.voiceURI));
-  select.value = ttsVoices.some(voice => voice.voiceURI === ttsPreferences.voiceUri) ? ttsPreferences.voiceUri : "";
-  $("#tts-voice-status").textContent = t(ttsVoices.length === 1 ? "ttsVoiceCountOne" : "ttsVoiceCountMany", { count: ttsVoices.length });
-  $<HTMLButtonElement>("#tts-preview").disabled = !ttsAvailable();
-  updateTtsPlayer();
+function localeName(locale: string): string {
+  try { return new Intl.DisplayNames([language], { type: "language" }).of(locale) ?? locale; }
+  catch { return locale; }
+}
+
+function renderReaderVoiceOptions(): void {
+  const select = document.querySelector<HTMLSelectElement>("#tts-reader-voice");
+  if (!select) return;
+  select.replaceChildren();
+  if (ttsPreferences.engine === "system") {
+    for (const voice of ttsVoices) select.add(new Option(ttsVoiceLabel(voice), `system:${voice.voiceURI}`));
+    const active = activeSystemVoice();
+    select.value = bookTtsPreferences.voiceId.startsWith("system:") ? bookTtsPreferences.voiceId : active ? `system:${active.voiceURI}` : "";
+  } else {
+    for (const voice of installedCatalogVoices(ttsPreferences.engine)) select.add(new Option(`${localeName(voice.locale)} · ${voice.name}`, voice.id));
+    select.value = activeCatalogVoice()?.id ?? "";
+  }
+  if (!select.options.length) select.add(new Option(t("ttsNoVoices"), ""));
+  select.disabled = select.options.length === 1 && !select.options[0].value;
+}
+
+function engineHelp(engine: TtsEngineId): string {
+  return t(engine === "system" ? "ttsEngineSystemHelp" : engine === "piper" ? "ttsEnginePiperHelp" : "ttsEngineKokoroHelp");
+}
+
+function renderTtsEngineControls(): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-tts-engine]").forEach(button => {
+    const engine = button.dataset.ttsEngine as TtsEngineId;
+    const selected = engine === ttsPreferences.engine;
+    button.setAttribute("aria-checked", String(selected));
+    button.disabled = !engineAvailable(engine);
+  });
+  $<HTMLButtonElement>("#tts-import-voice").disabled = !ttsRuntime.available;
+  $("#tts-engine-help").textContent = engineHelp(ttsPreferences.engine);
+}
+
+type CatalogRow = { id: string; engine: TtsEngineId; name: string; locale: string; region: string; installed: boolean; corrupt: boolean; compatible: boolean; imported: boolean; packageId?: string; size: number; modelVersion?: string };
+
+function catalogRows(): CatalogRow[] {
+  const packages = new Map(ttsInstalled.map(item => [item.packageId, item]));
+  const system = ttsVoices.map(voice => ({ id: voice.voiceURI, engine: "system" as const, name: voice.name, locale: voice.lang, region: voice.lang.split("-")[1] ?? "", installed: true, corrupt: false, compatible: true, imported: false, size: 0 }));
+  const local = [...knownVoices, ...ttsImportedVoices].map(voice => {
+    const state = packages.get(voice.packageId);
+    return { id: voice.id, engine: voice.engine, name: voice.name, locale: voice.locale, region: voice.region, installed: Boolean(state?.installed), corrupt: Boolean(state?.corrupt), compatible: engineAvailable(voice.engine), imported: Boolean(voice.imported), packageId: voice.packageId, size: voice.storageBytes ?? state?.bytes ?? 0, modelVersion: voice.modelVersion };
+  });
+  return [...system, ...local].filter(row => row.installed || row.corrupt);
+}
+
+function updateCatalogFilters(rows: CatalogRow[]): void {
+  const lang = $<HTMLSelectElement>("#tts-language-filter"), region = $<HTMLSelectElement>("#tts-region-filter");
+  const previousLang = lang.value, previousRegion = region.value;
+  const languages = [...new Set(rows.map(row => row.locale.split("-")[0]))].sort();
+  const regions = [...new Set(rows.map(row => row.region).filter(Boolean))].sort();
+  lang.replaceChildren(new Option(t("ttsFilterAll"), "all"), ...languages.map(code => new Option(localeName(code), code)));
+  region.replaceChildren(new Option(t("ttsFilterAll"), "all"), ...regions.map(value => new Option(value, value)));
+  lang.value = languages.includes(previousLang) ? previousLang : "all";
+  region.value = regions.includes(previousRegion) ? previousRegion : "all";
+}
+
+function filteredCatalogRows(rows: CatalogRow[]): CatalogRow[] {
+  const languageFilter = $<HTMLSelectElement>("#tts-language-filter").value || "all";
+  const regionFilter = $<HTMLSelectElement>("#tts-region-filter").value || "all";
+  const engineFilter = $<HTMLSelectElement>("#tts-engine-filter").value || "all";
+  return rows.filter(row => (languageFilter === "all" || row.locale.startsWith(languageFilter)) && (regionFilter === "all" || row.region === regionFilter) && (engineFilter === "all" || row.engine === engineFilter));
+}
+
+function renderVoiceRows(root: HTMLElement, rows: CatalogRow[]): void {
+  root.replaceChildren();
+  for (const engine of ["system", "piper", "kokoro"] as const) {
+    const engineRows = rows.filter(row => row.engine === engine);
+    if (!engineRows.length) continue;
+    const group = document.createElement("h4"); group.className = "tts-voice-group";
+    group.textContent = engine === "system" ? t("ttsEngineSystem") : engine === "piper" ? "Piper" : "Kokoro";
+    root.append(group);
+    for (const row of engineRows) {
+      const article = document.createElement("article"); article.className = "tts-voice-entry"; article.dataset.engine = row.engine;
+      const title = document.createElement("div"); title.className = "tts-voice-identity";
+      const heading = document.createElement("h4"); heading.textContent = row.name;
+      const meta = document.createElement("p"); meta.textContent = `${localeName(row.locale)} · ${row.region} · ${group.textContent}`;
+      title.append(heading, meta);
+      const details = document.createElement("div"); details.className = "tts-voice-details";
+      const status = document.createElement("span"); status.className = `tts-voice-state ${row.installed ? "is-installed" : ""}`;
+      status.textContent = row.corrupt ? t("ttsModelCorrupt") : row.installed ? t(row.imported ? "ttsImported" : "ttsInstalled") : t("ttsUnavailableDevice");
+      const size = document.createElement("small");
+      size.textContent = row.engine === "system" ? t("ttsSystemManaged") : [formatModelBytes(row.size, language), row.modelVersion].filter(Boolean).join(" · ");
+      details.append(status, size);
+      const actions = document.createElement("div"); actions.className = "tts-voice-actions";
+      const preview = document.createElement("button"); preview.type = "button"; preview.className = "text-link"; preview.dataset.ttsAction = "preview"; preview.dataset.voiceId = row.id; preview.dataset.engine = row.engine; preview.disabled = !row.installed || !row.compatible; preview.textContent = t("ttsPreview"); actions.append(preview);
+      const isDefault = ttsPreferences.voices[row.engine] === row.id;
+      const choose = document.createElement("button"); choose.type = "button"; choose.className = "text-link"; choose.dataset.ttsAction = "default"; choose.dataset.voiceId = row.id; choose.dataset.engine = row.engine; choose.disabled = !row.installed || !row.compatible || isDefault; choose.textContent = t(isDefault ? "ttsDefault" : "ttsSetDefault"); actions.append(choose);
+      if (row.imported) { const remove = document.createElement("button"); remove.type = "button"; remove.className = "text-link is-danger"; remove.dataset.ttsAction = "remove"; remove.dataset.voiceId = row.id; remove.textContent = t("ttsRemove"); actions.append(remove); }
+      article.append(title, details, actions); root.append(article);
+    }
+  }
+  if (!rows.length) { const empty = document.createElement("p"); empty.className = "tts-catalog-empty"; empty.textContent = t("ttsNoInstalledVoices"); root.append(empty); }
+}
+
+function renderTtsCatalog(resetFilters = false): void {
+  const rows = catalogRows();
+  if (resetFilters) updateCatalogFilters(rows);
+  const visible = filteredCatalogRows(rows);
+  renderVoiceRows($("#tts-voice-library"), visible);
+  renderTtsEngineControls(); renderReaderVoiceOptions();
 }
 
 async function refreshTtsVoices(announce = true): Promise<void> {
   const button = $<HTMLButtonElement>("#tts-refresh-voices");
-  if (!ttsAvailable()) { ttsVoices = []; renderTtsVoiceOptions(); $("#tts-voice-status").textContent = t("speechUnavailable"); return; }
   button.disabled = true;
   if (announce) $("#tts-voice-status").textContent = t("ttsVoicesLoading");
   try {
-    ttsVoices = usesNativeTts() ? await nativeDeviceVoices() : await refreshDeviceVoices(window.speechSynthesis);
-    renderTtsVoiceOptions();
-    if (!ttsVoices.length) $("#tts-voice-status").textContent = t("ttsNoVoices");
+    const [voices, installed, runtime, imported] = await Promise.all([
+      ttsAvailable() ? (usesNativeSystemTts() ? nativeDeviceVoices() : refreshDeviceVoices(window.speechSynthesis)) : Promise.resolve([]),
+      installedPackages(), runtimeStatus(), importedVoices(),
+    ]);
+    ttsVoices = voices; ttsInstalled = installed; ttsRuntime = runtime; ttsImportedVoices = imported;
+    renderTtsCatalog(true);
+    $("#tts-voice-status").textContent = !runtime.available && supportsLocalNeuralTts() ? t("ttsRuntimeUnavailable") : "";
   } catch (error) {
     console.error("TTS voice discovery failed", error);
-    ttsVoices = []; renderTtsVoiceOptions();
-    $("#tts-voice-status").textContent = t("speechUnavailable");
+    renderTtsCatalog(true); $("#tts-voice-status").textContent = t("speechUnavailable");
   } finally { button.disabled = false; }
 }
 
 function setTtsRate(value: number, restart: boolean): void {
-  ttsPreferences = saveTtsPreferences({ ...ttsPreferences, rate: value });
+  bookTtsPreferences = { ...bookTtsPreferences, rate: value }; saveCurrentBookTts();
   updateTtsPlayer();
-  if (restart && ttsState !== "idle") startTtsPage();
+  if (restart) restartCurrentTtsChunk();
+}
+$("#tts-refresh-voices").addEventListener("click", () => void refreshTtsVoices());
+const ttsRateInput = $<HTMLInputElement>("#tts-rate-reader");
+ttsRateInput.addEventListener("input", () => setTtsRate(Number(ttsRateInput.value), false));
+ttsRateInput.addEventListener("change", () => setTtsRate(Number(ttsRateInput.value), true));
+const ttsPitchInput = $<HTMLInputElement>("#tts-pitch-reader");
+ttsPitchInput.addEventListener("input", () => {
+  bookTtsPreferences = { ...bookTtsPreferences, pitch: Number(ttsPitchInput.value) }; saveCurrentBookTts(); updateTtsPlayer();
+});
+ttsPitchInput.addEventListener("change", restartCurrentTtsChunk);
+
+const ttsImportDialog = $<HTMLDialogElement>("#tts-import-dialog");
+const ttsImportForm = $<HTMLFormElement>("#tts-import-form");
+let preparedVoiceImport: PreparedVoiceImport | null = null;
+
+function setVoiceImportBusy(busy: boolean, status = ""): void {
+  ttsImportDialog.setAttribute("aria-busy", String(busy));
+  for (const control of ttsImportForm.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) control.disabled = busy;
+  if (!busy) $<HTMLButtonElement>("#tts-import-submit").disabled = !preparedVoiceImport
+    || (preparedVoiceImport.inspection.kind === "kokoro-voice" && !preparedVoiceImport.inspection.baseModelInstalled);
+  $("#tts-import-error").textContent = status;
 }
 
-$<HTMLSelectElement>("#tts-voice-select").addEventListener("change", event => {
-  ttsPreferences = saveTtsPreferences({ ...ttsPreferences, voiceUri: (event.target as HTMLSelectElement).value });
-  updateTtsPlayer();
-});
-$<HTMLButtonElement>("#tts-engine-local").addEventListener("click", () => selectTtsEngine("local"));
-$<HTMLButtonElement>("#tts-engine-premium").addEventListener("click", () => selectTtsEngine("premium"));
-$<HTMLSelectElement>("#tts-premium-language").addEventListener("change", event => {
-  aiSpeechPreferences.language = (event.target as HTMLSelectElement).value;
-  const first = aiSpeechVoices.find(voice => voice.language === aiSpeechPreferences.language);
-  aiSpeechPreferences.voiceId = first?.id ?? ""; renderAiSpeechVoiceOptions(); persistAiSpeechVoice();
-  if (ttsState !== "idle") startTtsPage();
-});
-$<HTMLSelectElement>("#tts-premium-voice").addEventListener("change", event => {
-  aiSpeechPreferences.voiceId = (event.target as HTMLSelectElement).value; persistAiSpeechVoice(); updateTtsPlayer();
-  if (ttsState !== "idle") startTtsPage();
-});
-$<HTMLButtonElement>("#tts-premium-retry").addEventListener("click", () => startTtsPage());
-$<HTMLButtonElement>("#tts-use-local").addEventListener("click", () => { selectTtsEngine("local"); startTtsPage(); });
-$<HTMLButtonElement>("#tts-premium-preview").addEventListener("click", () => void playPremiumSample());
-$("#tts-refresh-voices").addEventListener("click", () => void refreshTtsVoices());
-for (const id of ["#tts-rate-settings", "#tts-rate-reader"]) {
-  const input = $<HTMLInputElement>(id);
-  input.addEventListener("input", () => setTtsRate(Number(input.value), false));
-  input.addEventListener("change", () => setTtsRate(Number(input.value), true));
+function resetVoiceImport(): void {
+  void discardPreparedVoiceImport(preparedVoiceImport);
+  preparedVoiceImport = null;
+  ttsImportForm.reset();
+  $("#tts-import-file").textContent = t("ttsNoModelSelected");
+  $("#tts-import-error").textContent = "";
+  $("#tts-import-detected").hidden = true;
+  $("#tts-import-base").hidden = true;
+  $("#tts-import-fields").hidden = true;
+  $<HTMLButtonElement>("#tts-import-submit").disabled = true;
 }
-$("#tts-preview").addEventListener("click", async () => {
-  if (!ttsAvailable()) { showToast(t("speechUnavailable")); return; }
-  stopTts(false);
-  const voice = preferredVoice(ttsVoices, ttsPreferences, language);
-  if (usesNativeTts()) {
-    $("#tts-preview-status").textContent = t("ttsPreviewPlaying");
-    try {
-      await nativeStop();
-      await nativeSpeak({ text: t("ttsPreviewText"), voiceUri: voice?.voiceURI ?? "", language: voice?.lang ?? language, rate: ttsPreferences.rate });
-    } catch (error) {
-      console.error("Native TTS preview failed", error);
-      showToast(t("speechUnavailable"));
-    } finally { $("#tts-preview-status").textContent = ""; }
+
+function renderImportInspection(prepared: PreparedVoiceImport): void {
+  const inspection = prepared.inspection;
+  $("#tts-import-file").textContent = prepared.label;
+  const summary = $("#tts-import-detected");
+  summary.textContent = t("ttsImportDetected", {
+    engine: inspection.engine === "piper" ? "Piper" : "Kokoro",
+    format: inspection.format,
+    size: formatModelBytes(inspection.size, language),
+  });
+  summary.hidden = false;
+  const name = $<HTMLInputElement>("#tts-import-name"), locale = $<HTMLInputElement>("#tts-import-locale");
+  name.value = inspection.name ?? ""; locale.value = inspection.locale ?? locale.value;
+  const nameField = $<HTMLElement>('[data-import-field="name"]'), localeField = $<HTMLElement>('[data-import-field="locale"]');
+  nameField.hidden = !inspection.requiresName; localeField.hidden = !inspection.requiresLocale;
+  name.required = inspection.requiresName; locale.required = inspection.requiresLocale;
+  $("#tts-import-fields").hidden = !inspection.requiresName && !inspection.requiresLocale;
+  const needsBase = inspection.kind === "kokoro-voice" && !inspection.baseModelInstalled;
+  $("#tts-import-base").hidden = !needsBase;
+  $<HTMLButtonElement>("#tts-import-submit").disabled = needsBase;
+  $("#tts-import-error").textContent = "";
+}
+
+function closeVoiceImport(): void {
+  if (ttsImportDialog.getAttribute("aria-busy") === "true") return;
+  void discardPreparedVoiceImport(preparedVoiceImport); preparedVoiceImport = null;
+  ttsImportDialog.close();
+}
+
+$("#tts-import-voice").addEventListener("click", () => {
+  if (!ttsRuntime.available) { showToast(t("ttsRuntimeUnavailable")); return; }
+  resetVoiceImport(); ttsImportDialog.showModal(); $<HTMLButtonElement>("#tts-import-pick").focus();
+});
+$("#tts-import-close").addEventListener("click", closeVoiceImport);
+$("#tts-import-cancel").addEventListener("click", closeVoiceImport);
+ttsImportDialog.addEventListener("cancel", event => { if (ttsImportDialog.getAttribute("aria-busy") === "true") event.preventDefault(); });
+$("#tts-import-pick").addEventListener("click", () => {
+  void chooseVoiceFile(t("ttsChooseFile")).then(async selected => {
+    if (!selected) return;
+    setVoiceImportBusy(true, t("ttsImportInspecting"));
+    await discardPreparedVoiceImport(preparedVoiceImport);
+    preparedVoiceImport = await prepareVoiceImport(selected);
+    setVoiceImportBusy(false); renderImportInspection(preparedVoiceImport);
+  }).catch(error => { setVoiceImportBusy(false, localTtsError(error)); $("#tts-import-error").focus(); });
+});
+$("#tts-import-base-pick").addEventListener("click", () => {
+  let preparedBase: PreparedVoiceImport | null = null;
+  void chooseVoiceFile(t("ttsImportBaseModel")).then(async selected => {
+    if (!selected || !preparedVoiceImport) return;
+    setVoiceImportBusy(true, t("ttsImportValidating"));
+    preparedBase = await prepareVoiceImport(selected);
+    if (preparedBase.inspection.kind !== "model-package" || preparedBase.inspection.engine !== "kokoro" || preparedBase.inspection.modelVersion !== preparedVoiceImport.inspection.modelVersion) {
+      throw new Error("TTS_KOKORO_BASE_INCOMPATIBLE");
+    }
+    await installPreparedVoice(preparedBase, { name: preparedBase.inspection.name ?? "Kokoro", locale: preparedBase.inspection.locale ?? "en-US" });
+    preparedBase = null;
+    await refreshTtsVoices(false);
+    preparedVoiceImport.inspection.baseModelInstalled = true;
+    setVoiceImportBusy(false); renderImportInspection(preparedVoiceImport);
+  }).catch(error => { void discardPreparedVoiceImport(preparedBase); setVoiceImportBusy(false, localTtsError(error)); $("#tts-import-error").focus(); });
+});
+ttsImportForm.addEventListener("submit", event => {
+  event.preventDefault();
+  if (!preparedVoiceImport) { $("#tts-import-error").textContent = t("ttsImportSelectModel"); $("#tts-import-error").focus(); return; }
+  setVoiceImportBusy(true, t("ttsImportValidating"));
+  void installPreparedVoice(preparedVoiceImport, {
+    name: $<HTMLInputElement>("#tts-import-name").value || preparedVoiceImport.inspection.name,
+    locale: $<HTMLInputElement>("#tts-import-locale").value || preparedVoiceImport.inspection.locale,
+  }).then(async voice => {
+    preparedVoiceImport = null;
+    setVoiceImportBusy(false); ttsImportDialog.close();
+    showToast(t("ttsImportComplete", { voice: voice.name }));
+    await refreshTtsVoices(false);
+  }).catch(error => {
+    setVoiceImportBusy(false, localTtsError(error));
+    $("#tts-import-error").focus();
+  });
+});
+
+document.querySelectorAll<HTMLButtonElement>("[data-tts-engine]").forEach(button => button.addEventListener("click", () => {
+  const engine = button.dataset.ttsEngine as TtsEngineId;
+  if (!engineAvailable(engine)) return;
+  stopTts(false); ttsPreferences = saveTtsPreferences({ ...ttsPreferences, engine }); renderTtsCatalog(); updateTtsPlayer();
+}));
+for (const id of ["#tts-language-filter", "#tts-region-filter", "#tts-engine-filter"]) $(id).addEventListener("change", () => renderTtsCatalog());
+async function previewInstalledVoice(engine: TtsEngineId, voiceId: string): Promise<void> {
+  ttsPreviewPlayer.stop();
+  if (usesNativeSystemTts()) await nativeStop().catch(() => undefined);
+  else window.speechSynthesis?.cancel();
+  $("#tts-voice-status").textContent = t("ttsPreviewPlaying");
+  if (engine === "system") {
+    const voice = ttsVoices.find(item => item.voiceURI === voiceId);
+    if (!voice) throw new Error("TTS_VOICE_UNKNOWN");
+    if (usesNativeSystemTts()) {
+      await nativeSpeak({ text: t("ttsPreviewText"), voiceUri: voice.voiceURI, language: voice.lang, rate: 1, pitch: 1 });
+      $("#tts-voice-status").textContent = "";
+    } else {
+      const utterance = new SpeechSynthesisUtterance(t("ttsPreviewText"));
+      utterance.voice = window.speechSynthesis.getVoices().find(item => item.voiceURI === voiceId) ?? null;
+      utterance.lang = voice.lang;
+      utterance.onend = () => { $("#tts-voice-status").textContent = ""; };
+      utterance.onerror = () => { $("#tts-voice-status").textContent = t("ttsInitializeFailed"); };
+      window.speechSynthesis.speak(utterance);
+    }
     return;
   }
-  const speech = new SpeechSynthesisUtterance(t("ttsPreviewText"));
-  if (voice) speech.voice = voice;
-  speech.lang = voice?.lang ?? language; speech.rate = ttsPreferences.rate;
-  $("#tts-preview-status").textContent = t("ttsPreviewPlaying");
-  speech.onend = speech.onerror = () => { $("#tts-preview-status").textContent = ""; };
-  window.speechSynthesis.speak(speech);
+  const audio = await synthesizeLocal(voiceId, t("ttsPreviewText"), 1);
+  await ttsPreviewPlayer.load(audio, {
+    ended: () => { $("#tts-voice-status").textContent = ""; },
+    error: () => { $("#tts-voice-status").textContent = t("ttsInitializeFailed"); },
+  });
+}
+$<HTMLElement>(".tts-settings-sheet").addEventListener("click", event => {
+  const button = (event.target as Element).closest<HTMLButtonElement>("button[data-tts-action]");
+  if (!button || button.disabled) return;
+  const action = button.dataset.ttsAction, voiceId = button.dataset.voiceId ?? "";
+  if (action === "default") {
+    const engine = button.dataset.engine as TtsEngineId;
+    ttsPreferences = saveTtsPreferences({ engine, voices: { ...ttsPreferences.voices, [engine]: voiceId } });
+    renderTtsCatalog(); updateTtsPlayer(); return;
+  }
+  if (action === "preview") {
+    void previewInstalledVoice(button.dataset.engine as TtsEngineId, voiceId).catch(error => { $("#tts-voice-status").textContent = localTtsError(error); }); return;
+  }
+  if (action === "remove") {
+    void removeImportedVoice(voiceId).then(async () => { showToast(t("ttsVoiceRemoved")); await refreshTtsVoices(false); }).catch(error => showToast(localTtsError(error))); return;
+  }
+});
+$<HTMLSelectElement>("#tts-reader-voice").addEventListener("change", event => {
+  bookTtsPreferences = { ...bookTtsPreferences, voiceId: (event.target as HTMLSelectElement).value }; saveCurrentBookTts();
+  if (ttsState !== "idle") restartCurrentTtsChunk(); else updateTtsPlayer();
+});
+$<HTMLButtonElement>("#tts-system-fallback").addEventListener("click", () => {
+  ttsPreferences = saveTtsPreferences({ ...ttsPreferences, engine: "system" });
+  $<HTMLButtonElement>("#tts-system-fallback").hidden = true; renderTtsCatalog(); updateTtsPlayer();
 });
 $("#tts-play-pause").addEventListener("click", () => void toggleTtsPlayback());
 $("#tts-stop").addEventListener("click", () => stopTts());
 $("#tts-previous").addEventListener("click", () => void navigateTts(-1));
 $("#tts-next").addEventListener("click", () => void navigateTts(1));
-if (!usesNativeTts() && window.speechSynthesis) window.speechSynthesis.addEventListener("voiceschanged", () => {
-  ttsVoices = localDeviceVoices(window.speechSynthesis); renderTtsVoiceOptions();
+if (!usesNativeSystemTts() && window.speechSynthesis) window.speechSynthesis.addEventListener("voiceschanged", () => {
+  ttsVoices = localDeviceVoices(window.speechSynthesis); renderTtsCatalog(true);
 });
-renderTtsVoiceOptions();
+renderTtsCatalog(true);
 void refreshTtsVoices(false);
 $<HTMLElement>(".reader-toolbar").addEventListener("pointerdown", resetReaderChrome);
 $<HTMLElement>(".reader-bottom").addEventListener("pointerdown", resetReaderChrome);
@@ -2994,6 +3292,13 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-book-th
     applyBookReaderTheme();
   });
 }
+const readerShowNotes = $<HTMLInputElement>("#reader-show-notes");
+readerShowNotes.addEventListener("change", () => {
+  readerNotesVisible = readerShowNotes.checked;
+  const key = readerPreferenceKey("notes");
+  if (key) localStorage.setItem(key, readerNotesVisible ? "visible" : "hidden");
+  renderNoteMarkers();
+});
 const renderNoteStyleChoices = (): void => {
   for(const button of document.querySelectorAll<HTMLButtonElement>(".note-style-choice")){
     const selected=button.dataset.noteStyle===noteStyle;
@@ -3112,6 +3417,7 @@ $("#reader-toc").addEventListener("change", () => { closeReaderOptions(); const 
 const historyAction = (direction: "back" | "forward" | "return"): void => {
   if (readerJumpBusy) return;
   const position = direction === "return" ? readerHistory.returnToReading() : direction === "back" ? readerHistory.back() : readerHistory.forward();
+  if (direction === "return") temporaryNavigationSource = null;
   if (position) void displayPosition(position).catch(error => showToast(errorMessage(error)));
 };
 $("#history-back").addEventListener("click", () => historyAction("back"));
@@ -3120,6 +3426,7 @@ $("#reading-return").addEventListener("click", () => historyAction("return"));
 $("#reading-adopt").addEventListener("click", () => {
   if (readerJumpBusy) return;
   readerHistory.commit(capturePosition());
+  temporaryNavigationSource = null;
   if (currentBook?.format === "epub") { stableLayoutAnchor = null; stableLayoutPercentage = null; currentBook.cfi = epubPosition.cfi; if (rendition?.location) currentBook.percentage = epubReadingPercentage(rendition.location); }
   void persistCurrent(); updateHistory();
 });
@@ -3198,7 +3505,7 @@ bookLayoutUI = mountLayoutFields($("#book-layout-fields"), {
   },
 });
 mountAccountSecurity($("#settings-security"));
-const accountPlans = mountAccountPlans($("#settings-account-sheet"), $("#settings-tts-panel"));
+const accountPlans = mountAccountPlans($("#settings-account-sheet"));
 mountAccountStorage(accountPlans.actions, coverElement, reloadCloudLibrary);
 mountAccount(app, $(".shell"), $("#settings-account-footer"));
 const cloudDownloads = new Map<string, Promise<StoredBook>>();

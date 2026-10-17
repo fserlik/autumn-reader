@@ -111,6 +111,24 @@ Deno.test("source validation accepts only text from the referenced PDF page",asy
   assertEquals(error.errorType,"pdf_page_out_of_range");assertEquals(error.parserStage,"fragment_validation");
 });
 
+Deno.test("EPUB validation decodes named typographic entities like the reader WebView",async()=>{
+  const entityArchive=new JSZip();
+  entityArchive.file("META-INF/container.xml","<container/>");
+  entityArchive.file("OEBPS/chapter.xhtml","<html><body><p>&ldquo;HOW ABOUT,&rdquo; CHARLIE says, &ldquo;a game of pool. If I win, you tell me why you&rsquo;re really here&hellip;&rdquo;</p></body></html>");
+  const bytes=new Uint8Array(await entityArchive.generateAsync({type:"uint8array"}));
+  assertEquals(await textBelongsToBook(bytes,"epub","epub-page-0","“HOW ABOUT,” CHARLIE says, “a game of pool. If I win, you tell me why you’re really here…”"),true);
+  assertEquals(await textBelongsToBook(bytes,"epub","epub-page-0","This text is not in the book"),false);
+});
+
+Deno.test("EPUB validation tolerates sentence chunk spacing without accepting different words",async()=>{
+  const punctuationArchive=new JSZip();
+  punctuationArchive.file("META-INF/container.xml","<container/>");
+  punctuationArchive.file("OEBPS/chapter.xhtml","<html><body><p>She answered, “Wait.” Then she said, “Go.”</p></body></html>");
+  const bytes=new Uint8Array(await punctuationArchive.generateAsync({type:"uint8array"}));
+  assertEquals(await textBelongsToBook(bytes,"epub","epub-page-0","She answered, “Wait. ” Then she said, “Go. ”"),true);
+  assertEquals(await textBelongsToBook(bytes,"epub","epub-page-0","She answered with completely different words"),false);
+});
+
 Deno.test("Polly failures log a safe stage, AWS error type and HTTP status without secrets or book text",async()=>{
   const fake=mock({pollyStatus:403,pollyErrorType:"InvalidSignatureException"});try{
     const {result:response,entries}=await captureDiagnostics(()=>handleAiSpeechRequest(request(synthesis)));
