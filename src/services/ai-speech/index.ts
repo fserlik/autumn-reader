@@ -8,13 +8,12 @@ export interface AiSpeechVoice {
   name: string;
   language: string;
   gender: "female" | "male";
-  proOnly: boolean;
 }
 export interface AiSpeechUsage {
-  plan: "free" | "plus" | "pro";
-  includedSeconds: number;
-  usedSeconds: number;
-  remainingSeconds: number;
+  plan: "free" | "premium";
+  includedCharacters: number;
+  usedCharacters: number;
+  remainingCharacters: number;
   cycleStartsAt: string;
   resetsAt: string;
   serviceAvailable: boolean;
@@ -29,6 +28,8 @@ export interface AiSpeechAudio {
 export interface BookAiSpeechPreferences { voiceId: string; language: string; }
 
 const preferencePrefix = "autumn-ai-speech-book:";
+const globalPreferencePrefix = "autumn-ai-speech-global:";
+const defaultPreferences: BookAiSpeechPreferences = { voiceId: "Lucia", language: "es-ES" };
 function failure(error: unknown, data: unknown): Error {
   const code = data && typeof data === "object" && "code" in data ? String(data.code) : "provider_unavailable";
   if (["session_expired", "forbidden", "device_revoked", "not_configured"].includes(code))
@@ -61,13 +62,24 @@ export const aiSpeech = {
 };
 
 export function loadBookAiSpeechPreferences(ownerId: string, bookId: string): BookAiSpeechPreferences {
-  const fallback = { voiceId: "Lucia", language: "es-ES" };
   try {
     const value = JSON.parse(localStorage.getItem(`${preferencePrefix}${ownerId}:${bookId}`) ?? "null") as Partial<BookAiSpeechPreferences> | null;
     return typeof value?.voiceId === "string" && typeof value.language === "string"
-      ? { voiceId: value.voiceId, language: value.language } : fallback;
-  } catch { return fallback; }
+      ? { voiceId: value.voiceId, language: value.language } : defaultPreferences;
+  } catch { return defaultPreferences; }
 }
 export function saveBookAiSpeechPreferences(ownerId: string, bookId: string, value: BookAiSpeechPreferences): void {
   localStorage.setItem(`${preferencePrefix}${ownerId}:${bookId}`, JSON.stringify(value));
+}
+
+export function loadAiSpeechPreferences(ownerId: string): BookAiSpeechPreferences {
+  try {
+    const value = JSON.parse(localStorage.getItem(`${globalPreferencePrefix}${ownerId}`) ?? "null") as Partial<BookAiSpeechPreferences> | null;
+    return typeof value?.voiceId === "string" && typeof value.language === "string"
+      ? { voiceId: value.voiceId, language: value.language } : defaultPreferences;
+  } catch { return defaultPreferences; }
+}
+
+export function saveAiSpeechPreferences(ownerId: string, value: BookAiSpeechPreferences): void {
+  localStorage.setItem(`${globalPreferencePrefix}${ownerId}`, JSON.stringify(value));
 }

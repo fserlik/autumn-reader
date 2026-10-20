@@ -132,6 +132,25 @@ em { color: var(--accent); font-weight: 400; }
 .features h3 { margin: 27px 0 12px; font-size: 25px; }
 .features p { color: var(--muted); font-size: 13px; }
 
+.plans { padding: 104px max(7vw, 25px) 112px; border-top: 1px solid var(--line); background: var(--paper-bright); }
+.plans-heading { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(280px, .58fr); gap: 8vw; align-items: end; max-width: 1380px; margin: 0 auto 58px; }
+.plans-heading h2 { max-width: 820px; margin: 12px 0 0; }
+.plans-heading > p { max-width: 480px; margin: 0 0 9px; color: var(--muted); font-size: 16px; line-height: 1.8; }
+.plan-ledger { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 1380px; margin: 0 auto; border-block: 1px solid var(--line); }
+.plan-entry { display: flex; min-width: 0; flex-direction: column; padding: 38px 34px 34px; border-left: 1px solid var(--line); }
+.plan-entry:first-child { border-left: 0; }
+.plan-entry-featured { background: color-mix(in srgb, var(--soft) 55%, transparent); }
+.plan-title { min-height: 138px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+.plan-title span, .plan-title strong, .plan-title small { display: block; }
+.plan-title span { min-height: 44px; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .06em; }
+.plan-title strong { font: 400 clamp(30px, 3vw, 44px) "Libre Baskerville", Georgia, serif; letter-spacing: -.04em; }
+.plan-title small { margin-top: 5px; color: var(--muted); font-size: 12px; }
+.plan-entry ul { flex: 1; margin: 0 0 28px; padding: 0; list-style: none; }
+.plan-entry li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; padding: 14px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent); color: var(--muted); font-size: 12px; line-height: 1.55; }
+.plan-entry li strong { max-width: 150px; color: var(--ink); font-weight: 600; text-align: right; }
+.plan-entry > a { align-self: flex-start; }
+.plan-note { max-width: 1040px; margin: 30px auto 0; color: var(--muted); font-size: 12px; line-height: 1.75; text-align: center; }
+
 .statement { padding: 98px 24px 104px; background: var(--wine); color: #f5ede2; text-align: center; }
 .statement h2 { max-width: 1000px; margin: 20px auto 22px; }
 .statement > p:not(.eyebrow) { max-width: 620px; margin: 0 auto 32px; color: #d8c7b8; }
@@ -206,6 +225,7 @@ footer a:hover { text-decoration-color: currentColor; }
   .docs-layout { grid-template-columns: 235px minmax(0, 1fr); }
   .toc { display: none; }
   .features { grid-template-columns: repeat(2, 1fr); }
+  .plan-entry { padding-inline: 25px; }
   .edition-heading { gap: 45px; }
   .release-story, .release-story-reverse { grid-template-columns: minmax(230px, .7fr) minmax(0, 1.3fr); }
   .release-story-reverse { grid-template-columns: minmax(0, 1.3fr) minmax(230px, .7fr); }
@@ -241,6 +261,17 @@ footer a:hover { text-decoration-color: currentColor; }
   .intro { padding: 72px 20px; }
   .features { grid-template-columns: 1fr; }
   .features a { min-height: 0; padding: 30px 26px; }
+  .plans { padding: 72px 20px 78px; }
+  .plans-heading { display: block; margin-bottom: 40px; }
+  .plans-heading > p { margin-top: 22px; font-size: 16px; }
+  .plan-ledger { grid-template-columns: 1fr; }
+  .plan-entry, .plan-entry:first-child { padding: 32px 4px; border-top: 1px solid var(--line); border-left: 0; }
+  .plan-entry:first-child { border-top: 0; }
+  .plan-title { min-height: 0; }
+  .plan-title span { min-height: 0; margin-bottom: 8px; }
+  .plan-entry li { font-size: 14px; }
+  .plan-entry li strong { max-width: 48%; }
+  .plan-note { margin-top: 24px; text-align: left; }
   .features p, .article p, .article li, .policy-content p { font-size: 16px; }
   .statement { padding: 72px 20px; }
   .downloads, footer { align-items: flex-start; flex-direction: column; padding: 62px 22px; }

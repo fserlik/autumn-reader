@@ -32,7 +32,7 @@ beforeAll(async () => {
     "202609290011_folder_note_colors.sql","202609300001_private_book_metadata.sql",
     "202609300002_upload_quota_retries.sql","202609300003_cloud_storage_management.sql",
     "202610010001_cloud_book_identities.sql","202610010002_profile_banner.sql",
-    "202610020001_account_plans.sql",
+    "202610020001_account_plans.sql","202610020002_device_revocation.sql",
     "202610030001_microsoft_store_subscriptions.sql",
   ]) { try { await db.exec(migration(name)); } catch (error) { throw new Error(`Migration ${name}: ${JSON.stringify(error, Object.getOwnPropertyNames(error as object))}`); } }
   await db.query("insert into auth.users(id) values($1)",[legacyStoreUser]);
@@ -47,6 +47,14 @@ beforeAll(async () => {
   catch (error) { throw new Error(`Migration 202610100001_premium_ai_speech.sql: ${JSON.stringify(error, Object.getOwnPropertyNames(error as object))}`); }
   try { await db.exec(migration("202610130001_reduce_paid_plan_storage.sql")); }
   catch (error) { throw new Error(`Migration 202610130001_reduce_paid_plan_storage.sql: ${JSON.stringify(error, Object.getOwnPropertyNames(error as object))}`); }
+  for (const name of [
+    "202610180001_premium_entitlements.sql",
+    "202610180002_service_quotas.sql",
+    "202610180003_provider_controls_billing_audit_and_r2_gc.sql",
+  ]) {
+    try { await db.exec(migration(name)); }
+    catch (error) { throw new Error(`Migration ${name}: ${JSON.stringify(error, Object.getOwnPropertyNames(error as object))}`); }
+  }
   await db.query("insert into auth.users(id) values($1),($2)",[a,b]);
 }, 40000);
 afterAll(async () => db.close());
@@ -73,14 +81,18 @@ async function prepare(owner: string, number: number, bytes: number) {
   return (await db.query<{value:{id:string}}>("select public.reserve_book_upload($1,$2,'pdf',$3,'Plan test','') as value",[owner,hash(number),bytes])).rows[0].value;
 }
 
-test("catalog defines Free, Plus and Pro centrally; existing accounts are Free without deleting books", async () => {
+test("public catalog exposes only Free and Premium while historical rows remain internal", async () => {
   await addBooks(a,55,100);
   const catalog=(await db.query<{code:string;cloud_bytes:number;max_devices:number|null}>("select code,cloud_bytes,max_devices from private.plan_catalog order by cloud_bytes")).rows;
   expect(catalog.map(p=>[p.code,Number(p.cloud_bytes),p.max_devices])).toEqual([
-    ["free",1073741824,2],["plus",5368709120,null],["pro",21474836480,null],
+    ["free",1073741824,2],["plus",5368709120,null],["pro",21474836480,null],["premium",26843545600,null],
   ]);
   expect((await db.query<{count:number}>("select count(*)::integer as count from public.user_books where user_id=$1 and deleted_at is null",[a])).rows[0].count).toBe(55);
   await asUser(a,async()=>{
+    const device=randomUUID(); await db.query("select public.register_device($1,$2,'web','Catalog test')",[device,device]);
+    const publicCatalog=(await db.query<{value:Array<{code:string;lifetime_usd_cents:number|null}>}>("select public.plan_catalog() as value")).rows[0].value;
+    expect(publicCatalog.map(plan=>plan.code)).toEqual(["free","premium"]);
+    expect(publicCatalog[1].lifetime_usd_cents).toBe(11999);
     const usage=(await db.query<{value:Record<string,number|string>}>("select public.library_quota() as value")).rows[0].value;
     expect(usage).toMatchObject({used_books:55,used_bytes:5500,max_bytes:1073741824,plan:"free"});
     expect(usage).not.toHaveProperty("max_books");
@@ -110,7 +122,7 @@ test("downgrade preserves existing over-quota books and downloads but blocks new
   expect((await db.query<{count:number}>("select count(*)::integer as count from public.user_books where user_id=$1 and deleted_at is null",[owner])).rows[0].count).toBe(34);
 });
 
-test("Free allows two registered devices, denies a third, and Plus has no device cap",async()=>{
+test("Free allows two registered devices, denies a third, and a legacy paid right maps to unlimited Premium",async()=>{
   const first=randomUUID(),second=randomUUID(),third=randomUUID();
   await asUser(b,async()=>{
     const register=async(id:string,secret=id)=>(await db.query<{value:{allowed:boolean;active_devices:number}}>("select public.register_device($1,$2,'android','Test device') as value",[id,secret])).rows[0].value;
@@ -119,8 +131,7 @@ test("Free allows two registered devices, denies a third, and Plus has no device
     expect((await register(second)).allowed).toBe(true);
     expect((await register(third)).allowed).toBe(false);
     expect((await db.query<{value:unknown[]}>("select public.account_devices() as value")).rows[0].value).toHaveLength(2);
-    await db.query("select public.remove_account_device($1)",[first]);
-    expect((await register(third)).allowed).toBe(true);
+    expect((await register(third)).allowed).toBe(false);
   });
   await db.query("insert into private.subscriptions(user_id,provider,plan,status) values($1,'manual','plus','active')",[b]);
   await asUser(b,async()=>{
@@ -143,17 +154,17 @@ test("cloud library RLS stays private until the signed-in installation registers
   });
 });
 
-test("subscription state falls back to Free after cancellation/expiration and keeps Pro during grace",async()=>{
+test("subscription state falls back to Free after expiration and maps valid legacy plans to Premium",async()=>{
   const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]);
   await db.query("insert into private.subscriptions(user_id,provider,plan,status) values($1,'manual','pro','active')",[owner]);
   const effective=async()=> (await db.query<{code:string}>("select private.effective_plan_code($1) as code",[owner])).rows[0].code;
-  expect(await effective()).toBe("pro");
+  expect(await effective()).toBe("premium");
   await db.query("update private.subscriptions set status='canceled',current_period_end=now()+interval '1 day' where user_id=$1",[owner]);
-  expect(await effective()).toBe("pro");
+  expect(await effective()).toBe("premium");
   await db.query("update private.subscriptions set current_period_end=now()-interval '1 day' where user_id=$1",[owner]);
   expect(await effective()).toBe("free");
   await db.query("update private.subscriptions set status='past_due',grace_until=now()+interval '1 day' where user_id=$1",[owner]);
-  expect(await effective()).toBe("pro");
+  expect(await effective()).toBe("premium");
   await db.query("update private.subscriptions set grace_until=now()-interval '1 day' where user_id=$1",[owner]);
   expect(await effective()).toBe("free");
 });
@@ -173,22 +184,27 @@ test("paid-to-Free downgrade pauses cloud access above two devices until the use
       "select public.register_device($1,$2,'android','Test') as value",[ids[0],ids[0]])).rows[0].value.allowed).toBe(false);
     expect((await db.query<{value:unknown[]}>("select public.account_devices() as value")).rows[0].value).toHaveLength(3);
     await db.query("select public.remove_account_device($1)",[ids[2]]);
+    expect((await db.query<{allowed:boolean}>("select public.device_session_allowed() as allowed")).rows[0].allowed).toBe(false);
+  });
+  await asUser(owner,async()=>{
+    expect((await db.query<{value:{allowed:boolean} }>(
+      "select public.register_device($1,$2,'android','Test') as value",[ids[0],ids[0]])).rows[0].value.allowed).toBe(true);
     expect((await db.query<{allowed:boolean}>("select public.device_session_allowed() as allowed")).rows[0].allowed).toBe(true);
   });
 });
 
-test("Microsoft Store records never grant an entitlement",async()=>{
+test("valid Microsoft Store records map to Premium without changing their economics",async()=>{
   const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]);
   await db.query(`insert into private.subscriptions(
     user_id,provider,provider_customer_id,provider_subscription_id,plan,status,billing_period,current_period_end
   ) values($1,'microsoft_store','legacy-customer','legacy-subscription','pro','active','annual',now()+interval '1 year')`,[owner]);
-  expect((await db.query<{code:string}>("select private.effective_plan_code($1) as code",[owner])).rows[0].code).toBe("free");
+  expect((await db.query<{code:string}>("select private.effective_plan_code($1) as code",[owner])).rows[0].code).toBe("premium");
 });
 
-test("migration archives legacy Microsoft Store subscriptions without granting premium",async()=>{
+test("migration preserves an archived valid Microsoft Store right as Premium",async()=>{
   expect((await db.query<{count:number}>("select count(*)::integer as count from private.legacy_billing_records where user_id=$1",[legacyStoreUser])).rows[0].count).toBe(1);
   expect((await db.query<{count:number}>("select count(*)::integer as count from private.subscriptions where user_id=$1",[legacyStoreUser])).rows[0].count).toBe(0);
-  expect((await db.query<{code:string}>("select private.effective_plan_code($1) as code",[legacyStoreUser])).rows[0].code).toBe("free");
+  expect((await db.query<{code:string}>("select private.effective_plan_code($1) as code",[legacyStoreUser])).rows[0].code).toBe("premium");
 });
 
 test("billing webhooks are atomic, idempotent and ignore stale state",async()=>{
@@ -208,6 +224,38 @@ test("billing webhooks are atomic, idempotent and ignore stale state",async()=>{
     const row=(await db.query<{plan:string;status:string}>("select plan,status from private.subscriptions where user_id=$1",[owner])).rows[0];
     expect(row).toEqual({plan:"pro",status:"active"});
     expect((await db.query<{count:number}>("select count(*)::integer as count from private.billing_webhook_events where provider='lemonsqueezy'")).rows[0].count).toBeGreaterThanOrEqual(2);
+  } finally { await db.exec("reset role"); }
+});
+
+test("lifetime and monthly grants coexist; refunding Lifetime preserves the subscription",async()=>{
+  const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]);
+  await db.exec("set role service_role");
+  try {
+    const purchased=new Date(Date.now()-60_000).toISOString();
+    expect((await db.query<{value:boolean}>(`select public.process_lifetime_order(
+      'order_created:life-1','order_created',$1,$2,'customer-life','order-life','paid'
+    ) as value`,[purchased,owner])).rows[0].value).toBe(true);
+    expect((await db.query<{value:boolean}>(`select public.process_lifetime_order(
+      'order_created:life-1','order_created',$1,$2,'customer-life','order-life','paid'
+    ) as value`,[purchased,owner])).rows[0].value).toBe(false);
+
+    await db.query(`select public.process_billing_event(
+      'lemonsqueezy','subscription_delayed','subscription_updated',now(),$1,
+      'customer-life','subscription-monthly','premium','monthly','active',now(),now()+interval '1 month',false
+    )`,[owner]);
+    expect((await db.query<{count:number}>("select count(*)::integer count from private.access_grants where user_id=$1 and status='active'",[owner])).rows[0].count).toBe(2);
+    await db.query(`select public.process_lifetime_order(
+      'order_refunded:life-1','order_refunded',now(),$1,'customer-life','order-life','refunded'
+    )`,[owner]);
+    expect((await db.query<{count:number}>("select count(*)::integer count from private.access_grants where user_id=$1 and status='active'",[owner])).rows[0].count).toBe(1);
+    await db.query(`select public.process_lifetime_order(
+      'order_created:life-2','order_created',now(),$1,'customer-life','order-life-2','paid'
+    )`,[owner]);
+    expect((await db.query<{value:boolean}>("select public.revoke_purchase_access('lemonsqueezy','order-life-2','chargeback',now()) value")).rows[0].value).toBe(true);
+    expect((await db.query<{value:boolean}>("select public.revoke_purchase_access('lemonsqueezy','order-life-2','chargeback',now()) value")).rows[0].value).toBe(false);
+    expect((await db.query<{count:number}>("select count(*)::integer count from private.access_grants where user_id=$1 and status='active'",[owner])).rows[0].count).toBe(1);
+    await db.exec("reset role");
+    expect((await db.query<{code:string}>("select private.effective_plan_code($1) as code",[owner])).rows[0].code).toBe("premium");
   } finally { await db.exec("reset role"); }
 });
 
@@ -252,7 +300,7 @@ test("authenticated clients cannot mutate subscriptions or call the billing writ
   });
 });
 
-test("AI speech grants monthly anchored allowances and rejects Free accounts",async()=>{
+test("AI speech grants the same 25,000-character UTC allowance to every Premium source",async()=>{
   const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]); await addBooks(owner,1,100);
   const book=(await db.query<{book_id:string}>("select book_id from public.user_books where user_id=$1",[owner])).rows[0].book_id;
   await db.exec("set role service_role");
@@ -260,11 +308,11 @@ test("AI speech grants monthly anchored allowances and rejects Free accounts",as
     await expect(db.query("select public.reserve_ai_speech($1,$2,$3,$3,'page-1','Lucia','es-ES',1,120,10,160,10000000,90)",[owner,book,"a".repeat(64)])).rejects.toThrow("subscription_required");
     await db.query(`insert into private.subscriptions(user_id,provider,plan,status,billing_period,current_period_start,current_period_end)
       values($1,'manual','plus','active','annual',now()-interval '2 months',now()+interval '10 months')`,[owner]);
-    let usage=(await db.query<{value:{includedSeconds:number;remainingSeconds:number} }>("select public.ai_speech_usage_for_user($1,10000000) as value",[owner])).rows[0].value;
-    expect(usage.includedSeconds).toBe(3600); expect(usage.remainingSeconds).toBe(3600);
+    let usage=(await db.query<{value:{includedCharacters:number;remainingCharacters:number} }>("select public.ai_speech_usage_for_user($1,10000000) as value",[owner])).rows[0].value;
+    expect(usage.includedCharacters).toBe(25000); expect(usage.remainingCharacters).toBe(25000);
     await db.query("update private.subscriptions set plan='pro' where user_id=$1",[owner]);
-    usage=(await db.query<{value:{includedSeconds:number} }>("select public.ai_speech_usage_for_user($1,10000000) as value",[owner])).rows[0].value;
-    expect(usage.includedSeconds).toBe(10800);
+    usage=(await db.query<{value:{includedCharacters:number;remainingCharacters:number} }>("select public.ai_speech_usage_for_user($1,10000000) as value",[owner])).rows[0].value;
+    expect(usage.includedCharacters).toBe(25000);
   } finally { await db.exec("reset role"); }
 });
 
@@ -281,8 +329,8 @@ test("AI speech reservations are idempotent, atomic and release user quota after
     expect(first.outcome).toBe("reserved"); expect(repeat).toEqual({outcome:"pending",generationId:first.generationId});
     expect((await db.query<{count:number}>("select count(*)::integer as count from private.ai_speech_generations where user_id=$1",[owner])).rows[0].count).toBe(1);
     await db.query("select public.fail_ai_speech($1,$2,'provider_unavailable',false)",[owner,first.generationId]);
-    const usage=(await db.query<{value:{usedSeconds:number} }>("select public.ai_speech_usage_for_user($1,10000000) as value",[owner])).rows[0].value;
-    expect(usage.usedSeconds).toBe(0);
+    const usage=(await db.query<{value:{usedCharacters:number} }>("select public.ai_speech_usage_for_user($1,10000000) as value",[owner])).rows[0].value;
+    expect(usage.usedCharacters).toBe(0);
   } finally { await db.exec("reset role"); }
 });
 
@@ -293,13 +341,159 @@ test("AI speech global budget pauses new generation and clients cannot mutate ac
     values($1,'manual','pro','active','monthly',now(),now()+interval '1 month')`,[owner]);
   await db.exec("set role service_role");
   try {
+    expect(Number((await db.query<{value:number}>(
+      "select public.effective_service_budget('amazon_polly_neural',20000000) value"
+    )).rows[0].value)).toBe(10000000);
+    expect(Number((await db.query<{value:number}>(
+      "select public.effective_service_budget('deepl',5000000) value"
+    )).rows[0].value)).toBe(0);
     const first=(await db.query<{value:{generationId:string} }>("select public.reserve_ai_speech($1,$2,$3,$4,'page-1','Lucia','es-ES',1,10,1,100,100,90) as value",[owner,book,"d".repeat(64),"e".repeat(64)])).rows[0].value;
     await db.query("select public.mark_ai_speech_generating($1,$2)",[owner,first.generationId]);
     await db.query("select public.complete_ai_speech($1,$2,$3,null)",[owner,first.generationId,`ai-speech/${owner}/${book}/${"d".repeat(64)}.mp3`]);
-    await expect(db.query("select public.reserve_ai_speech($1,$2,$3,$4,'page-2','Lucia','es-ES',1,10,1,1,100,90)",[owner,book,"f".repeat(64),"1".repeat(64)])).rejects.toThrow("global_budget");
+    const blocked=(await db.query<{value:{outcome:string}}>(
+      "select public.reserve_ai_speech($1,$2,$3,$4,'page-2','Lucia','es-ES',1,10,1,1,100,90) as value",
+      [owner,book,"f".repeat(64),"1".repeat(64)])).rows[0].value;
+    expect(blocked).toEqual({outcome:"budget_exhausted"});
+    expect((await db.query<{count:number}>(
+      "select count(*)::integer count from private.ai_speech_admin_alerts where kind='budget_100'"
+    )).rows[0].count).toBeGreaterThan(0);
   } finally { await db.exec("reset role"); }
   await asUser(owner,async()=>{
     await expect(db.query("select * from private.ai_speech_generations")).rejects.toThrow();
     await expect(db.query("select public.fail_ai_speech($1,$2,'tamper',false)",[owner,randomUUID()])).rejects.toThrow();
   });
+});
+
+test("DeepL enforces Free quota atomically against fresh provider and lifetime ceilings",async()=>{
+  const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]);
+  await db.exec("set role service_role");
+  try {
+    await db.query("select public.record_deepl_provider_usage(0,500000,null,null,now())");
+    const id=(await db.query<{value:string}>(
+      "select public.reserve_deepl_translation($1,1000,$2,250000,1000000,0) value",
+      [owner,"2".repeat(64)])).rows[0].value;
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    const usage=(await db.query<{value:{plan:string;includedCharacters:number;usedCharacters:number;remainingCharacters:number;providerUsageVerified:boolean}}>(
+      "select public.translation_usage_for_user($1) value",[owner])).rows[0].value;
+    expect(usage).toMatchObject({plan:"free",includedCharacters:2000,usedCharacters:1000,remainingCharacters:1000,providerUsageVerified:true});
+    await expect(db.query(
+      "select public.reserve_deepl_translation($1,1001,$2,250000,1000000,0)",
+      [owner,"3".repeat(64)])).rejects.toThrow("translation_quota");
+    expect((await db.query<{enabled:boolean}>("select tier_limits_enabled enabled from private.service_quota_config where service='deepl'")).rows[0].enabled).toBe(true);
+    expect((await db.query<{value:boolean}>(
+      "select public.finalize_deepl_translation($1,$2,'succeeded',null,'trace-1') value",
+      [owner,id])).rows[0].value).toBe(true);
+  } finally { await db.exec("reset role"); }
+  await asUser(owner,async()=>{
+    await expect(db.query("update private.service_quota_config set tier_limits_enabled=true where service='deepl'")).rejects.toThrow();
+  });
+});
+
+test("DeepL blocks conservatively when provider usage is stale or lifetime capacity is exhausted",async()=>{
+  const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]);
+  await db.exec("set role service_role");
+  try {
+    await db.query("select public.record_deepl_provider_usage(499999,500000,null,null,now())");
+    const providerBlocked=(await db.query<{value:string}>(
+      "select public.reserve_deepl_translation($1,2,$2,250000,1000000,0) value",
+      [owner,"4".repeat(64)])).rows[0].value;
+    expect(providerBlocked).toBe("quota_exceeded");
+    await db.query("select public.record_deepl_provider_usage(0,500000,null,null,now())");
+    const lifetimeBlocked=(await db.query<{value:string}>(
+      "select public.reserve_deepl_translation($1,2,$2,250000,1000000,999999) value",
+      [owner,"5".repeat(64)])).rows[0].value;
+    expect(lifetimeBlocked).toBe("quota_exceeded");
+    await db.query("update private.provider_usage_snapshots set fetched_at=now()-interval '16 minutes' where service='deepl'");
+    await expect(db.query(
+      "select public.reserve_deepl_translation($1,1,$2,250000,1000000,0)",
+      [owner,"6".repeat(64)])).rejects.toThrow("provider_usage_unverified");
+    expect((await db.query<{count:number}>(
+      "select count(*)::integer count from private.service_consumption_alerts where service='deepl' and threshold=100"
+    )).rows[0].count).toBeGreaterThanOrEqual(2);
+  } finally { await db.exec("reset role"); }
+});
+
+test("Lifetime partial refunds are review-only; full refunds revoke only that purchase",async()=>{
+  const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]);
+  await db.query(`insert into private.subscriptions(user_id,provider,provider_subscription_id,plan,status,billing_period,current_period_end)
+    values($1,'manual','other-valid-right','premium','active','monthly',now()+interval '1 month')`,[owner]);
+  await db.exec("set role service_role");
+  try {
+    const created=new Date(Date.now()-120000).toISOString();
+    expect((await db.query<{value:boolean}>(`select public.process_lifetime_order_v2(
+      'life-v2-create','order_created',$1,$2,'customer-v2','order-v2','paid',null,null,null) value`,
+      [created,owner])).rows[0].value).toBe(true);
+    expect((await db.query<{value:boolean}>(`select public.process_lifetime_order_v2(
+      'life-v2-partial','order_refunded',now(),null,'customer-v2','order-v2','refunded','partial',2000,11999) value`
+    )).rows[0].value).toBe(true);
+    let purchase=(await db.query<{status:string}>(
+      "select status from private.purchases where provider_order_id='order-v2'"
+    )).rows[0];
+    expect(purchase.status).toBe("paid");
+    expect((await db.query<{review_status:string}>(
+      "select review_status from private.billing_adjustments where provider_event_id='life-v2-partial'"
+    )).rows[0].review_status).toBe("review_required");
+    expect((await db.query<{value:boolean}>(`select public.process_lifetime_order_v2(
+      'life-v2-full','order_refunded',now(),null,'customer-v2','order-v2','refunded','full',11999,11999) value`
+    )).rows[0].value).toBe(true);
+    purchase=(await db.query<{status:string}>(
+      "select status from private.purchases where provider_order_id='order-v2'"
+    )).rows[0];
+    expect(purchase.status).toBe("refunded");
+    expect((await db.query<{count:number}>(
+      "select count(*)::integer count from private.access_grants where user_id=$1 and status='active'",
+      [owner])).rows[0].count).toBe(1);
+    expect((await db.query<{value:boolean}>(`select public.process_lifetime_order_v2(
+      'life-v2-full','order_refunded',now(),null,'customer-v2','order-v2','refunded','full',11999,11999) value`
+    )).rows[0].value).toBe(false);
+  } finally { await db.exec("reset role"); }
+});
+
+test("Disputes are idempotent and losing then winning restores only the affected Lifetime right",async()=>{
+  const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]);
+  await db.exec("set role service_role");
+  try {
+    const opened=new Date(Date.now()-120000).toISOString();
+    const lost=new Date(Date.now()-60000).toISOString();
+    const won=new Date().toISOString();
+    await db.query(`select public.process_lifetime_order_v2(
+      'dispute-create','order_created',$2,$1,'customer-dispute','order-dispute','paid',null,null,null)`,[owner,opened]);
+    expect((await db.query<{value:boolean}>(`select public.record_purchase_dispute(
+      'lemonsqueezy','order-dispute','dispute-open','opened',$1,'case-123') value`,[opened])).rows[0].value).toBe(true);
+    expect((await db.query<{value:boolean}>(`select public.record_purchase_dispute(
+      'lemonsqueezy','order-dispute','dispute-lost','lost',$1,'decision-456') value`,[lost])).rows[0].value).toBe(true);
+    expect((await db.query<{count:number}>(
+      "select count(*)::integer count from private.access_grants where user_id=$1 and status='active'",
+      [owner])).rows[0].count).toBe(0);
+    expect((await db.query<{value:boolean}>(`select public.record_purchase_dispute(
+      'lemonsqueezy','order-dispute','dispute-won','won',$1,'decision-789') value`,[won])).rows[0].value).toBe(true);
+    expect((await db.query<{count:number}>(
+      "select count(*)::integer count from private.access_grants where user_id=$1 and status='active'",
+      [owner])).rows[0].count).toBe(1);
+    expect((await db.query<{value:boolean}>(`select public.record_purchase_dispute(
+      'lemonsqueezy','order-dispute','dispute-won','won',$1,'decision-789') value`,[won])).rows[0].value).toBe(false);
+    expect((await db.query<{value:boolean}>(`select public.record_purchase_dispute(
+      'lemonsqueezy','order-dispute','dispute-stale-loss','lost',$1,'old-decision') value`,[lost])).rows[0].value).toBe(true);
+    expect((await db.query<{status:string;dispute_status:string}>(
+      "select status,dispute_status from private.purchases where provider_order_id='order-dispute'"
+    )).rows[0]).toEqual({status:"paid",dispute_status:"won"});
+  } finally { await db.exec("reset role"); }
+});
+
+test("R2 orphan collection remains a dry run and excludes active references",async()=>{
+  const owner=randomUUID(); await db.query("insert into auth.users(id) values($1)",[owner]);
+  await addBooks(owner,2,321);
+  const books=(await db.query<{book_id:string}>("select book_id from public.user_books where user_id=$1 order by book_id",[owner])).rows;
+  await db.query("update public.user_books set deleted_at=now() where user_id=$1 and book_id=$2",[owner,books[0].book_id]);
+  await db.exec("set role service_role");
+  try {
+    const preview=(await db.query<{value:{dryRun:boolean;physicalDeletes:number;items:Array<{bookId:string}>}}>(
+      "select public.preview_r2_orphan_collection(500) value"
+    )).rows[0].value;
+    expect(preview.dryRun).toBe(true);
+    expect(preview.physicalDeletes).toBe(0);
+    expect(preview.items.some(item=>item.bookId===books[0].book_id)).toBe(true);
+    expect(preview.items.some(item=>item.bookId===books[1].book_id)).toBe(false);
+    expect((await db.query<{count:number}>("select count(*)::integer count from private.book_files where book_id=$1",[books[0].book_id])).rows[0].count).toBe(1);
+  } finally { await db.exec("reset role"); }
 });

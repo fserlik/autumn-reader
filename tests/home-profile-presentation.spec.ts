@@ -39,7 +39,7 @@ test("Home keeps the real reading hero and gallery without import or favorites",
   await page.locator("#hero-action").click();
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
   expect(cloud.downloads).toBe(1);
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator("#import-button")).toBeVisible();
 });
@@ -164,19 +164,46 @@ test("Profile shows identity, statistics, favorites and real reviews only", asyn
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.locator("#profile-favorites .presentation-cover").click();
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator(".profile-view-all").click();
   await expect(page.locator("#library-status-filter")).toHaveValue("favorites");
 });
 
 test("Profile offers reading statistics below Edit profile only with an eligible plan", async ({ page }, testInfo) => {
   const cloud = await mockCloud(page);
-  cloud.setPlan("plus");
+  cloud.setPlan("premium");
   await page.addInitScript(() => {
     localStorage.setItem("autumn-language", "en");
     localStorage.setItem("autumn-theme", "dark");
   });
   await page.goto("/"); await login(page);
+  await page.evaluate(({ ownerId, readingBookId }) => new Promise<void>((resolve, reject) => {
+    const open = indexedDB.open("autumn-reader");
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction("reading_sessions", "readwrite");
+      const store = tx.objectStore("reading_sessions");
+      const now = Date.now();
+      for (let day = 0; day < 24; day++) {
+        const endedAt = now - day * 86_400_000;
+        const activeMs = ((day % 5) + 1) * 7 * 60_000;
+        store.put({
+          id: `statistics-${day}`,
+          ownerId,
+          bookId: day % 7 === 0 ? readingBookId : `statistics-book-${day % 7}`,
+          format: "epub",
+          startedAt: endedAt - activeMs,
+          endedAt,
+          activeMs,
+          navigationCount: day % 4,
+          syncState: "local",
+        });
+      }
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    };
+  }), { ownerId: a, readingBookId: bookId });
   await page.locator('.nav-button[data-view="profile"]').click();
 
   const edit = page.locator("#profile-edit");
@@ -193,11 +220,49 @@ test("Profile offers reading statistics below Edit profile only with an eligible
     await expect(statistics).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   }
-  await page.screenshot({ path: testInfo.outputPath("profile-plus-actions.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("profile-premium-actions.png"), fullPage: true });
 
+  if (testInfo.project.name === "android") {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+  }
   await statistics.click();
   await expect(page.locator("#view-statistics")).toBeVisible();
   await expect(page.locator("#view-statistics .reading-stats-summary")).toBeVisible();
+  await expect(page.locator("#view-statistics .reading-stats-metric")).toHaveCount(5);
+  await expect(page.locator("#view-statistics .reading-stats-book-row")).toHaveCount(5);
+  await expect(page.locator("#view-statistics .reading-stats-book-page")).toHaveText("Page 1 of 2");
+  await expect(page.locator("#view-statistics .reading-stats-features")).toHaveCount(0);
+  if (testInfo.project.name === "desktop") await page.setViewportSize({ width: 1856, height: 1800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("reading-statistics.png"), fullPage: true });
+  if (testInfo.project.name === "desktop") {
+    const [statisticsBox, workspaceBox] = await Promise.all([
+      page.locator("#view-statistics").boundingBox(),
+      page.locator(".workspace").boundingBox(),
+    ]);
+    expect(statisticsBox).not.toBeNull(); expect(workspaceBox).not.toBeNull();
+    expect(Math.abs(statisticsBox!.x - workspaceBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(statisticsBox!.width - workspaceBox!.width)).toBeLessThanOrEqual(1);
+    const downloadPromise = page.waitForEvent("download");
+    await page.locator(".reading-stats-export").click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/\.jpg$/);
+    await download.saveAs(testInfo.outputPath("reading-statistics-export.jpg"));
+    await expect(page.locator(".reading-stats-export-status")).toHaveText("Image saved.");
+    await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+    await page.screenshot({ path: testInfo.outputPath("reading-statistics-light.png"), fullPage: true });
+  } else {
+    await page.evaluate(() => { document.documentElement.style.fontSize = "125%"; });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
+    await page.setViewportSize({ width: 844, height: 390 });
+    await expect(page.locator("#view-statistics .reading-stats-summary")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  }
+  await page.locator(".reading-stats-book-pagination button:last-child").click();
+  await expect(page.locator("#view-statistics .reading-stats-book-row")).toHaveCount(2);
+  await expect(page.locator("#view-statistics .reading-stats-book-page")).toHaveText("Page 2 of 2");
 });
 
 test("Free plan has no reading statistics entry point", async ({ page }) => {

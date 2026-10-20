@@ -66,5 +66,5 @@ export async function authenticatedUser(
   return error || !data.user ? null : data.user.id;
 }
 
-export type PaidPlan = "plus" | "pro";
-export type BillingPeriod = "monthly" | "annual";
+export type PaidPlan = "premium";
+export type BillingPeriod = "monthly" | "lifetime";

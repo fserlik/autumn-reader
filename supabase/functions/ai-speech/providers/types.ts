@@ -3,7 +3,6 @@ export interface SpeechVoice {
   name: string;
   language: string;
   gender: "female" | "male";
-  proOnly: boolean;
 }
 
 export interface SpeechProvider {

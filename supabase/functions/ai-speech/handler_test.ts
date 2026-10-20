@@ -28,8 +28,8 @@ function samplePdf():Uint8Array<ArrayBuffer>{
   return new Uint8Array(new TextEncoder().encode(source));
 }
 
-type FailureRpc="authorize_account_device"|"ai_speech_usage_for_user"|"reserve_ai_speech"|"authorize_book_download"|"mark_ai_speech_generating"|"complete_ai_speech"|"fail_ai_speech";
-function mock(options:{plan?:"free"|"plus"|"pro";device?:boolean;reservation?:"reserved"|"pending"|"cached";pollyStatus?:number;pollyErrorType?:string;rpcFailure?:FailureRpc;r2GetStatus?:number;r2PutStatus?:number;bookFormat?:"epub"|"pdf";bookBytes?:Uint8Array<ArrayBuffer>}={}){
+type FailureRpc="authorize_account_device"|"effective_service_budget"|"ai_speech_usage_for_user"|"reserve_ai_speech"|"authorize_book_download"|"mark_ai_speech_generating"|"complete_ai_speech"|"fail_ai_speech";
+function mock(options:{plan?:"free"|"premium";device?:boolean;reservation?:"reserved"|"pending"|"cached";pollyStatus?:number;pollyErrorType?:string;rpcFailure?:FailureRpc;r2GetStatus?:number;r2PutStatus?:number;bookFormat?:"epub"|"pdf";bookBytes?:Uint8Array<ArrayBuffer>}={}){
   const original=globalThis.fetch,calls:{url:string;method:string;body:unknown;authorization:string|null;amzDate:string|null;securityToken:string|null}[]=[];
   globalThis.fetch=async(input:RequestInfo|URL,init?:RequestInit)=>{
     const req=input instanceof Request?input:new Request(input,init);let body:unknown;
@@ -39,7 +39,8 @@ function mock(options:{plan?:"free"|"plus"|"pro";device?:boolean;reservation?:"r
     const rpc=([...req.url.matchAll(/\/rpc\/([^/?]+)/g)].at(-1)?.[1]??"") as FailureRpc;
     if(options.rpcFailure===rpc)return Response.json({code:"XX000",message:"database failure",details:null,hint:null},{status:500});
     if(req.url.endsWith("/rpc/authorize_account_device"))return Response.json(options.device!==false);
-    if(req.url.endsWith("/rpc/ai_speech_usage_for_user"))return Response.json({plan:options.plan??"plus",includedSeconds:3600,usedSeconds:0,remainingSeconds:3600,cycleStartsAt:"2026-10-01T00:00:00Z",resetsAt:"2026-11-01T00:00:00Z",serviceAvailable:true,budgetPaused:false});
+    if(req.url.endsWith("/rpc/effective_service_budget"))return Response.json(10000000);
+    if(req.url.endsWith("/rpc/ai_speech_usage_for_user"))return Response.json({plan:options.plan??"premium",includedCharacters:25000,usedCharacters:0,remainingCharacters:25000,cycleStartsAt:"2026-10-01T00:00:00Z",resetsAt:"2026-11-01T00:00:00Z",serviceAvailable:true,budgetPaused:false});
     if(req.url.endsWith("/rpc/reserve_ai_speech")){
       const outcome=options.reservation??"reserved";
       return Response.json(outcome==="cached"?{outcome,generationId:"dddddddd-dddd-4ddd-8ddd-dddddddddddd",audioKey:`ai-speech/${owner}/${book}/${"e".repeat(64)}.mp3`,durationSeconds:3,expiresAt:"2027-01-01T00:00:00Z"}:{outcome,generationId:"dddddddd-dddd-4ddd-8ddd-dddddddddddd",durationSeconds:3});
@@ -99,9 +100,8 @@ Deno.test("provider errors release the reservation and missing/revoked sessions 
   }finally{revoked.restore();}
 });
 
-Deno.test("voice catalog exposes curated Plus voices and the full Pro set",async()=>{
-  const plus=mock({plan:"plus"});try{const data=await (await handleAiSpeechRequest(request({action:"voices"}))).json();assertEquals(data.tier,"limited");assert(data.voices.every((voice:{proOnly:boolean})=>!voice.proOnly));}finally{plus.restore();}
-  const pro=mock({plan:"pro"});try{const data=await (await handleAiSpeechRequest(request({action:"voices"}))).json();assertEquals(data.tier,"full");assert(data.voices.some((voice:{id:string})=>voice.id==="Sergio"));}finally{pro.restore();}
+Deno.test("Premium exposes the complete configured neural voice catalog",async()=>{
+  const premium=mock({plan:"premium"});try{const data=await (await handleAiSpeechRequest(request({action:"voices"}))).json();assertEquals(data.tier,"full");assert(data.voices.some((voice:{id:string})=>voice.id==="Sergio"));}finally{premium.restore();}
 });
 
 Deno.test("source validation accepts only text from the referenced PDF page",async()=>{

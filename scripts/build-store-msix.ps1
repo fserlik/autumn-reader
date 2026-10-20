@@ -73,11 +73,14 @@ $manifest = @'
   <Properties>
     <DisplayName>Autumn Reader</DisplayName>
     <PublisherDisplayName>__PUBLISHER_DISPLAY__</PublisherDisplayName>
-    <Description>Lector de libros de escritorio</Description>
+    <Description>PDF and EPUB book reader</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   <Resources>
-    <Resource Language="es-AR" />
+    <Resource Language="en-US" />
+    <Resource Language="es-ES" />
+    <Resource Language="it-IT" />
+    <Resource Language="fr-FR" />
   </Resources>
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
@@ -85,7 +88,7 @@ $manifest = @'
   <Applications>
     <Application Id="AutumnReader" Executable="autumn-reader.exe"
                  uap10:RuntimeBehavior="packagedClassicApp" uap10:TrustLevel="mediumIL">
-      <uap:VisualElements DisplayName="Autumn Reader" Description="Lector de libros de escritorio"
+      <uap:VisualElements DisplayName="Autumn Reader" Description="PDF and EPUB book reader"
                           Square150x150Logo="Assets\Square150x150Logo.png"
                           Square44x44Logo="Assets\Square44x44Logo.png"
                           BackgroundColor="#351b1f" />

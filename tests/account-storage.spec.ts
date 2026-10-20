@@ -53,7 +53,7 @@ test("removing a downloaded book frees cloud quota while its offline file remain
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#library-list .book-title").click();
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  const firstBack = page.locator("#back-button");
+  const firstBack = page.locator("#desktop-reader-back:visible, #back-button:visible");
   if (await firstBack.isVisible()) await firstBack.click();
   else await page.locator("#desktop-reader-back").click();
   await page.locator('.nav-button[data-view="settings"]').click();
@@ -103,7 +103,7 @@ test("a removed local book can be synchronized again without losing its cached E
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#library-list .book-title").click();
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  const secondBack = page.locator("#back-button");
+  const secondBack = page.locator("#desktop-reader-back:visible, #back-button:visible");
   if (await secondBack.isVisible()) await secondBack.click();
   else await page.locator("#desktop-reader-back").click();
   await page.locator('.nav-button[data-view="settings"]').click();

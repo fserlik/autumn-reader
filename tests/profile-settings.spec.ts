@@ -50,7 +50,7 @@ test("profile loads account collections lazily, saves identity, works offline, a
   await page.locator("#profile-favorites .book-title").click();
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
   expect(cloud.downloads).toBe(1);
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await expect(page.locator("#view-profile")).toBeVisible();
   await context.setOffline(true);
   await page.reload();
@@ -67,8 +67,9 @@ test("profile loads account collections lazily, saves identity, works offline, a
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
   expect(cloud.downloads).toBe(1);
   await context.setOffline(false);
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await page.locator("#account-logout").click();
   await login(page,"b@example.org");
   await page.locator('.nav-button[data-view="profile"]').click();
@@ -85,7 +86,7 @@ test("local favorites and finished books appear in profile without cloud uploads
   await login(page);
   await page.locator("#file-input").setInputFiles({name:"Local favorite.epub", mimeType:"application/epub+zip", buffer:await epubFixture("favorite", "Local favorite")});
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator("#library-list .book-status").selectOption("finished");
   await expect(page.locator("#library-list .book-status")).toHaveValue("finished");
   await page.locator("#library-list .book-menu-options").getByRole("button", { name: "Favorito", includeHidden: true }).dispatchEvent("click");

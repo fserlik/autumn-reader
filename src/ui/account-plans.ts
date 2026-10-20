@@ -7,10 +7,9 @@ import { errorMessage } from "../services/errors";
 import { language, t } from "../i18n";
 import leafUrl from "../assets/autumn-leaf.png";
 import freeLogoUrl from "../assets/autumn-free-logo.png";
-import plusLogoUrl from "../assets/autumnplus-logo.png";
-import proLogoUrl from "../assets/autumnpro-logo.png";
+import premiumEmblemUrl from "../assets/autumnpro-logo.png";
 import { accountIcon } from "./account-icons";
-import { aiSpeech, type AiSpeechUsage } from "../services/ai-speech";
+import { translationService, type TranslationUsage } from "../services/translation";
 
 const size = (bytes: number): string => {
   const unit = bytes >= 1073741824 ? 1073741824 : 1048576;
@@ -18,10 +17,13 @@ const size = (bytes: number): string => {
   return `${new Intl.NumberFormat(language, { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value)} ${unit === 1073741824 ? "GB" : "MB"}`;
 };
 const name = (code: PlanDefinition["code"]): string =>
-  t(code === "free" ? "planFree" : code === "plus" ? "planPlus" : "planPro");
-const price = (cents: number): string => cents === 0 ? "0" : (cents / 100).toFixed(2);
+  t(code === "free" ? "planFree" : "planPremium");
+const price = (cents: number): string => cents === 0 ? "0" : new Intl.NumberFormat(language, {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+}).format(cents / 100);
+const characters = (value: number): string => new Intl.NumberFormat(language).format(Number.isFinite(value) ? value : 0);
 
-export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLElement; open(): Promise<void> } {
+export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLElement; open(): Promise<void>; refresh(): Promise<void> } {
   const section = document.createElement("section");
   section.id = "settings-plan";
   section.className = "account-feature plan-feature";
@@ -38,18 +40,18 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
   comparison.className = "account-dialog plan-dialog plan-comparison-dialog";
   comparison.setAttribute("aria-labelledby", "plan-comparison-title");
   comparison.innerHTML = `<header><div><h2 id="plan-comparison-title">${t("plansTitle")}</h2><p class="plan-dialog-intro">${t("planCheckoutSecure")}</p></div><button class="note-close" type="button" aria-label="${t("plansClose")}">×</button></header>
-    <div class="plan-dialog-management"></div><div class="plan-cards"></div><p class="plan-message" role="status" aria-live="polite"></p>`;
-  const aiUsage = document.createElement("section");
-  aiUsage.className = "plan-ai-speech-usage tts-ai-speech-usage";
-  aiUsage.hidden = true;
-  aiUsage.setAttribute("aria-labelledby", "tts-ai-speech-heading");
-  aiUsage.innerHTML = `<div class="plan-ai-heading"><h3 id="tts-ai-speech-heading">${t("aiSpeechName")}</h3><p>${t("aiSpeechCachedHelp")}</p></div>
-    <dl><div><dt>${t("planSection")}</dt><dd class="plan-ai-plan"></dd></div><div><dt>${t("aiSpeechQuotaMonthly")}</dt><dd class="plan-ai-included"></dd></div><div><dt>${t("aiSpeechUsed")}</dt><dd class="plan-ai-used"></dd></div><div><dt>${t("aiSpeechRemaining")}</dt><dd class="plan-ai-remaining"></dd></div><div><dt>${t("aiSpeechReset",{date:""})}</dt><dd class="plan-ai-reset"></dd></div><div><dt>${t("aiSpeechName")}</dt><dd class="plan-ai-status"></dd></div></dl>`;
+    <div class="plan-dialog-management"></div><div class="plan-cards"></div><p class="plan-cloud-policy">${t("planCloudPolicy")}</p><p class="plan-message" role="status" aria-live="polite"></p>`;
+  const translationUsage = document.createElement("section");
+  translationUsage.className = "plan-ai-speech-usage plan-translation-usage";
+  translationUsage.hidden = true;
+  translationUsage.setAttribute("aria-labelledby", "plan-translation-heading");
+  translationUsage.innerHTML = `<div class="plan-ai-heading"><h3 id="plan-translation-heading">${t("planTranslation")}</h3><p>${t("translationUsageHelp")}</p></div>
+    <dl><div><dt>${t("planSection")}</dt><dd class="plan-translation-plan"></dd></div><div><dt>${t("aiSpeechQuotaMonthly")}</dt><dd class="plan-translation-included"></dd></div><div><dt>${t("aiSpeechUsed")}</dt><dd class="plan-translation-used"></dd></div><div><dt>${t("aiSpeechRemaining")}</dt><dd class="plan-translation-remaining"></dd></div><div><dt>${t("aiSpeechReset",{date:""})}</dt><dd class="plan-translation-reset"></dd></div><div><dt>${t("planTranslation")}</dt><dd class="plan-translation-status"></dd></div></dl>`;
   const deviceDialog = document.createElement("dialog");
   deviceDialog.className = "account-dialog devices-dialog";
   deviceDialog.innerHTML = `<header><h2>${t("deviceListTitle")}</h2><button class="note-close" type="button" aria-label="${t("close")}">×</button></header>
     <p class="device-limit-message" role="status"></p><div class="device-rows"></div><p class="device-message" role="status"></p>`;
-  accountParent.append(section, aiUsage);
+  accountParent.append(section, translationUsage);
   document.body.append(comparison, deviceDialog);
   const find = <T extends HTMLElement>(root: HTMLElement, selector: string): T => root.querySelector<T>(selector)!;
   const planName = find<HTMLElement>(section, ".plan-name");
@@ -69,17 +71,14 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
   let currentPlan: AccountPlan | undefined;
   let billingBusy = false;
 
-  function minutes(seconds: number): string {
-    return new Intl.NumberFormat(language, { maximumFractionDigits: seconds < 600 ? 1 : 0 }).format(seconds / 60);
-  }
-  function renderAiUsage(usage: AiSpeechUsage): void {
-    const panel = aiUsage; panel.hidden = false;
-    find<HTMLElement>(panel, ".plan-ai-plan").textContent = name(usage.plan);
-    find<HTMLElement>(panel, ".plan-ai-included").textContent = t("aiSpeechMinutesAvailable", { minutes: minutes(usage.includedSeconds) });
-    find<HTMLElement>(panel, ".plan-ai-used").textContent = `${minutes(usage.usedSeconds)} min`;
-    find<HTMLElement>(panel, ".plan-ai-remaining").textContent = `${minutes(usage.remainingSeconds)} min`;
-    find<HTMLElement>(panel, ".plan-ai-reset").textContent = new Date(usage.resetsAt).toLocaleDateString(language);
-    find<HTMLElement>(panel, ".plan-ai-status").textContent = t(usage.serviceAvailable ? "aiSpeechServiceReady" : "aiSpeechServicePaused");
+  function renderTranslationUsage(usage: TranslationUsage): void {
+    const panel = translationUsage; panel.hidden = false;
+    find<HTMLElement>(panel, ".plan-translation-plan").textContent = name(usage.plan);
+    find<HTMLElement>(panel, ".plan-translation-included").textContent = t("translationCharactersAvailable", { characters: characters(usage.includedCharacters) });
+    find<HTMLElement>(panel, ".plan-translation-used").textContent = characters(usage.usedCharacters);
+    find<HTMLElement>(panel, ".plan-translation-remaining").textContent = characters(usage.remainingCharacters);
+    find<HTMLElement>(panel, ".plan-translation-reset").textContent = new Date(usage.resetsAt).toLocaleDateString(language);
+    find<HTMLElement>(panel, ".plan-translation-status").textContent = t(usage.serviceAvailable ? "cloudServiceReady" : "cloudServicePaused");
   }
 
   function feature(label: string, value: string): HTMLElement {
@@ -89,10 +88,10 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
     left.textContent = label; right.textContent = value; row.append(symbol, left, right);
     return row;
   }
-  async function beginCheckout(plan: "plus" | "pro", period: "monthly" | "annual"): Promise<void> {
+  async function beginCheckout(period: "monthly" | "lifetime"): Promise<void> {
     if (billingBusy) return;
     billingBusy = true; planMessage.textContent = t("planPurchaseOpening");
-    try { await billing.checkout(plan, period); planMessage.textContent = t("planCheckoutPending"); }
+    try { await billing.checkout(period); planMessage.textContent = t("planCheckoutPending"); }
     catch { planMessage.textContent = t("planPurchaseFailed"); }
     finally { billingBusy = false; }
   }
@@ -105,16 +104,16 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
       const manage = document.createElement("button");
       manage.type = "button";
       manage.className = "secondary-button plan-manage-subscription";
-      manage.textContent = t("manageSubscription");
+      manage.textContent = t(currentPlan.billing_cycle === "lifetime" ? "managePurchase" : "manageSubscription");
       manage.addEventListener("click", () => void manageSubscription(manage));
       management.append(manage);
     }
     try {
-      const catalog = await plans.catalog();
+      const catalog = (await plans.catalog()).filter(plan => plan.code === "free" || plan.code === "premium");
       if (!comparison.open) return;
       for (const plan of catalog) {
         const card = document.createElement("article");
-        card.className = `plan-card ${plan.code === "plus" ? "plan-card-featured" : ""}`;
+        card.className = `plan-card ${plan.code === "premium" ? "plan-card-featured" : ""}`;
         card.dataset.plan = plan.code;
         const emblem = document.createElement("div"); emblem.className = "plan-emblem";
         if (plan.code === "free") {
@@ -125,7 +124,7 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
           emblem.append(image);
         } else {
           const image = document.createElement("img");
-          image.src = plan.code === "plus" ? plusLogoUrl : proLogoUrl;
+          image.src = premiumEmblemUrl;
           image.alt = "";
           image.className = "plan-emblem-image";
           emblem.append(image);
@@ -133,26 +132,40 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
         emblem.setAttribute("aria-hidden", "true");
         const heading = document.createElement("h3"); heading.textContent = name(plan.code);
         const tagline = document.createElement("p"); tagline.className = "plan-tagline";
-        tagline.textContent = t(plan.code === "free" ? "planFreeTagline" : plan.code === "plus" ? "planPlusTagline" : "planProTagline");
+        tagline.textContent = t(plan.code === "free" ? "planFreeTagline" : "planPremiumTagline");
         const pricing = document.createElement("div"); pricing.className = "plan-pricing-options";
         if (plan.code === "free") pricing.classList.add("single");
-        let chosenPeriod: "monthly" | "annual" = "monthly";
+        let chosenPeriod: "monthly" | "lifetime" = "monthly";
         let updateAction = (): void => {};
         const periodButtons: HTMLButtonElement[] = [];
-        for (const period of (plan.code === "free" ? ["monthly"] : ["monthly", "annual"]) as ("monthly" | "annual")[]) {
+        const purchasePeriods = plan.code === "free"
+          ? ["monthly"] as const
+          : ["monthly", "lifetime"] as const;
+        pricing.setAttribute("role", "group");
+        pricing.setAttribute("aria-label", t("planPurchaseOptions"));
+        for (const period of purchasePeriods) {
           const option = document.createElement("button"); option.type = "button";
           option.className = "plan-price-choice";
-          const cents = period === "monthly" ? plan.monthly_usd_cents : plan.annual_usd_cents ?? 0;
-          option.textContent = t(period === "monthly" ? "planPerMonth" : "planPerYear", { price: price(cents) });
-          if (period === "annual" && plan.monthly_usd_cents > 0) {
-            const savings = Math.round((1 - cents / (plan.monthly_usd_cents * 12)) * 100);
-            if (savings > 0) { const small = document.createElement("small"); small.textContent = t("planSave", { percent: savings }); option.append(small); }
+          const cents = period === "monthly" ? plan.monthly_usd_cents : plan.lifetime_usd_cents ?? 0;
+          option.textContent = plan.code === "free"
+            ? t("planFreePrice")
+            : t(period === "monthly" ? "planPerMonth" : "planLifetimePrice", { price: price(cents) });
+          if (period === "lifetime") {
+            const small = document.createElement("small");
+            small.textContent = t("planLifetimeNote");
+            option.append(small);
           }
           option.disabled = plan.code === "free";
-          option.classList.toggle("selected", period === chosenPeriod);
+          const initiallySelected = plan.code !== "free" && period === chosenPeriod;
+          option.classList.toggle("selected", initiallySelected);
+          option.setAttribute("aria-pressed", String(initiallySelected));
           option.addEventListener("click", () => {
             chosenPeriod = period;
-            periodButtons.forEach(button => button.classList.toggle("selected", button === option));
+            periodButtons.forEach(button => {
+              const selected = button === option;
+              button.classList.toggle("selected", selected);
+              button.setAttribute("aria-pressed", String(selected));
+            });
             updateAction();
           });
           periodButtons.push(option); pricing.append(option);
@@ -166,20 +179,23 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
           feature(t("planBasicThemes"), t("planIncluded")),
           feature(t("planAdvancedThemes"), t(plan.advanced_themes ? "planIncluded" : "planNotIncluded")),
           feature(t("planAdvancedStats"), t(plan.advanced_stats ? "planIncluded" : "planNotIncluded")),
-          feature(t("planTranslation"), t(plan.translation_tier === "very_limited" ? "planTranslationVeryLimited" : plan.translation_tier === "standard" ? "planTranslationStandard" : "planTranslationHigh")),
-          feature(t("planTts"), plan.premium_tts_tier === "none" ? t("planTtsNone") : t("aiSpeechMinutesAvailable", { minutes: plan.code === "plus" ? 60 : 180 })),
+          feature(t("planTranslation"), t("planTranslationQuota", { characters: characters(plan.translation_monthly_characters) })),
+          feature(t("planTts"), plan.cloud_tts_monthly_characters === 0 ? t("planNotIncluded") : t("planTtsQuota", { characters: characters(plan.cloud_tts_monthly_characters) })),
+          feature(t("planTtsLocal"), t("planIncluded")),
         );
         const actions = document.createElement("div"); actions.className = "plan-purchase-actions";
         const action = document.createElement("button"); action.type = "button";
-        const isCurrent = plan.code === currentPlan?.code || (plan.code === "free" && !currentPlan);
-        const isIncluded = plan.code === "free" || (plan.code === "plus" && currentPlan?.code === "pro");
         updateAction = () => {
-          action.textContent = isCurrent ? t("planCurrent") : isIncluded ? t("planIncluded")
-            : t("planChoose", { plan: name(plan.code), period: t(chosenPeriod === "monthly" ? "planMonthly" : "planYearly") });
+          const isFree = plan.code === "free";
+          const isCurrent = isFree
+            ? !currentPlan || currentPlan.code === "free"
+            : currentPlan?.code === "premium" && currentPlan.billing_cycle === chosenPeriod;
+          action.textContent = isCurrent ? t("planCurrent") : isFree ? t("planIncluded")
+            : t("planChoose", { plan: name(plan.code), period: t(chosenPeriod === "monthly" ? "planMonthly" : "planLifetime") });
+          action.disabled = isCurrent || isFree;
         };
         updateAction();
-        action.disabled = isCurrent || isIncluded;
-        if (!action.disabled) action.addEventListener("click", () => void beginCheckout(plan.code as "plus" | "pro", chosenPeriod));
+        action.addEventListener("click", () => { if (!action.disabled) void beginCheckout(chosenPeriod); });
         actions.append(action);
         card.append(emblem, heading, tagline, pricing, details, actions); cards.append(card);
       }
@@ -258,13 +274,16 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
       const [plan, usage] = await Promise.all([plans.current(), library.quota()]);
       if (auth.state.ownerId !== activeOwner || token !== generation) return;
       currentPlan = plan; planName.textContent = name(plan.code);
-      try { renderAiUsage(await aiSpeech.usage()); } catch { aiUsage.hidden = true; }
-      const period = plan.billing_cycle === "monthly" ? t("planMonthly") : plan.billing_cycle === "annual" ? t("planYearly") : "";
+      try { renderTranslationUsage(await translationService.usage()); } catch { translationUsage.hidden = true; }
+      const period = plan.billing_cycle === "monthly" ? t("planMonthly")
+        : plan.billing_cycle === "annual" ? t("planYearly")
+        : plan.billing_cycle === "lifetime" ? t("planLifetime") : "";
       const status = t(plan.subscription_status === "trialing" ? "planStatusTrialing"
         : plan.subscription_status === "past_due" ? "planStatusPastDue"
         : plan.subscription_status === "canceled" || plan.subscription_status === "expired" ? "planStatusEnded" : "planStatusActive");
       const renewal = plan.expires_at ? new Date(plan.expires_at).toLocaleDateString(language) : "";
       subscriptionDetail.textContent = plan.code === "free" ? t("planFreeDescription")
+        : plan.billing_cycle === "lifetime" ? t("planLifetimeActive")
         : plan.cancel_at_period_end && renewal ? t("planEndsOn", { date: renewal })
         : renewal ? t("planRenewsOn", { period, status, date: renewal }) : [period, status].filter(Boolean).join(" · ");
       storage.textContent = t("planStorageUsage", { used: size(usage.used_bytes), limit: size(usage.max_bytes) });
@@ -304,6 +323,7 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
   });
   return {
     actions: find<HTMLElement>(section, ".plan-actions"),
+    refresh,
     open: async () => {
       // Show plans before refreshing account status; network must not block the page.
       await showPlans();

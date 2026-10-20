@@ -5,8 +5,9 @@
   "description": "Desktop book reader",
   "scripts": {
     "test": "vitest run",
-    "test:backend": "npx --yes deno test --allow-env --config supabase/functions/deno.json supabase/functions/book-storage/handler_test.ts supabase/functions/translate-text/handler_test.ts supabase/functions/ai-speech/handler_test.ts supabase/functions/ai-speech/pdf-validator_test.ts supabase/functions/billing-checkout/handler_test.ts supabase/functions/billing-portal/handler_test.ts supabase/functions/lemonsqueezy-webhook/handler_test.ts",
-    "check:backend": "npx --yes deno check --config supabase/functions/deno.json supabase/functions/book-storage/index.ts supabase/functions/translate-text/index.ts supabase/functions/ai-speech/index.ts supabase/functions/billing-checkout/index.ts supabase/functions/billing-portal/index.ts supabase/functions/lemonsqueezy-webhook/index.ts",
+    "test:backend": "npx --yes deno test --allow-env --config supabase/functions/deno.json supabase/functions/book-storage/handler_test.ts supabase/functions/translate-text/handler_test.ts supabase/functions/ai-speech/handler_test.ts supabase/functions/ai-speech/pdf-validator_test.ts supabase/functions/billing-checkout/handler_test.ts supabase/functions/billing-portal/handler_test.ts supabase/functions/lemonsqueezy-webhook/handler_test.ts supabase/functions/r2-orphan-collector/handler_test.ts",
+    "check:backend": "npx --yes deno check --config supabase/functions/deno.json supabase/functions/book-storage/index.ts supabase/functions/translate-text/index.ts supabase/functions/ai-speech/index.ts supabase/functions/billing-checkout/index.ts supabase/functions/billing-portal/index.ts supabase/functions/lemonsqueezy-webhook/index.ts supabase/functions/r2-orphan-collector/index.ts",
+    "verify:billing-config": "node scripts/verify-lemonsqueezy-config.mjs",
     "cloud:csp": "node scripts/configure-cloud-csp.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -19,6 +20,7 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
+    "@html2canvas/html2canvas": "^1.13.0",
     "@noble/hashes": "^2.4.0",
     "@supabase/supabase-js": "^2.117.2",
     "@tauri-apps/api": "^2.11.1",

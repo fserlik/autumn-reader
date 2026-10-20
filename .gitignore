@@ -15,3 +15,5 @@ supabase/.temp/
 src-tauri/gen/schemas/
 .DS_Store
 /deno.lock
+.env.billing.local
+.artifact-work/

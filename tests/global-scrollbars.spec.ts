@@ -58,7 +58,7 @@ test("EPUB iframe, PDF surface and long dialogs retain scroll without native bar
   const iframe = page.frameLocator(".epub-frame iframe");
   await expect(iframe.locator("#autumn-scrollbars")).toBeAttached();
   await expect(iframe.locator("html")).toHaveCSS("scrollbar-width", "none");
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
 
   await page.locator("#file-input").setInputFiles({ name: "Scroll fixture.pdf", mimeType: "application/pdf", buffer: samplePdf() });
   await expect(page.locator(".pdf-reading-text")).toBeVisible();
@@ -67,7 +67,7 @@ test("EPUB iframe, PDF surface and long dialogs retain scroll without native bar
   await expect(page.locator(".pdf-page")).toBeVisible();
   expect(await page.locator("#reading-surface").evaluate(element => getComputedStyle(element).overflowY)).toBe("auto");
 
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   for (const width of [390, 1200]) {
     await page.setViewportSize({ width, height: 700 });

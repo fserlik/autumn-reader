@@ -57,6 +57,7 @@
           <h2>Data sharing and third parties</h2>
           <p>Autumn Reader does not include advertising functionality in the current project and does not use your library to serve personalized ads. The current application code does not include a first-party analytics or telemetry system that uploads your reading activity to an Autumn Reader server.</p>
           <p>Supabase processes account credentials and synchronized metadata. If you choose Google sign-in, Google and Supabase process the authentication information supplied by Google, such as your email address, name and profile image. Book files selected for cloud sync are stored in Cloudflare R2. If you request a translation, only the selected text fragment is sent to the configured translation service; the entire book is not sent.</p>
+          <p>If you request cloud speech, only the selected, server-verified book fragment is sent to Amazon Polly. Generated audio is stored privately in Cloudflare R2 for the configured retention period. DeepL and Polly usage ledgers store counts and technical hashes, not book text. If you purchase Autumn Pro, Lemon Squeezy processes checkout and payment data under its own privacy terms; Autumn Reader stores provider identifiers, payment status, adjustments, disputes and entitlement dates, but not full card details.</p>
           <p>Distribution platforms such as Microsoft Store or Google Play may separately process account, device, download or diagnostic information according to their own policies.</p>
         </section>
         <section id="retention">

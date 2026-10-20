@@ -3,20 +3,20 @@ import { ServiceError } from "../diagnostics.ts";
 import type { SpeechProvider, SpeechVoice } from "./types.ts";
 
 export const pollyVoices: readonly SpeechVoice[] = [
-  {id:"Lucia",name:"Lucía",language:"es-ES",gender:"female",proOnly:false},
-  {id:"Mia",name:"Mia",language:"es-MX",gender:"female",proOnly:false},
-  {id:"Lupe",name:"Lupe",language:"es-US",gender:"female",proOnly:false},
-  {id:"Sergio",name:"Sergio",language:"es-ES",gender:"male",proOnly:true},
-  {id:"Andres",name:"Andrés",language:"es-MX",gender:"male",proOnly:true},
-  {id:"Pedro",name:"Pedro",language:"es-US",gender:"male",proOnly:true},
-  {id:"Joanna",name:"Joanna",language:"en-US",gender:"female",proOnly:false},
-  {id:"Amy",name:"Amy",language:"en-GB",gender:"female",proOnly:false},
-  {id:"Matthew",name:"Matthew",language:"en-US",gender:"male",proOnly:true},
-  {id:"Brian",name:"Brian",language:"en-GB",gender:"male",proOnly:true},
-  {id:"Lea",name:"Léa",language:"fr-FR",gender:"female",proOnly:false},
-  {id:"Remi",name:"Rémi",language:"fr-FR",gender:"male",proOnly:true},
-  {id:"Bianca",name:"Bianca",language:"it-IT",gender:"female",proOnly:false},
-  {id:"Adriano",name:"Adriano",language:"it-IT",gender:"male",proOnly:true},
+  {id:"Lucia",name:"Lucía",language:"es-ES",gender:"female"},
+  {id:"Mia",name:"Mia",language:"es-MX",gender:"female"},
+  {id:"Lupe",name:"Lupe",language:"es-US",gender:"female"},
+  {id:"Sergio",name:"Sergio",language:"es-ES",gender:"male"},
+  {id:"Andres",name:"Andrés",language:"es-MX",gender:"male"},
+  {id:"Pedro",name:"Pedro",language:"es-US",gender:"male"},
+  {id:"Joanna",name:"Joanna",language:"en-US",gender:"female"},
+  {id:"Amy",name:"Amy",language:"en-GB",gender:"female"},
+  {id:"Matthew",name:"Matthew",language:"en-US",gender:"male"},
+  {id:"Brian",name:"Brian",language:"en-GB",gender:"male"},
+  {id:"Lea",name:"Léa",language:"fr-FR",gender:"female"},
+  {id:"Remi",name:"Rémi",language:"fr-FR",gender:"male"},
+  {id:"Bianca",name:"Bianca",language:"it-IT",gender:"female"},
+  {id:"Adriano",name:"Adriano",language:"it-IT",gender:"male"},
 ];
 
 const neuralRegions=new Set(["us-east-1","us-west-2","af-south-1","ap-northeast-1","ap-northeast-2","ap-northeast-3","ap-south-1","ap-southeast-1","ap-southeast-2","ap-southeast-5","ap-southeast-7","ca-central-1","eu-central-1","eu-west-1","eu-west-2","eu-west-3","eu-south-2","eu-central-2","us-gov-west-1"]);

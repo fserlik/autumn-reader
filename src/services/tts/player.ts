@@ -14,8 +14,18 @@ export class LocalTtsPlayer {
   get loaded(): boolean { return Boolean(this.audio); }
 
   async load(audioData: SynthesizedAudio, events: LocalPlaybackEvents, autoplay = true): Promise<void> {
+    await this.loadSource(synthesizedAudioUrl(audioData), events, autoplay);
+  }
+
+  async loadUrl(url: string, events: LocalPlaybackEvents, autoplay = true): Promise<void> {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") throw new Error("TTS_AUDIO_URL_INVALID");
+    await this.loadSource(parsed.href, events, autoplay);
+  }
+
+  private async loadSource(source: string, events: LocalPlaybackEvents, autoplay: boolean): Promise<void> {
     this.stop();
-    const audio = new Audio(synthesizedAudioUrl(audioData));
+    const audio = new Audio(source);
     this.audio = audio;
     audio.preload = "auto";
     audio.onended = () => {

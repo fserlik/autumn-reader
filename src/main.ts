@@ -18,6 +18,7 @@ import { mountAccount } from "./ui/account";
 import { mountAccountSecurity } from "./ui/account-security";
 import { mountAccountStorage } from "./ui/account-storage";
 import { mountAccountPlans } from "./ui/account-plans";
+import { mountSync } from "./ui/sync";
 import { cloudStorage } from "./services/books/cloud-storage";
 import { bookStorage, requestPersistentCache } from "./services/storage";
 import { ensureBookContentMetadata } from "./services/books/content-metadata";
@@ -63,6 +64,8 @@ import { mountTranslation, type TranslationUI } from "./ui/translation";
 import { pdfDestination, pdfPageLinks } from "./readers/pdf-navigation";
 import { readingActivity } from "./services/reading/activity";
 import { splitSpeechText } from "../shared/ai-speech";
+import { aiSpeech, loadAiSpeechPreferences, saveAiSpeechPreferences, type AiSpeechUsage, type AiSpeechVoice } from "./services/ai-speech";
+import { plans } from "./services/plans";
 
 const icons = {
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
@@ -135,7 +138,7 @@ app.innerHTML = `
       </nav>
       <div class="sidebar-bottom">
         <button class="nav-button" data-view="settings" type="button">${svg("settings")}<span>${t("settings")}</span></button>
-        <button id="sidebar-collapse" class="nav-button sidebar-collapse" type="button" aria-label="Collapse sidebar" aria-pressed="false">${svg("collapse")}<span>Collapse</span></button>
+        <button id="sidebar-collapse" class="nav-button sidebar-collapse" type="button" aria-label="${t("sidebarCollapse")}" aria-pressed="false">${svg("collapse")}<span>${t("sidebarCollapse")}</span></button>
       </div>
     </aside>
 
@@ -216,6 +219,20 @@ app.innerHTML = `
           <section id="settings-tts-panel" class="settings-section tts-settings" role="tabpanel" aria-labelledby="settings-tts-tab" tabindex="0" hidden>
             <div class="settings-section-heading"><h2>${t("ttsSettingsTitle")}</h2><p>${t("ttsVoiceLibraryHelp")}</p></div>
             <div class="tts-settings-sheet">
+              <section id="tts-cloud-settings" class="tts-cloud-settings" aria-labelledby="tts-cloud-settings-title" aria-busy="false">
+                <div class="tts-cloud-heading">
+                  <div><h3 id="tts-cloud-settings-title">${t("aiSpeechSettingsTitle")}</h3><p>${t("aiSpeechSettingsHelp")}</p></div>
+                  <strong id="tts-cloud-service-status" class="tts-cloud-service-status" role="status" aria-live="polite">${t("aiSpeechLoading")}</strong>
+                </div>
+                <dl id="tts-cloud-usage" class="tts-cloud-usage" hidden>
+                  <div><dt>${t("aiSpeechQuotaMonthly")}</dt><dd id="tts-cloud-included"></dd></div>
+                  <div><dt>${t("aiSpeechUsed")}</dt><dd id="tts-cloud-used"></dd></div>
+                  <div><dt>${t("aiSpeechRemaining")}</dt><dd id="tts-cloud-remaining"></dd></div>
+                  <div><dt>${t("aiSpeechReset", { date: "" })}</dt><dd id="tts-cloud-reset"></dd></div>
+                </dl>
+                <label id="tts-cloud-voice-field" class="tts-cloud-voice-field" hidden><span>${t("aiSpeechPreferredVoice")}</span><select id="tts-cloud-preferred-voice"></select></label>
+                <p class="tts-cloud-note">${t("aiSpeechCachedHelp")}</p>
+              </section>
               <div class="tts-engine-ledger">
                 <div class="settings-copy"><h3>${t("ttsEngine")}</h3><p id="tts-engine-help"></p></div>
                 <div class="tts-engine-options" role="radiogroup" aria-label="${t("ttsEngine")}">
@@ -332,11 +349,15 @@ app.innerHTML = `
               <section id="book-theme-panel" class="reader-option-panel book-theme-panel" data-reader-panel="theme" hidden>
                 <div class="reader-panel-heading"><span>${svg("brightness", 18)}</span><h3>${t("readerTheme")}</h3></div>
                 <div class="book-theme-options" role="group" aria-label="${t("readerTheme")}">
-                  <button type="button" data-book-theme="system"><span class="book-theme-swatch theme-system"></span>${t("readerThemeSystem")}</button>
-                  <button type="button" data-book-theme="light"><span class="book-theme-swatch theme-paper"></span>${t("readerThemeLight")}</button>
-                  <button type="button" data-book-theme="sepia"><span class="book-theme-swatch theme-sepia"></span>${t("readerThemeSepia")}</button>
-                  <button type="button" data-book-theme="dark"><span class="book-theme-swatch theme-night"></span>${t("readerThemeDark")}</button>
+                  <button type="button" data-book-theme="system"><span class="book-theme-swatch theme-system"></span><span>${t("readerThemeSystem")}</span></button>
+                  <button type="button" data-book-theme="light"><span class="book-theme-swatch theme-paper"></span><span>${t("readerThemeLight")}</span></button>
+                  <button type="button" data-book-theme="sepia"><span class="book-theme-swatch theme-sepia"></span><span>${t("readerThemeSepia")}</span></button>
+                  <button type="button" data-book-theme="dark"><span class="book-theme-swatch theme-night"></span><span>${t("readerThemeDark")}</span></button>
+                  <button type="button" data-book-theme="sage" data-premium-theme aria-disabled="true"><span class="book-theme-swatch theme-sage"></span><span>${t("readerThemeSage")}<small>${t("readerThemePro")}</small></span></button>
+                  <button type="button" data-book-theme="forest" data-premium-theme aria-disabled="true"><span class="book-theme-swatch theme-forest"></span><span>${t("readerThemeForest")}<small>${t("readerThemePro")}</small></span></button>
+                  <button type="button" data-book-theme="wine" data-premium-theme aria-disabled="true"><span class="book-theme-swatch theme-wine"></span><span>${t("readerThemeWine")}<small>${t("readerThemePro")}</small></span></button>
                 </div>
+                <p id="reader-premium-theme-note" class="reader-premium-theme-note">${t("readerPremiumThemeRequired")}</p>
               </section>
               <section id="note-visibility-panel" class="reader-option-panel reader-note-visibility-panel" data-reader-panel="notes" hidden>
                 <div class="reader-panel-heading"><span>${svg("notes", 18)}</span><h3>${t("readerNotes")}</h3></div>
@@ -456,6 +477,9 @@ let bookTtsPreferences: BookTtsPreferences = { rate: 1, pitch: 1, voiceId: "" };
 let ttsVoices: TtsVoice[] = [];
 let ttsInstalled: InstalledPackage[] = [];
 let ttsImportedVoices: CatalogVoice[] = [];
+let cloudTtsVoices: AiSpeechVoice[] = [];
+let cloudTtsUsage: AiSpeechUsage | undefined;
+let cloudTtsRefreshSequence = 0;
 let ttsRuntime: TtsRuntimeStatus = { available: false, version: "", platform: "web", architecture: "", supportsPiper: false, supportsKokoro: false, memoryMb: undefined };
 let ttsState: "idle" | "playing" | "paused" = "idle";
 let ttsSequence = 0;
@@ -494,8 +518,22 @@ let readerPositionRevision = 0;
 let restoringRemotePosition = false;
 let toastTimer: number | undefined;
 let theme: "light" | "dark" = localStorage.getItem("autumn-theme") === "dark" ? "dark" : "light";
-type BookReaderTheme = "system" | "light" | "sepia" | "dark";
+type BookReaderTheme = "system" | "light" | "sepia" | "dark" | "sage" | "forest" | "wine";
+type ConcreteBookReaderTheme = Exclude<BookReaderTheme, "system">;
+interface ReaderThemePalette { canvas: string; paper: string; ink: string }
+const premiumBookThemes = new Set<BookReaderTheme>(["sage", "forest", "wine"]);
+const readerThemePalettes: Record<ConcreteBookReaderTheme, ReaderThemePalette> = {
+  light: { canvas: "#e8dfd1", paper: "#fffdf8", ink: "#342a26" },
+  sepia: { canvas: "#d9c9aa", paper: "#f1e1c5", ink: "#3c2f27" },
+  dark: { canvas: "#181514", paper: "#241f1d", ink: "#f1e8dc" },
+  sage: { canvas: "#b9bca4", paper: "#e5e4cf", ink: "#293328" },
+  forest: { canvas: "#17231d", paper: "#293a31", ink: "#f2eadc" },
+  wine: { canvas: "#2b171c", paper: "#4a242c", ink: "#f5eadb" },
+};
 let bookReaderTheme: BookReaderTheme = "system";
+let readerAdvancedThemes = false;
+let readerAppearanceVerifiedOwner: string | null = null;
+let readerAppearanceAccessSequence = 0;
 let readerBrightness = 100;
 let readerNotesVisible = true;
 let bookFont = pagePreferences.font;
@@ -578,7 +616,7 @@ function setView(next: View): void {
   view = next;
   const shell = $<HTMLElement>(".shell");
   shell.dataset.view = next;
-  if (next === "reader") { resetReaderChrome(); void refreshReaderTtsAccess(); } else window.clearTimeout(chromeTimer);
+  if (next === "reader") { resetReaderChrome(); void refreshReaderTtsAccess(); void refreshReaderAppearanceAccess(); } else window.clearTimeout(chromeTimer);
   if (next === "profile") void profilePage?.activate();
   else profilePage?.deactivate();
   $<HTMLElement>(".workspace").dataset.view = next;
@@ -683,36 +721,64 @@ function readerPreferenceKey(kind: "theme" | "brightness" | "notes", book = curr
   return `autumn-reader-${kind}:${book.ownerId ?? auth.state.ownerId ?? "local"}:${book.id}`;
 }
 
-function effectiveBookReaderTheme(): Exclude<BookReaderTheme, "system"> {
-  return bookReaderTheme === "system" ? theme : bookReaderTheme;
+function accessibleBookReaderTheme(): BookReaderTheme {
+  return premiumBookThemes.has(bookReaderTheme) && !readerAdvancedThemes ? "system" : bookReaderTheme;
 }
 
-function bookReaderColors(): { color: string; background: string } {
-  const effective = effectiveBookReaderTheme();
-  return effective === "dark" ? { color: "#f1e8dc", background: "#241f1d" }
-    : effective === "sepia" ? { color: "#3c2f27", background: "#f1e1c5" }
-      : { color: "#342a26", background: "#fffdf8" };
+function effectiveBookReaderTheme(): ConcreteBookReaderTheme {
+  const selected = accessibleBookReaderTheme();
+  return selected === "system" ? theme : selected;
+}
+
+function bookReaderColors(): ReaderThemePalette {
+  return readerThemePalettes[effectiveBookReaderTheme()];
 }
 
 function applyBookReaderTheme(): void {
   const effective = effectiveBookReaderTheme();
   const colors = bookReaderColors();
-  $<HTMLElement>("#view-reader").dataset.bookTheme = effective;
+  const selected = accessibleBookReaderTheme();
+  const readerView = $<HTMLElement>("#view-reader");
+  readerView.dataset.bookTheme = effective;
+  readerView.style.setProperty("--book-canvas", colors.canvas);
+  readerView.style.setProperty("--book-paper", colors.paper);
+  readerView.style.setProperty("--book-ink", colors.ink);
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-book-theme]")) {
-    const selected = button.dataset.bookTheme === bookReaderTheme;
-    button.classList.toggle("selected", selected);
-    button.setAttribute("aria-pressed", String(selected));
+    const premium = button.hasAttribute("data-premium-theme");
+    const locked = premium && !readerAdvancedThemes;
+    const pressed = button.dataset.bookTheme === selected;
+    button.classList.toggle("selected", pressed);
+    button.classList.toggle("locked", locked);
+    button.setAttribute("aria-disabled", String(locked));
+    button.setAttribute("aria-pressed", String(pressed));
   }
-  readingSurface.style.background = colors.background;
-  readerContent.style.background = colors.background;
-  readerContent.style.color = colors.color;
-  rendition?.themes.default({ body: colors });
+  readingSurface.style.removeProperty("background");
+  readerContent.style.removeProperty("background");
+  readerContent.style.color = colors.ink;
+  rendition?.themes.default({ body: { color: colors.ink, background: colors.paper } });
+  $<HTMLElement>("#reader-premium-theme-note").hidden = readerAdvancedThemes;
+}
+
+async function refreshReaderAppearanceAccess(): Promise<void> {
+  const sequence = ++readerAppearanceAccessSequence;
+  const owner = auth.state.ownerId;
+  let allowed = Boolean(owner && auth.state.status === "authenticated" && readerAppearanceVerifiedOwner === owner && plans.canUse("advanced_themes"));
+  if (owner && auth.state.status === "authenticated" && navigator.onLine) {
+    try {
+      allowed = (await plans.current()).advanced_themes;
+      readerAppearanceVerifiedOwner = owner;
+    }
+    catch (error) { if (import.meta.env.DEV) console.info("Premium reader themes unavailable", error); }
+  }
+  if (sequence !== readerAppearanceAccessSequence || auth.state.ownerId !== owner) return;
+  readerAdvancedThemes = allowed;
+  applyBookReaderTheme();
 }
 
 function loadReaderBookAppearance(book: StoredBook): void {
   const themeKey = readerPreferenceKey("theme", book);
   const storedTheme = themeKey ? localStorage.getItem(themeKey) : null;
-  bookReaderTheme = storedTheme === "light" || storedTheme === "sepia" || storedTheme === "dark" ? storedTheme : "system";
+  bookReaderTheme = storedTheme === "light" || storedTheme === "sepia" || storedTheme === "dark" || storedTheme === "sage" || storedTheme === "forest" || storedTheme === "wine" ? storedTheme : "system";
   const brightnessKey = readerPreferenceKey("brightness", book);
   const storedBrightness = Number(brightnessKey ? localStorage.getItem(brightnessKey) : "");
   readerBrightness = Number.isFinite(storedBrightness) && storedBrightness >= 55 && storedBrightness <= 130 ? storedBrightness : 100;
@@ -2067,11 +2133,11 @@ function beginPageTurn(direction: -1|1, preloadOnly = false): void {
     if (!preloadOnly) { cover.classList.add("page-turn-sheet"); cover.dataset.turnDirection=String(direction); }
     const viewport = epubViewportSize(frame);
     const preview = epubBook.renderTo(frame,{width:"100%",height:"100%",flow:"paginated",spread:columnCount(pagePreferences.columns,viewport.width,viewport.height)===2?"always":"none"}); epubBook.rendition=rendition; turn.preview=preview;
-    preview.hooks.content.register((contents: Contents)=>standardizeEpubPage(contents));
+    preview.hooks.content.register((contents: Contents) => standardizeEpubPage(contents));
     preview.themes.fontSize(`${currentBook.fontSize}%`); preview.themes.font(fontCss(bookFont));
     const previewColors = bookReaderColors();
-    cover.style.background = previewColors.background; frame.style.background = previewColors.background;
-    preview.themes.default({ body: previewColors });
+    cover.style.background = previewColors.canvas; frame.style.background = previewColors.paper;
+    preview.themes.default({ body: { color: previewColors.ink, background: previewColors.paper } });
     cover.style.visibility="hidden"; cover.style.transform="translate3d(0,0,0)";
     turn.ready=(async()=>{
       await preview.display((turn.origin as Extract<ReaderPosition,{format:"epub"}>).cfi);
@@ -2276,9 +2342,14 @@ const sidebarCollapsedKey = "autumn-sidebar-collapsed";
 const applySidebarCollapsed = (collapsed: boolean): void => {
   shellElement.classList.toggle("sidebar-collapsed", collapsed);
   collapseButton.setAttribute("aria-pressed", String(collapsed));
-  collapseButton.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+  const collapseLabel = t(collapsed ? "sidebarExpand" : "sidebarCollapse");
+  collapseButton.setAttribute("aria-label", collapseLabel);
+  const collapseText = collapseButton.querySelector("span");
+  if (collapseText) collapseText.textContent = t("sidebarCollapse");
 };
-applySidebarCollapsed(localStorage.getItem(sidebarCollapsedKey) !== "false");
+// Navigation starts compact on every launch; expanding it is session-only.
+localStorage.setItem(sidebarCollapsedKey, "true");
+applySidebarCollapsed(true);
 collapseButton.addEventListener("click", () => {
   const collapsed = !shellElement.classList.contains("sidebar-collapsed");
   localStorage.setItem(sidebarCollapsedKey, String(collapsed));
@@ -2372,7 +2443,7 @@ function openDesktopReaderSettings(tab: "layout" | "appearance" = "appearance"):
 async function refreshReaderTtsAccess(): Promise<void> {
   const trigger = $<HTMLButtonElement>("#speech-toggle");
   const sidebarTrigger = $<HTMLButtonElement>("#reader-tts-tab");
-  const allowed = ttsAvailable() || installedCatalogVoices().length > 0;
+  const allowed = ttsAvailable() || installedCatalogVoices().length > 0 || cloudTtsVoices.length > 0;
   trigger.hidden = !allowed;
   sidebarTrigger.hidden = !allowed;
   if (!allowed && activeReaderSidebarTab === "tts") setReaderSidebarTab("contents");
@@ -2400,7 +2471,9 @@ function openReaderOptions(trigger: HTMLButtonElement): void {
   if (activeReaderOptionsTrigger === trigger && readerOptions.classList.contains("is-open")) { closeReaderOptions(); return; }
   const wasOpen = readerOptions.classList.contains("is-open");
   for (const button of readerOptionTriggers) button.setAttribute("aria-expanded", String(button === trigger));
-  readerOptions.querySelectorAll<HTMLElement>(".reader-option-panel").forEach(panel => { panel.hidden = panel.id !== panelId; });
+  readerOptions.querySelectorAll<HTMLElement>(".reader-option-panel").forEach(panel => {
+    panel.hidden = panel.id !== panelId && !(panelId === "brightness-panel" && panel.id === "book-theme-panel");
+  });
   readerOptions.hidden = false;
   readerOptions.classList.remove("desktop-settings-open");
   readerOptions.classList.add("is-open");
@@ -2508,6 +2581,86 @@ function activeSystemVoice(): TtsVoice | undefined {
   return preferredVoice(ttsVoices, override || ttsPreferences.voices.system, ttsLanguage());
 }
 
+const cloudVoicePrefix = "cloud:";
+function cloudVoiceValue(voice: AiSpeechVoice): string { return `${cloudVoicePrefix}${voice.id}:${voice.language}`; }
+function isCloudVoiceValue(value = bookTtsPreferences.voiceId): boolean { return value.startsWith(cloudVoicePrefix); }
+function activeCloudVoice(): AiSpeechVoice | undefined {
+  return cloudTtsVoices.find(voice => cloudVoiceValue(voice) === bookTtsPreferences.voiceId);
+}
+function preferredCloudVoice(): AiSpeechVoice | undefined {
+  const owner = auth.state.ownerId;
+  if (!owner) return cloudTtsVoices[0];
+  const preferred = loadAiSpeechPreferences(owner);
+  return cloudTtsVoices.find(voice => voice.id === preferred.voiceId && voice.language === preferred.language) ?? cloudTtsVoices[0];
+}
+function cloudSpeechFragmentId(): string {
+  if (currentBook?.format === "pdf") return `pdf-${Math.max(1, pdfPosition.page)}-0-0`;
+  return `epub-page-${Math.max(0, rendition?.location?.start?.index ?? 0)}`;
+}
+function aiSpeechError(error: unknown): string {
+  const code = error instanceof Error ? error.message : String(error);
+  if (code.includes("subscription_required")) return t("aiSpeechSubscriberOnly");
+  if (code.includes("ai_speech_quota")) return t("aiSpeechQuotaExhausted");
+  if (code.includes("global_budget")) return t("aiSpeechBudgetReached");
+  if (code.includes("rate_limited") || code.includes("generation_limit")) return t("aiSpeechRateLimited");
+  if (!navigator.onLine) return t("aiSpeechOfflineFallback");
+  return t("aiSpeechGenerationError");
+}
+
+function renderCloudTtsSettings(): void {
+  const root = document.querySelector<HTMLElement>("#tts-cloud-settings");
+  if (!root) return;
+  const status = $<HTMLElement>("#tts-cloud-service-status");
+  const usage = $<HTMLElement>("#tts-cloud-usage");
+  const field = $<HTMLElement>("#tts-cloud-voice-field");
+  const select = $<HTMLSelectElement>("#tts-cloud-preferred-voice");
+  const number = (value: number): string => new Intl.NumberFormat(language).format(value);
+  usage.hidden = !cloudTtsUsage;
+  if (cloudTtsUsage) {
+    $("#tts-cloud-included").textContent = number(cloudTtsUsage.includedCharacters);
+    $("#tts-cloud-used").textContent = number(cloudTtsUsage.usedCharacters);
+    $("#tts-cloud-remaining").textContent = number(cloudTtsUsage.remainingCharacters);
+    $("#tts-cloud-reset").textContent = new Date(cloudTtsUsage.resetsAt).toLocaleDateString(language);
+  }
+  select.replaceChildren(...cloudTtsVoices.map(voice => new Option(`${localeName(voice.language)} · ${voice.name}`, cloudVoiceValue(voice))));
+  const preferred = preferredCloudVoice();
+  if (preferred) select.value = cloudVoiceValue(preferred);
+  field.hidden = !cloudTtsVoices.length;
+  status.dataset.available = String(Boolean(cloudTtsUsage?.serviceAvailable && cloudTtsVoices.length));
+  status.textContent = auth.state.status !== "authenticated" ? t("aiSpeechSignIn")
+    : !navigator.onLine ? t("aiSpeechOfflineFallback")
+    : cloudTtsUsage?.plan !== "premium" ? t("aiSpeechSubscriberOnly")
+    : cloudTtsUsage.budgetPaused || !cloudTtsUsage.serviceAvailable ? t("aiSpeechServicePaused")
+    : t("aiSpeechServiceReady");
+  root.setAttribute("aria-busy", "false");
+}
+
+async function refreshCloudTtsSettings(): Promise<void> {
+  const sequence = ++cloudTtsRefreshSequence;
+  const owner = auth.state.ownerId;
+  const root = document.querySelector<HTMLElement>("#tts-cloud-settings");
+  if (root) root.setAttribute("aria-busy", "true");
+  cloudTtsUsage = undefined; cloudTtsVoices = [];
+  if (!owner || auth.state.status !== "authenticated" || !navigator.onLine) {
+    renderCloudTtsSettings(); renderReaderVoiceOptions(); return;
+  }
+  try {
+    const usage = await aiSpeech.usage();
+    if (sequence !== cloudTtsRefreshSequence || auth.state.ownerId !== owner) return;
+    cloudTtsUsage = usage;
+    if (usage.plan === "premium") {
+      const result = await aiSpeech.voices();
+      if (sequence !== cloudTtsRefreshSequence || auth.state.ownerId !== owner) return;
+      cloudTtsVoices = result.voices;
+    }
+  } catch (error) {
+    if (sequence === cloudTtsRefreshSequence) console.warn("Cloud TTS discovery failed", error);
+  }
+  if (sequence !== cloudTtsRefreshSequence) return;
+  renderCloudTtsSettings();
+  void refreshReaderTtsAccess();
+}
+
 function saveCurrentBookTts(): void {
   if (!currentBook) return;
   bookTtsPreferences = saveBookTtsPreferences(currentBook.ownerId ?? auth.state.ownerId ?? "local", currentBook.id, bookTtsPreferences);
@@ -2576,12 +2729,13 @@ function updateTtsPlayer(text = currentTtsText()): void {
   $("#tts-passage").textContent = text ? `${text.slice(0, 165)}${text.length > 165 ? "…" : ""}` : t("noSelectableText");
   const systemVoice = activeSystemVoice();
   const catalogVoice = activeCatalogVoice();
-  $("#tts-active-voice").textContent = t("ttsVoiceActive", { voice: catalogVoice?.name ?? (systemVoice ? ttsVoiceLabel(systemVoice) : t("ttsDefaultVoice")) });
+  const cloudVoice = activeCloudVoice();
+  $("#tts-active-voice").textContent = t("ttsVoiceActive", { voice: cloudVoice?.name ?? catalogVoice?.name ?? (systemVoice ? ttsVoiceLabel(systemVoice) : t("ttsDefaultVoice")) });
   $<HTMLInputElement>("#tts-rate-reader").value = String(bookTtsPreferences.rate);
   $<HTMLOutputElement>("#tts-rate-reader-value").textContent = formatTtsRate(bookTtsPreferences.rate);
   const pitch = $<HTMLInputElement>("#tts-pitch-reader");
   pitch.value = String(bookTtsPreferences.pitch);
-  pitch.disabled = !ttsEngines[ttsPreferences.engine].capabilities.pitch;
+  pitch.disabled = Boolean(cloudVoice) || !ttsEngines[ttsPreferences.engine].capabilities.pitch;
   $<HTMLOutputElement>("#tts-pitch-reader-value").textContent = formatTtsRate(bookTtsPreferences.pitch);
   $("#tts-pitch-help").textContent = pitch.disabled ? t("ttsPitchUnavailable") : "";
   renderReaderVoiceOptions();
@@ -2746,18 +2900,72 @@ async function playLocalChunk(sequence: number): Promise<void> {
   }
 }
 
+async function playCloudChunk(sequence: number): Promise<void> {
+  if (sequence !== ttsSequence || ttsState === "idle") return;
+  const text = ttsChunks[ttsChunkIndex];
+  if (!text) { void advanceTtsPage(sequence); return; }
+  const voice = activeCloudVoice();
+  if (!voice || !currentBook?.cloudId) {
+    stopTts();
+    showToast(currentBook?.cloudId ? t("aiSpeechGenerationError") : t("aiSpeechNeedsCloudBook"));
+    return;
+  }
+  highlightTtsWord(ttsChunkIndex, 0);
+  const panel = $<HTMLElement>("#speech-panel");
+  panel.setAttribute("aria-busy", "true");
+  $<HTMLOutputElement>("#tts-player-status").textContent = t("aiSpeechGenerating");
+  try {
+    const result = await aiSpeech.synthesize({
+      bookId: currentBook.cloudId,
+      fragmentId: cloudSpeechFragmentId(),
+      text,
+      voiceId: voice.id,
+      language: voice.language,
+      rate: bookTtsPreferences.rate,
+    });
+    if (sequence !== ttsSequence || (ttsState as string) === "idle") return;
+    panel.removeAttribute("aria-busy");
+    $<HTMLOutputElement>("#tts-player-status").textContent = t(result.cached ? "aiSpeechCached" : "ttsPlayerReading");
+    await localTtsPlayer.loadUrl(result.audioUrl, {
+      ended: () => {
+        if (sequence !== ttsSequence || ttsState === "idle") return;
+        ttsChunkIndex += 1;
+        void playCloudChunk(sequence);
+      },
+      error: () => {
+        if (sequence !== ttsSequence) return;
+        stopTts();
+        $<HTMLButtonElement>("#tts-system-fallback").hidden = false;
+        showToast(t("aiSpeechGenerationError"));
+      },
+      progress: ratio => highlightTtsWord(ttsChunkIndex, Math.floor(text.length * ratio)),
+    }, ttsState === "playing");
+  } catch (error) {
+    if (sequence !== ttsSequence) return;
+    console.error("Cloud TTS failed", error);
+    stopTts();
+    $<HTMLButtonElement>("#tts-system-fallback").hidden = false;
+    showToast(aiSpeechError(error));
+    void refreshCloudTtsSettings();
+  }
+}
+
 function startTtsPage(): void {
-  if (!engineAvailable(ttsPreferences.engine)) { showToast(t("speechUnavailable")); return; }
-  if (ttsPreferences.engine !== "system" && !activeCatalogVoice()) { showToast(t("ttsVoiceRequired")); return; }
+  const cloudVoice = activeCloudVoice();
+  if (!cloudVoice && !engineAvailable(ttsPreferences.engine)) { showToast(t("speechUnavailable")); return; }
+  if (!cloudVoice && ttsPreferences.engine !== "system" && !activeCatalogVoice()) { showToast(t("ttsVoiceRequired")); return; }
+  if (cloudVoice && !currentBook?.cloudId) { showToast(t("aiSpeechNeedsCloudBook")); return; }
+  if (cloudVoice && !navigator.onLine) { showToast(t("aiSpeechOfflineFallback")); return; }
   const source = currentTtsSource();
   const text = source.text;
   if (!text) { showToast(t("noSelectableText")); stopTts(); return; }
   const sequence = ++ttsSequence;
   ttsSource = source;
-  ttsChunks = ttsPreferences.engine === "system" && usesNativeSystemTts() ? nativeSpeechChunks(text) : speechChunks(text);
+  ttsChunks = !cloudVoice && ttsPreferences.engine === "system" && usesNativeSystemTts() ? nativeSpeechChunks(text) : speechChunks(text);
   ttsChunkOffsets = locateSpeechChunks(text, ttsChunks);
   ttsChunkIndex = 0; ttsState = "playing";
   updateTtsPlayer(text);
+  if (cloudVoice) { void playCloudChunk(sequence); return; }
   if (ttsPreferences.engine !== "system") { void playLocalChunk(sequence); return; }
   if (usesNativeSystemTts()) {
     void nativeStop().catch(() => undefined).then(() => {
@@ -2774,15 +2982,17 @@ function restartCurrentTtsChunk(): void {
   const sequence = cancelTtsWork();
   ttsState = "playing";
   updateTtsPlayer();
-  if (ttsPreferences.engine === "system") speakTtsChunk(sequence);
+  if (activeCloudVoice()) void playCloudChunk(sequence);
+  else if (ttsPreferences.engine === "system") speakTtsChunk(sequence);
   else void playLocalChunk(sequence);
 }
 
 async function toggleTtsPlayback(): Promise<void> {
-  if (!engineAvailable(ttsPreferences.engine)) { showToast(t("speechUnavailable")); return; }
+  const cloudVoice = activeCloudVoice();
+  if (!cloudVoice && !engineAvailable(ttsPreferences.engine)) { showToast(t("speechUnavailable")); return; }
   if (ttsState === "playing") {
     try {
-      if (ttsPreferences.engine !== "system") localTtsPlayer.pause();
+      if (cloudVoice || ttsPreferences.engine !== "system") localTtsPlayer.pause();
       else if (usesNativeSystemTts()) await nativePause(); else window.speechSynthesis.pause();
       ttsState = "paused"; updateTtsPlayer();
     } catch (error) { console.error("TTS pause failed", error); showToast(t("speechUnavailable")); }
@@ -2790,8 +3000,8 @@ async function toggleTtsPlayback(): Promise<void> {
   }
   if (ttsState === "paused") {
     try {
-      if (ttsPreferences.engine !== "system") {
-        if (localTtsPlayer.loaded) await localTtsPlayer.resume(); else void playLocalChunk(ttsSequence);
+      if (cloudVoice || ttsPreferences.engine !== "system") {
+        if (localTtsPlayer.loaded) await localTtsPlayer.resume(); else if (cloudVoice) void playCloudChunk(ttsSequence); else void playLocalChunk(ttsSequence);
       } else if (usesNativeSystemTts()) await nativeResume(); else window.speechSynthesis.resume();
       ttsState = "playing"; updateTtsPlayer();
     } catch (error) { console.error("TTS resume failed", error); showToast(t("speechUnavailable")); }
@@ -2809,7 +3019,8 @@ async function navigateTts(direction: -1 | 1): Promise<void> {
       ttsChunkIndex = target;
       ttsState = "playing";
       updateTtsPlayer();
-      if (ttsPreferences.engine === "system") speakTtsChunk(sequence); else await playLocalChunk(sequence);
+      if (activeCloudVoice()) await playCloudChunk(sequence);
+      else if (ttsPreferences.engine === "system") speakTtsChunk(sequence); else await playLocalChunk(sequence);
       return;
     }
   }
@@ -2835,6 +3046,10 @@ function renderReaderVoiceOptions(): void {
     for (const voice of installedCatalogVoices(ttsPreferences.engine)) select.add(new Option(`${localeName(voice.locale)} · ${voice.name}`, voice.id));
     select.value = activeCatalogVoice()?.id ?? "";
   }
+  const preferred = preferredCloudVoice();
+  const orderedCloudVoices = preferred ? [preferred, ...cloudTtsVoices.filter(voice => voice !== preferred)] : cloudTtsVoices;
+  for (const voice of orderedCloudVoices) select.add(new Option(`${localeName(voice.language)} · ${voice.name}`, cloudVoiceValue(voice)));
+  if (activeCloudVoice()) select.value = bookTtsPreferences.voiceId;
   if (!select.options.length) select.add(new Option(t("ttsNoVoices"), ""));
   select.disabled = select.options.length === 1 && !select.options[0].value;
 }
@@ -3061,7 +3276,12 @@ ttsImportForm.addEventListener("submit", event => {
 document.querySelectorAll<HTMLButtonElement>("[data-tts-engine]").forEach(button => button.addEventListener("click", () => {
   const engine = button.dataset.ttsEngine as TtsEngineId;
   if (!engineAvailable(engine)) return;
-  stopTts(false); ttsPreferences = saveTtsPreferences({ ...ttsPreferences, engine }); renderTtsCatalog(); updateTtsPlayer();
+  stopTts(false); ttsPreferences = saveTtsPreferences({ ...ttsPreferences, engine });
+  if (isCloudVoiceValue()) {
+    bookTtsPreferences = { ...bookTtsPreferences, voiceId: engine === "system" ? "" : ttsPreferences.voices[engine] };
+    saveCurrentBookTts();
+  }
+  renderTtsCatalog(); updateTtsPlayer();
 }));
 for (const id of ["#tts-language-filter", "#tts-region-filter", "#tts-engine-filter"]) $(id).addEventListener("change", () => renderTtsCatalog());
 async function previewInstalledVoice(engine: TtsEngineId, voiceId: string): Promise<void> {
@@ -3109,10 +3329,23 @@ $<HTMLElement>(".tts-settings-sheet").addEventListener("click", event => {
 });
 $<HTMLSelectElement>("#tts-reader-voice").addEventListener("change", event => {
   bookTtsPreferences = { ...bookTtsPreferences, voiceId: (event.target as HTMLSelectElement).value }; saveCurrentBookTts();
+  const voice = activeCloudVoice(), owner = auth.state.ownerId;
+  if (voice && owner) {
+    saveAiSpeechPreferences(owner, { voiceId: voice.id, language: voice.language });
+    renderCloudTtsSettings();
+  }
   if (ttsState !== "idle") restartCurrentTtsChunk(); else updateTtsPlayer();
+});
+$<HTMLSelectElement>("#tts-cloud-preferred-voice").addEventListener("change", event => {
+  const voice = cloudTtsVoices.find(item => cloudVoiceValue(item) === (event.target as HTMLSelectElement).value);
+  const owner = auth.state.ownerId;
+  if (!voice || !owner) return;
+  saveAiSpeechPreferences(owner, { voiceId: voice.id, language: voice.language });
+  renderReaderVoiceOptions();
 });
 $<HTMLButtonElement>("#tts-system-fallback").addEventListener("click", () => {
   ttsPreferences = saveTtsPreferences({ ...ttsPreferences, engine: "system" });
+  bookTtsPreferences = { ...bookTtsPreferences, voiceId: "" }; saveCurrentBookTts();
   $<HTMLButtonElement>("#tts-system-fallback").hidden = true; renderTtsCatalog(); updateTtsPlayer();
 });
 $("#tts-play-pause").addEventListener("click", () => void toggleTtsPlayback());
@@ -3286,7 +3519,12 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(".theme-choice
 }
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-book-theme]")) {
   button.addEventListener("click", () => {
-    bookReaderTheme = button.dataset.bookTheme as BookReaderTheme;
+    const nextTheme = button.dataset.bookTheme as BookReaderTheme;
+    if (premiumBookThemes.has(nextTheme) && !readerAdvancedThemes) {
+      showToast(t("readerPremiumThemeRequired"));
+      return;
+    }
+    bookReaderTheme = nextTheme;
     const key = readerPreferenceKey("theme");
     if (key) localStorage.setItem(key, bookReaderTheme);
     applyBookReaderTheme();
@@ -3408,6 +3646,8 @@ window.addEventListener("resize", () => {
 applyTheme();
 setView("home");
 mountSettings($("#view-settings"));
+$<HTMLButtonElement>("#settings-tts-tab").addEventListener("click", () => void refreshCloudTtsSettings());
+renderCloudTtsSettings();
 void mountDesktopGeneralSettings();
 translationUI=mountTranslation($("#translation-panel"),translationService,()=>readingSurface.focus({preventScroll:true}));
 $("#selection-translate").addEventListener("click",()=>{hideNoteMenu();searchUI?.close();translationUI?.open(selectedTranslationText);});
@@ -3506,6 +3746,7 @@ bookLayoutUI = mountLayoutFields($("#book-layout-fields"), {
 });
 mountAccountSecurity($("#settings-security"));
 const accountPlans = mountAccountPlans($("#settings-account-sheet"));
+mountSync($("#settings-account-sheet"), accountPlans.refresh);
 mountAccountStorage(accountPlans.actions, coverElement, reloadCloudLibrary);
 mountAccount(app, $(".shell"), $("#settings-account-footer"));
 const cloudDownloads = new Map<string, Promise<StoredBook>>();
@@ -3653,7 +3894,12 @@ loadMoreCloud.addEventListener("click", () => {
 let collectionOwner: string | null | undefined;
 auth.subscribe((state) => {
   if (state.status === "loading") return;
-  if (view === "reader") void refreshReaderTtsAccess();
+  void refreshCloudTtsSettings();
+  if (readerAppearanceVerifiedOwner !== state.ownerId) {
+    readerAdvancedThemes = false;
+    applyBookReaderTheme();
+  }
+  if (view === "reader") { void refreshReaderTtsAccess(); void refreshReaderAppearanceAccess(); }
   if (collectionOwner !== state.ownerId) {
     const switchedAccount = Boolean(collectionOwner);
     collectionOwner = state.ownerId; ++loadSequence;
@@ -3674,7 +3920,8 @@ auth.subscribe((state) => {
 readingSurface.addEventListener("pointerdown", () => { if (view === "reader") readingActivity.interact(); }, { passive: true });
 readingSurface.addEventListener("keydown", () => { if (view === "reader") readingActivity.interact(); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && view !== "reader") void reloadCloudLibrary(); });
-window.addEventListener("online", () => { void auth.refresh().then(resumeApprovedMigrations).then(reloadCloudLibrary).catch((error: unknown) => showToast(errorMessage(error))); });
+window.addEventListener("online", () => { void refreshCloudTtsSettings(); void refreshReaderAppearanceAccess(); void auth.refresh().then(resumeApprovedMigrations).then(reloadCloudLibrary).catch((error: unknown) => showToast(errorMessage(error))); });
+window.addEventListener("offline", () => { void refreshCloudTtsSettings(); void refreshReaderAppearanceAccess(); });
 window.addEventListener("autumn-device-ready", () => { void reloadCloudLibrary(); void sync.flush(true); });
 window.addEventListener("autumn-synced", () => { if (view !== "reader") void refreshFolders().catch(() => {}); });
 window.addEventListener("autumn-upload-progress", event => {

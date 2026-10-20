@@ -3,6 +3,10 @@ import { assertEquals } from "jsr:@std/assert@1";
 Deno.env.set("SUPABASE_URL", "https://example.supabase.co");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "service-role-test");
 Deno.env.set("LEMONSQUEEZY_WEBHOOK_SECRET", "webhook-test-secret");
+Deno.env.set("LEMONSQUEEZY_STORE_ID", "491763");
+Deno.env.set("LEMONSQUEEZY_MODE", "test");
+Deno.env.set("LEMONSQUEEZY_PREMIUM_MONTHLY_VARIANT_ID", "991001");
+Deno.env.set("LEMONSQUEEZY_PREMIUM_LIFETIME_VARIANT_ID", "991002");
 Deno.env.set("ALLOWED_ORIGINS", "");
 
 const { handleRequest } = await import("./handler.ts");
@@ -35,6 +39,7 @@ function payload(overrides: Record<string, unknown> = {}) {
       id: "7654321",
       attributes: {
         store_id: 491763,
+        test_mode: true,
         customer_id: 1234567,
         variant_id: 2216029,
         status: "active",
@@ -42,6 +47,30 @@ function payload(overrides: Record<string, unknown> = {}) {
         created_at: "2026-10-06T18:00:00.000Z",
         updated_at: "2026-10-06T18:00:01.000Z",
         renews_at: "2026-11-06T18:00:00.000Z",
+        ...overrides,
+      },
+    },
+  };
+}
+
+function orderPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    meta: {
+      event_name: "order_created",
+      custom_data: { autumn_user_id: "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa" },
+    },
+    data: {
+      type: "orders",
+      id: "8765432",
+      attributes: {
+        store_id: 491763,
+        test_mode: true,
+        customer_id: 1234567,
+        status: "paid",
+        refunded: false,
+        created_at: "2026-10-17T18:00:00.000Z",
+        updated_at: "2026-10-17T18:00:01.000Z",
+        first_order_item: { variant_id: 991002 },
         ...overrides,
       },
     },
@@ -124,7 +153,7 @@ Deno.test("maps every configured Lemon Squeezy variant", async () => {
   };
 
   try {
-    for (const variantId of [2216029, 2216031, 2216032, 2216034]) {
+    for (const variantId of [2216029, 2216031, 2216032, 2216034, 991001]) {
       const body = JSON.stringify(payload({ variant_id: variantId }));
       const response = await handleRequest(new Request("https://example.test", {
         method: "POST",
@@ -142,10 +171,78 @@ Deno.test("maps every configured Lemon Squeezy variant", async () => {
       ["plus", "annual"],
       ["pro", "monthly"],
       ["pro", "annual"],
+      ["premium", "monthly"],
     ]);
   } finally {
     globalThis.fetch = previous;
   }
+});
+
+Deno.test("maps a paid lifetime order to a permanent Premium purchase", async () => {
+  const previous = globalThis.fetch;
+  let rpcBody: Record<string, unknown> = {};
+
+  globalThis.fetch = async (input, init) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    if (new URL(request.url).pathname.endsWith("/rpc/process_lifetime_order_v2")) {
+      rpcBody = await request.json();
+      return Response.json(true);
+    }
+    return Response.json({});
+  };
+
+  try {
+    const body = JSON.stringify(orderPayload());
+    const response = await handleRequest(new Request("https://example.test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Signature": await signature(body) },
+      body,
+    }));
+
+    assertEquals(response.status, 200);
+    assertEquals(rpcBody.p_event_type, "order_created");
+    assertEquals(rpcBody.p_provider_order_id, "8765432");
+    assertEquals(rpcBody.p_status, "paid");
+    assertEquals(rpcBody.p_user, "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa");
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
+Deno.test("audits partial Lifetime refunds and revokes only verified full refunds", async () => {
+  const previous = globalThis.fetch;
+  const statuses: unknown[] = [];
+  globalThis.fetch = async (input, init) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    if (new URL(request.url).pathname.endsWith("/rpc/process_lifetime_order_v2")) {
+      const args=await request.json() as Record<string,unknown>;
+      statuses.push(args.p_refund_kind);
+      return Response.json(true);
+    }
+    return Response.json({});
+  };
+  try {
+    const partial = orderPayload({ refunded:false, status:"partial_refund", refunded_amount_usd:2000, total_usd:11999, updated_at:"2026-10-18T18:00:01.000Z" });
+    partial.meta.event_name = "order_refunded";
+    let body = JSON.stringify(partial);
+    let response = await handleRequest(new Request("https://example.test", {method:"POST",headers:{"Content-Type":"application/json","X-Signature":await signature(body)},body}));
+    assertEquals(response.status,200);
+    assertEquals(statuses,["partial"]);
+
+    const full = orderPayload({ refunded:true, status:"refunded", refunded_amount_usd:11999, total_usd:11999, updated_at:"2026-10-18T18:00:02.000Z" });
+    full.meta.event_name = "order_refunded";
+    body = JSON.stringify(full);
+    response = await handleRequest(new Request("https://example.test", {method:"POST",headers:{"Content-Type":"application/json","X-Signature":await signature(body)},body}));
+    assertEquals(response.status,200);
+    assertEquals(statuses,["partial","full"]);
+
+    const inconsistent = orderPayload({ refunded:true, status:"refunded", refunded_amount_usd:2000, total_usd:11999, updated_at:"2026-10-18T18:00:03.000Z" });
+    inconsistent.meta.event_name = "order_refunded";
+    body = JSON.stringify(inconsistent);
+    response = await handleRequest(new Request("https://example.test", {method:"POST",headers:{"Content-Type":"application/json","X-Signature":await signature(body)},body}));
+    assertEquals(response.status,200);
+    assertEquals(statuses,["partial","full","partial"]);
+  } finally { globalThis.fetch = previous; }
 });
 
 Deno.test("rejects an unknown variant without writing billing state", async () => {

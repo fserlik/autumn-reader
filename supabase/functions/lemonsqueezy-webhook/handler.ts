@@ -15,8 +15,8 @@ type LemonWebhook = {
 };
 
 const catalog = new Map<number, {
-  plan: "plus" | "pro";
-  period: "monthly" | "annual";
+  plan: "plus" | "pro" | "premium";
+  period: "monthly" | "annual" | "lifetime";
 }>([
   [2216029, { plan: "plus", period: "monthly" }],
   [2216031, { plan: "plus", period: "annual" }],
@@ -24,7 +24,19 @@ const catalog = new Map<number, {
   [2216034, { plan: "pro", period: "annual" }],
 ]);
 
+const monthlyVariantId = Number(Deno.env.get("LEMONSQUEEZY_PREMIUM_MONTHLY_VARIANT_ID"));
+if (Number.isSafeInteger(monthlyVariantId) && monthlyVariantId > 0) {
+  catalog.set(monthlyVariantId, { plan: "premium", period: "monthly" });
+}
+
+const lifetimeVariantId = Number(Deno.env.get("LEMONSQUEEZY_PREMIUM_LIFETIME_VARIANT_ID"));
+if (Number.isSafeInteger(lifetimeVariantId) && lifetimeVariantId > 0) {
+  catalog.set(lifetimeVariantId, { plan: "premium", period: "lifetime" });
+}
+
 const handledEvents = new Set([
+  "order_created",
+  "order_refunded",
   "subscription_created",
   "subscription_updated",
   "subscription_cancelled",
@@ -59,6 +71,15 @@ function asNumber(value: unknown): number | null {
   }
 
   return null;
+}
+
+function configuredEnvironment(): { storeId: number; testMode: boolean } {
+  const storeId = Number(required("LEMONSQUEEZY_STORE_ID"));
+  const mode = required("LEMONSQUEEZY_MODE");
+  if (!Number.isSafeInteger(storeId) || storeId < 1 || !["test", "live"].includes(mode)) {
+    throw new Error("backend_not_configured");
+  }
+  return { storeId, testMode: mode === "test" };
 }
 
 function iso(value: unknown): string | null {
@@ -189,8 +210,7 @@ function eventTimestamp(
 
 function currentPeriodStart(attributes: JsonObject): string | null {
   /*
-   * Lemon Squeezy doesn't expose a Paddle-style
-   * current_period_start field in the subscription payload.
+   * Lemon Squeezy doesn't expose current_period_start in this payload.
    * created_at is a safe initial value for our existing schema.
    */
   return iso(attributes.created_at);
@@ -256,8 +276,9 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
 
   const data = event.data;
+  const isOrder = eventName === "order_created" || eventName === "order_refunded";
 
-  if (!data || data.type !== "subscriptions") {
+  if (!data || (isOrder ? data.type !== "orders" : data.type !== "subscriptions")) {
     /*
      * Payment events may have a different resource type.
      * They can safely be ignored because subscription_updated
@@ -276,7 +297,20 @@ export async function handleRequest(request: Request): Promise<Response> {
     return json(request, { code: "invalid_event" }, 422);
   }
 
-  const variantId = asNumber(attributes.variant_id);
+  try {
+    const expected = configuredEnvironment();
+    if (asNumber(attributes.store_id) !== expected.storeId || attributes.test_mode !== expected.testMode) {
+      console.error("Lemon Squeezy event environment mismatch", { eventName, subscriptionId });
+      return json(request, { code: "billing_environment_mismatch" }, 422);
+    }
+  } catch {
+    return json(request, { code: "backend_not_configured" }, 503);
+  }
+
+  const orderItem = attributes.first_order_item && typeof attributes.first_order_item === "object"
+    ? attributes.first_order_item as JsonObject
+    : {};
+  const variantId = asNumber(isOrder ? orderItem.variant_id : attributes.variant_id);
   const match = variantId === null ? undefined : catalog.get(variantId);
 
   if (!match) {
@@ -287,6 +321,12 @@ export async function handleRequest(request: Request): Promise<Response> {
     });
 
     return json(request, { code: "unknown_variant" }, 422);
+  }
+
+  // Subscription products also emit order events. Their entitlement remains
+  // driven by the subscription lifecycle, not by the accompanying order.
+  if (isOrder && match.period !== "lifetime") {
+    return json(request, { received: true, ignored: true });
   }
 
   const customerId = asString(attributes.customer_id);
@@ -305,13 +345,11 @@ export async function handleRequest(request: Request): Promise<Response> {
     asString(customData.autumn_user_id) ??
     asString(customData.user_id);
 
-  const status = normalizeStatus(eventName, attributes);
-
   /*
    * Generate a deterministic event ID.
    *
-   * Lemon Squeezy's webhook payload does not provide the same
-   * event-id field Paddle used, so event type + subscription +
+   * Lemon Squeezy's webhook payload does not provide a stable delivery ID,
+   * so event type + subscription +
    * provider update timestamp gives our existing RPC a stable
    * deduplication key.
    */
@@ -323,6 +361,46 @@ export async function handleRequest(request: Request): Promise<Response> {
     occurredAt,
   ].join(":");
 
+  if (isOrder) {
+    const totalUsd = asNumber(attributes.total_usd);
+    const refundedUsd = asNumber(attributes.refunded_amount_usd);
+    // Lemon Squeezy reports these USD values in cents. A signed "refunded"
+    // flag/status is not enough on its own: require the amounts to reconcile
+    // before automatically revoking a Lifetime right. Inconsistent events are
+    // retained as partial/review-required by the database.
+    const providerSaysFull = attributes.refunded === true || asString(attributes.status)?.toLowerCase() === "refunded";
+    const fullyRefunded = providerSaysFull && totalUsd !== null && refundedUsd !== null &&
+      Number.isInteger(totalUsd) && Number.isInteger(refundedUsd) && totalUsd > 0 && refundedUsd >= totalUsd;
+    if (eventName === "order_created" && asString(attributes.status)?.toLowerCase() !== "paid") {
+      return json(request, { code: "invalid_order" }, 422);
+    }
+    const args = {
+      p_event_id: eventId,
+      p_event_type: eventName,
+      p_occurred_at: occurredAt,
+      p_user: userId,
+      p_provider_customer_id: customerId,
+      p_provider_order_id: subscriptionId,
+      p_status: eventName === "order_refunded" ? "refunded" : "paid",
+      p_refund_kind: eventName === "order_refunded" ? (fullyRefunded ? "full" : "partial") : null,
+      p_refunded_amount_usd: refundedUsd,
+      p_total_usd: totalUsd,
+    };
+    try {
+      const { data: processed, error } = await admin().rpc("process_lifetime_order_v2", args);
+      if (error) throw new Error("database_unavailable");
+      return json(request, { received: true, duplicate: processed === false });
+    } catch (error) {
+      console.error("Lemon Squeezy lifetime order rejected", {
+        eventName,
+        orderId: subscriptionId,
+        reason: error instanceof Error ? error.message : "unknown",
+      });
+      return json(request, { code: "webhook_processing_failed" }, 422);
+    }
+  }
+
+  const status = normalizeStatus(eventName, attributes);
   const args = {
     p_provider: "lemonsqueezy",
     p_event_id: eventId,

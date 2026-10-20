@@ -11,6 +11,8 @@ import { readerTranslations, type ReaderKey } from "./i18n-reader";
 import { aiSpeechTranslations, type AiSpeechKey } from "./i18n-ai-speech";
 import { localTtsTranslations, type LocalTtsKey } from "./i18n-local-tts";
 const en = {
+  sidebarCollapse: "Collapse",
+  sidebarExpand: "Expand sidebar",
   lineSpacing: "Line spacing", lineSpacingHelp: "For reflowable EPUB and PDF text view.",
   paragraphSpacing: "Paragraph spacing", paragraphSpacingHelp: "Saved on this device and available offline.",
   compact: "Compact", wide: "Spacious", resetSpacing: "Reset spacing",
@@ -75,6 +77,8 @@ const en = {
 type CoreKey = keyof typeof en;
 type Set = Record<CoreKey, string>;
 const es: Set = {
+  sidebarCollapse: "Contraer",
+  sidebarExpand: "Expandir barra lateral",
   lineSpacing: "Espaciado entre líneas", lineSpacingHelp: "Para EPUB adaptables y el modo de texto del PDF.",
   paragraphSpacing: "Espaciado entre párrafos", paragraphSpacingHelp: "Se guarda en este dispositivo y funciona sin conexión.",
   compact: "Compacto", wide: "Amplio", resetSpacing: "Restaurar espaciados",
@@ -137,6 +141,8 @@ const es: Set = {
   searchPositionUnavailable: "La posición del resultado ya no está disponible.", pdfReferenceInvalid: "Esta referencia del PDF no tiene un destino válido.", pdfReferencePageMissing: "La referencia apunta a una página inexistente.",
 };
 const it: Set = {
+  sidebarCollapse: "Comprimi",
+  sidebarExpand: "Espandi barra laterale",
   lineSpacing: "Interlinea", lineSpacingHelp: "Per EPUB adattabili e vista testuale dei PDF.",
   paragraphSpacing: "Spaziatura tra paragrafi", paragraphSpacingHelp: "Salvata su questo dispositivo e disponibile offline.",
   compact: "Compatto", wide: "Ampio", resetSpacing: "Ripristina spaziatura",
@@ -199,6 +205,8 @@ const it: Set = {
   searchPositionUnavailable: "Questo risultato di ricerca non è più disponibile.", pdfReferenceInvalid: "Questo riferimento PDF non ha una destinazione valida.", pdfReferencePageMissing: "Questo riferimento punta a una pagina inesistente.",
 };
 const fr: Set = {
+  sidebarCollapse: "Réduire",
+  sidebarExpand: "Développer la barre latérale",
   lineSpacing: "Interligne", lineSpacingHelp: "Pour les EPUB adaptables et l'affichage texte des PDF.",
   paragraphSpacing: "Espacement des paragraphes", paragraphSpacingHelp: "Enregistré sur cet appareil et disponible hors ligne.",
   compact: "Compact", wide: "Aéré", resetSpacing: "Rétablir les espacements",

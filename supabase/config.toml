@@ -23,3 +23,7 @@ verify_jwt = false
 [functions.lemonsqueezy-webhook]
 # Lemon Squeezy authenticates with its webhook signature; this endpoint does not use Supabase JWT auth.
 verify_jwt = false
+
+[functions.r2-orphan-collector]
+# Administrative dry-run endpoint protected by R2_ORPHAN_COLLECTOR_SECRET.
+verify_jwt = false

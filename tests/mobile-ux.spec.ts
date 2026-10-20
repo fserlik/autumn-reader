@@ -46,7 +46,7 @@ test("auth shares Android top inset and theme tokens across its modes", async ({
 
 test("mobile reader dedicates the top bar to tools and the bottom bar to navigation", async ({ page }, info) => {
   test.skip(info.project.name !== "android", "Mobile toolbar");
-  const cloud = await mockCloud(page, true); cloud.setPlan("plus"); await page.goto("/"); await login(page);
+  const cloud = await mockCloud(page, true); cloud.setPlan("premium"); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Mobile.epub", mimeType: "application/epub+zip", buffer: await multiChapterFixture() });
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
   const toolbar = page.locator(".reader-toolbar");
@@ -124,7 +124,7 @@ test("library menus are exclusive and close on outside press or Escape", async (
     { name: "Two.epub", mimeType: "application/epub+zip", buffer: await multiChapterFixture() },
   ]);
   await expect(page.locator("#view-reader")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#library-list-button").click();
   await page.screenshot({ path: info.outputPath("library-list-responsive.png"), fullPage: true });

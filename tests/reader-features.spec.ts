@@ -86,7 +86,7 @@ async function firstVisibleEpubPassage(page: Page): Promise<string> {
 
 test("TTS catalogs local voices, keeps book controls in the reader, and plays offline", async ({page,context}, info) => {
   await mockDeviceSpeech(page);
-  const cloud = await mockCloud(page, true); cloud.setPlan("plus");
+  const cloud = await mockCloud(page, true); cloud.setPlan("premium");
   await page.goto("/"); await login(page);
   if (info.project.name === "android") await page.setViewportSize({ width: 375, height: 667 });
   await page.locator('.nav-button[data-view="settings"]').click();
@@ -121,7 +121,8 @@ test("TTS catalogs local voices, keeps book controls in the reader, and plays of
   await expect(speechEntry).toBeVisible();
   await speechEntry.click();
   await expect(page.locator("#tts-active-voice")).toContainText("Lucía local");
-  await expect(page.locator("#tts-reader-voice option")).toHaveCount(2);
+  await expect(page.locator('#tts-reader-voice option:not([value^="cloud:"])')).toHaveCount(2);
+  await expect(page.locator('#tts-reader-voice option[value^="cloud:"]')).toHaveCount(5);
   await expect(page.locator("#speech-panel [data-tts-engine], #speech-panel [data-tts-action]")).toHaveCount(0);
   await page.locator("#tts-rate-reader").fill("1.3");
   await page.locator("#tts-rate-reader").dispatchEvent("change");
@@ -311,7 +312,7 @@ test("folder tiles contain books offline, support moving out, survive reload, an
   await mockCloud(page,true);await page.goto("/");await login(page);
   await context.setOffline(true);
   await page.locator("#file-input").setInputFiles({name:"Philosophy.epub",mimeType:"application/epub+zip",buffer:await epubFixture("philosophy", "Philosophy")});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.locator("#back-button").click();
+  await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#folder-new").click();await page.locator("#folder-name").fill("Filosofía");await page.locator('#folder-form [type="submit"]').click();
   const tile=page.locator(".folder-tile");
@@ -562,7 +563,7 @@ test("cloud folder organization survives a fresh device without a second book do
   await expect(page.locator("#library-list .book-title")).toHaveCount(0);await page.getByRole("button",{name:"Abrir carpeta Sincronizada, 1 libro",exact:true}).click();
   await expect(page.locator(".book-folder")).toHaveValue(id!);
   await expect.poll(() => cloud.downloads).toBe(1);
-  await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#account-logout").click();await login(page,"b@example.org");
+  await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-account-tab").click();await page.locator("#account-logout").click();await login(page,"b@example.org");
   await expect(page.locator("#folder-filter")).toHaveCount(0);await expect(page.locator(".folder-tile")).toHaveCount(0);
 });
 test("folder colour can be customised offline, remains legible, and can return to automatic",async({page,context},info)=>{
@@ -621,7 +622,9 @@ test("scanned PDF search explains that there is no text layer",async({page})=>{
 });
 for(const format of ["pdf","epub"] as const)test(`${format} selection translates only the fragment, changes target, and handles offline/provider errors`,async({page,context},info)=>{
   await mockCloud(page,true);const calls:{text:string;targetLanguage:string}[]=[];let failed=false;
-  await page.route("**/functions/v1/translate-text",async route=>{const body=route.request().postDataJSON() as {text:string;targetLanguage:string};calls.push(body);
+  await page.route("**/functions/v1/translate-text",async route=>{const body=route.request().postDataJSON() as {action?:string;text:string;targetLanguage:string};
+    if(body.action==="usage"){await route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({plan:"free",includedCharacters:2000,usedCharacters:0,remainingCharacters:2000,cycleStartsAt:new Date().toISOString(),resetsAt:new Date(Date.now()+86400000).toISOString(),serviceAvailable:true,globalLimitReached:false,providerUsageVerified:true})});return;}
+    calls.push({text:body.text,targetLanguage:body.targetLanguage});
     await route.fulfill({status:failed?503:200,contentType:"application/json",body:JSON.stringify(failed?{code:"provider_unavailable"}:{text:body.targetLanguage==="FR"?"Bonjour":"Ser o no ser",detectedSourceLanguage:"EN",targetLanguage:body.targetLanguage})});});
   await page.goto("/");await login(page);await page.locator("#file-input").setInputFiles({name:`Translate.${format}`,mimeType:format==="pdf"?"application/pdf":"application/epub+zip",buffer:format==="pdf"?samplePdf():await epubFixture()});
   const selectText=(element:Element)=>{const node=element.querySelector("span")?.firstChild??element.firstChild;const range=document.createRange();range.selectNodeContents(node!);window.getSelection()!.removeAllRanges();window.getSelection()!.addRange(range);element.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:80}));};
@@ -671,10 +674,10 @@ test("EPUB spacing survives a new chapter, theme/font changes and reopening",asy
   await expect.poll(spacing).toEqual({line:2.2,paragraph:1.5});
   await selectReaderOption(page, "#reader-toc", {label:"Second chapter"});await expect(page.locator("#reading-return")).toBeEnabled();await expect.poll(spacing).toEqual({line:2.2,paragraph:1.5});
   await clickReaderOption(page, "#larger-button");await expect.poll(spacing).toEqual({line:2.2,paragraph:1.5});
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-interface-tab").click();await page.locator('[data-theme-choice="dark"]').click();
   await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list .book-title").click();await expect.poll(spacing).toEqual({line:2.2,paragraph:1.5});
-  await expect(page.frameLocator(".epub-frame iframe").locator("body")).toHaveCSS("background-color","rgb(41, 35, 34)");
+  await expect(page.frameLocator(".epub-frame iframe").locator("body")).toHaveCSS("background-color","rgb(36, 31, 29)");
 });
 
 for(const format of ["pdf","epub"] as const)test(`${format} adding a note preserves its highlight, progress and return navigation`,async({page},info)=>{
@@ -744,6 +747,6 @@ for(const format of ["pdf","epub"] as const)test(`${format} note accepts blue an
   await expect.poll(colour).toBe("#61b7f3");await expect.poll(markerColour).toBe("#61b7f3");
   await page.locator(".note-marker").click();await expect(page.locator("#note-custom-color")).toHaveValue("#61b7f3");
   await page.locator(".note-color").nth(9).click();await page.locator("#note-save").click();await expect.poll(colour).toBe("#8854ba");
-  await page.locator("#back-button").click();await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list .book-title").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list .book-title").click();
   await expect.poll(markerColour,{timeout:10_000}).toBe("#8854ba");
 });

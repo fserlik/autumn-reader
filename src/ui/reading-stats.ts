@@ -13,6 +13,10 @@ const translations = {
   'intro': {es: 'Cada página deja una historia. Descubrí tus hábitos de lectura.', en: 'Every page tells a story. Discover your reading habits.', it: 'Ogni pagina racconta una storia. Scopri le tue abitudini di lettura.', fr: 'Chaque page raconte une histoire. Découvrez vos habitudes de lecture.'},
   'signIn': {es: 'Iniciá sesión para consultar tus estadísticas.', en: 'Sign in to view your statistics.', it: 'Accedi per consultare le tue statistiche.', fr: 'Connectez-vous pour consulter vos statistiques.'},
   'loading': {es: 'Cargando estadísticas…', en: 'Loading statistics…', it: 'Caricamento delle statistiche…', fr: 'Chargement des statistiques…'},
+  'exportJpg': {es: 'Exportar', en: 'Export', it: 'Esporta', fr: 'Exporter'},
+  'exporting': {es: 'Preparando imagen…', en: 'Preparing image…', it: 'Preparazione dell’immagine…', fr: 'Préparation de l’image…'},
+  'exported': {es: 'Imagen guardada.', en: 'Image saved.', it: 'Immagine salvata.', fr: 'Image enregistrée.'},
+  'exportError': {es: 'No se pudo exportar la imagen.', en: 'The image could not be exported.', it: 'Impossibile esportare l’immagine.', fr: 'Impossible d’exporter l’image.'},
   'activeTime': {es: 'Tiempo activo', en: 'Active reading time', it: 'Tempo di lettura attivo', fr: 'Temps de lecture actif'},
   'sessions': {es: 'Sesiones', en: 'Sessions', it: 'Sessioni', fr: 'Sessions'},
   'openedBooks': {es: 'Libros abiertos', en: 'Books opened', it: 'Libri aperti', fr: 'Livres ouverts'},
@@ -25,9 +29,12 @@ const translations = {
   'note': {es: 'La actividad se agrupa por fecha de guardado de cada sesión. Los datos anteriores a la activación del seguimiento no están disponibles.', en: 'Activity is grouped by each session’s saved date. Data from before tracking was enabled is unavailable.', it: 'Le attività sono raggruppate per data di salvataggio di ogni sessione. I dati precedenti all’attivazione del monitoraggio non sono disponibili.', fr: 'L’activité est regroupée par date d’enregistrement de chaque session. Les données antérieures à l’activation du suivi ne sont pas disponibles.'},
   'daily': {es: 'Tiempo de lectura diario', en: 'Daily reading time', it: 'Tempo di lettura giornaliero', fr: 'Temps de lecture quotidien'},
   'last14': {es: 'Últimos 14 días', en: 'Last 14 days', it: 'Ultimi 14 giorni', fr: '14 derniers jours'},
-  'unlock': {es: 'Desbloqueá el gráfico de actividad diaria con Autumn+ o Autumn Pro.', en: 'Unlock the daily activity chart with Autumn+ or Autumn Pro.', it: 'Sblocca il grafico dell’attività giornaliera con Autumn+ o Autumn Pro.', fr: 'Débloquez le graphique d’activité quotidienne avec Autumn+ ou Autumn Pro.'},
+  'unlock': {es: 'Desbloqueá el gráfico de actividad diaria con Premium.', en: 'Unlock the daily activity chart with Premium.', it: 'Sblocca il grafico dell’attività giornaliera con Premium.', fr: 'Débloquez le graphique d’activité quotidienne avec Premium.'},
   'byBook': {es: 'Tiempo de lectura por libro', en: 'Reading time by book', it: 'Tempo di lettura per libro', fr: 'Temps de lecture par livre'},
   'registeredBooks': {es: 'libros registrados', en: 'books recorded', it: 'libri registrati', fr: 'livres enregistrés'},
+  'previousPage': {es: 'Anterior', en: 'Previous', it: 'Precedente', fr: 'Précédente'},
+  'nextPage': {es: 'Siguiente', en: 'Next', it: 'Successiva', fr: 'Suivante'},
+  'pageOf': {es: 'Página {current} de {total}', en: 'Page {current} of {total}', it: 'Pagina {current} di {total}', fr: 'Page {current} sur {total}'},
   'noSessions': {es: 'Todavía no hay sesiones registradas.', en: 'No reading sessions recorded yet.', it: 'Non ci sono ancora sessioni registrate.', fr: 'Aucune session enregistrée pour le moment.'},
   'unavailableLibrary': {es: 'Libro no disponible en la biblioteca', en: 'Book not available in the library', it: 'Libro non disponibile nella biblioteca', fr: 'Livre indisponible dans la bibliothèque'},
   'unavailable': {es: 'Libro no disponible', en: 'Book unavailable', it: 'Libro non disponibile', fr: 'Livre indisponible'},
@@ -37,14 +44,6 @@ const translations = {
   'startReading': {es: 'Empezá a leer para ver cómo se distribuye tu tiempo.', en: 'Start reading to see how your time is distributed.', it: 'Inizia a leggere per vedere come distribuisci il tuo tempo.', fr: 'Commencez à lire pour voir comment se répartit votre temps.'},
   'readingHours': {es: 'Tus horarios de lectura', en: 'Your reading hours', it: 'I tuoi orari di lettura', fr: 'Vos heures de lecture'},
   'sessionHours': {es: 'Sesiones iniciadas según la hora del día', en: 'Sessions started by time of day', it: 'Sessioni iniziate per ora del giorno', fr: 'Sessions commencées selon l’heure de la journée'},
-  'habits': {es: 'Más sobre tus hábitos', en: 'More about your habits', it: 'Altre informazioni sulle tue abitudini', fr: 'En savoir plus sur vos habitudes'},
-  'subscription': {es: 'Funciones adicionales según tu suscripción', en: 'Additional features based on your subscription', it: 'Funzionalità aggiuntive in base al tuo abbonamento', fr: 'Fonctionnalités supplémentaires selon votre abonnement'},
-  'finished': {es: 'Libros terminados', en: 'Books finished', it: 'Libri terminati', fr: 'Livres terminés'},
-  'finishedDetail': {es: 'Tu historial de lecturas completadas', en: 'Your completed reading history', it: 'La cronologia delle letture completate', fr: 'Votre historique des lectures terminées'},
-  'trends': {es: 'Tendencias', en: 'Trends', it: 'Tendenze', fr: 'Tendances'},
-  'trendsDetail': {es: 'Analizá la evolución de tu hábito', en: 'Explore how your reading habit evolves', it: 'Analizza l’evoluzione delle tue abitudini', fr: 'Analysez l’évolution de vos habitudes'},
-  'comparisons': {es: 'Comparativas', en: 'Comparisons', it: 'Confronti', fr: 'Comparaisons'},
-  'comparisonsDetail': {es: 'Compará períodos y objetivos', en: 'Compare periods and goals', it: 'Confronta periodi e obiettivi', fr: 'Comparez les périodes et les objectifs'},
   'loadError': {es: 'No se pudieron cargar las estadísticas locales.', en: 'Could not load local reading statistics.', it: 'Impossibile caricare le statistiche di lettura locali.', fr: 'Impossible de charger les statistiques de lecture locales.'}
 } as const;
 type StatsKey = keyof typeof translations;
@@ -57,6 +56,7 @@ const timeLabel = (ms: number): string => {
   return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h ${mins % 60} min`;
 };
 const longDate = (date: Date): string => date.toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" });
+const BOOKS_PER_PAGE = 5;
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -74,15 +74,72 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
   const back = el("button", "secondary-button", tr("back"));
   back.type = "button";
   back.addEventListener("click", onBack);
+  const exportButton = el("button", "secondary-button reading-stats-export", tr("exportJpg"));
+  exportButton.type = "button";
+  const exportStatus = el("span", "reading-stats-export-status");
+  exportStatus.setAttribute("role", "status");
+  exportStatus.setAttribute("aria-live", "polite");
+  const pageActions = el("div", "reading-stats-page-actions");
+  pageActions.dataset.exportIgnore = "true";
+  pageActions.append(back, exportButton, exportStatus);
   const intro = el("div", "reading-stats-intro");
   intro.append(el("span", "reading-stats-eyebrow", tr("journal")), el("h1", "", tr("statsTitle")), el("p", "", tr("intro")));
   const ornament = el("div", "reading-stats-ornament");
   ornament.setAttribute("aria-hidden", "true");
   ornament.textContent = "❧";
-  pageHeader.append(back, intro, ornament);
+  pageHeader.append(pageActions, intro, ornament);
   page.append(pageHeader, content);
   parent.querySelector<HTMLElement>(".profile-actions")?.append(toggle);
   let revision = 0;
+  let bookPage = 0;
+  let exportBusy = false;
+
+  exportButton.addEventListener("click", () => {
+    if (exportBusy || page.hidden) return;
+    exportBusy = true;
+    exportButton.disabled = true;
+    exportButton.setAttribute("aria-busy", "true");
+    exportButton.textContent = tr("exporting");
+    exportStatus.textContent = tr("exporting");
+    void (async () => {
+      await document.fonts?.ready;
+      const { default: html2canvas } = await import("@html2canvas/html2canvas");
+      const backgroundColor = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f4eee3";
+      const canvas = await html2canvas(page, {
+        backgroundColor,
+        height: page.scrollHeight,
+        ignoreElements: element => element instanceof HTMLElement && element.dataset.exportIgnore === "true",
+        logging: false,
+        onclone: clonedDocument => {
+          const clonedPage = clonedDocument.getElementById(page.id);
+          if (clonedPage) clonedPage.style.backgroundColor = backgroundColor;
+        },
+        scale: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
+        useCORS: true,
+        width: page.scrollWidth,
+        windowHeight: page.scrollHeight,
+        windowWidth: page.scrollWidth,
+      });
+      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("JPG encoding failed")), "image/jpeg", .92));
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `autumn-reader-estadisticas-${dayKey(new Date())}.jpg`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      exportStatus.textContent = tr("exported");
+    })().catch(error => {
+      console.error("Reading statistics export failed", error);
+      exportStatus.textContent = tr("exportError");
+    }).finally(() => {
+      exportBusy = false;
+      exportButton.disabled = false;
+      exportButton.removeAttribute("aria-busy");
+      exportButton.textContent = tr("exportJpg");
+    });
+  });
 
   const hasAccess = async (owner: string): Promise<boolean> => {
     if (auth.state.status !== "authenticated" || auth.state.ownerId !== owner || !navigator.onLine) return false;
@@ -138,23 +195,21 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
         streak++;
       }
       const summary = el("div", "reading-stats-summary");
-      const cards: [string, string, string][] = [
-        [timeLabel(total), tr("activeTime"), "◷"],
-        [String(sessions.length), tr("sessions"), "▥"],
-        [String(books.size), tr("openedBooks"), "▤"],
-        [String(activeDays), tr("activeDays"), "▦"],
-        [String(streak), tr("streak"), "♨"],
+      const cards: [string, string][] = [
+        [timeLabel(total), tr("activeTime")],
+        [String(sessions.length), tr("sessions")],
+        [String(books.size), tr("openedBooks")],
+        [String(activeDays), tr("activeDays")],
+        [String(streak), tr("streak")],
       ];
-      for (const [value, label, symbol] of cards) {
-        const card = el("div", "reading-stats-metric");
-        const icon = el("span", "reading-stats-metric-icon", symbol);
-        icon.setAttribute("aria-hidden", "true");
+      for (const [index, [value, label]] of cards.entries()) {
+        const card = el("div", `reading-stats-metric${index === 0 ? " reading-stats-metric-lead" : ""}`);
         const words = el("div", "reading-stats-metric-words");
         words.append(el("strong", "", value), el("span", "", label));
-        card.append(icon, words);
+        card.append(words);
         summary.append(card);
       }
-      const calendarSection = el("section", "reading-stats-panel");
+      const calendarSection = el("section", "reading-stats-panel reading-stats-calendar-panel");
       const calendarHeader = el("div", "reading-stats-panel-heading");
       calendarHeader.append(el("h3", "", tr("calendar")), el("span", "reading-stats-muted", tr("last12")));
       const calendarScroll = el("div", "reading-stats-calendar-scroll");
@@ -208,15 +263,19 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
       const visualGrid = el("div", "reading-stats-visual-grid");
       visualGrid.append(calendarSection);
       content.replaceChildren(summary, visualGrid);
-      const graphPanel = el("section", "reading-stats-panel");
+      const graphPanel = el("section", "reading-stats-panel reading-stats-rhythm-panel");
       const graphHeader = el("div", "reading-stats-panel-heading");
       graphHeader.append(el("h3", "", tr("daily")), el("span", "reading-stats-muted", tr("last14")));
       const graph = el("div", "reading-stats-chart");
+      graph.setAttribute("role", "list");
+      graph.setAttribute("aria-label", `${tr("daily")}, ${tr("last14")}`);
       const recent = Array.from({ length: 14 }, (_, i) => dateOffset(i - 13));
       const max = Math.max(60_000, ...recent.map(d => daily.get(dayKey(d)) ?? 0));
       for (const d of recent) {
         const ms = daily.get(dayKey(d)) ?? 0;
         const col = el("div", "reading-stats-chart-column");
+        col.setAttribute("role", "listitem");
+        col.setAttribute("aria-label", `${longDate(d)}: ${timeLabel(ms)}`);
         const track = el("div", "reading-stats-chart-track");
         const bar = el("div", "reading-stats-chart-bar");
         bar.style.height = `${ms ? Math.max(3, ms / max * 100) : 0}%`;
@@ -228,7 +287,7 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
       graphPanel.append(graphHeader, graph);
       visualGrid.append(graphPanel);
       const lowerGrid = el("div", "reading-stats-lower-grid");
-      const bookPanel = el("section", "reading-stats-panel");
+      const bookPanel = el("section", "reading-stats-panel reading-stats-books-panel");
       const bookHeader = el("div", "reading-stats-panel-heading");
       bookHeader.append(el("h3", "", tr("byBook")), el("span", "reading-stats-muted", `${books.size} ${tr("registeredBooks")}`));
       bookPanel.append(bookHeader);
@@ -236,33 +295,59 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
       const ranked = [...books.entries()].sort((a, b) => b[1] - a[1]);
       if (!ranked.length) bookPanel.append(el("p", "reading-stats-note", tr("noSessions")));
       else {
-        const list = el("div", "reading-stats-book-list");
         const maxBook = Math.max(1, ranked[0][1]);
-        for (const [bookId, ms] of ranked) {
-          const book = knownBooks.get(bookId);
-          const item = el("div", "reading-stats-book-row");
-          const coverSlot = el("div", "reading-stats-book-cover");
-          if (book?.cover) coverSlot.append(book.cover());
-          else {
-            const fallback = el("div", "reading-stats-book-cover-placeholder", "✦");
-            fallback.setAttribute("aria-hidden", "true");
-            coverSlot.append(fallback);
+        const pages = el("div", "reading-stats-book-pages");
+        pages.setAttribute("aria-live", "polite");
+        const renderBookPage = (): void => {
+          const pageCount = Math.max(1, Math.ceil(ranked.length / BOOKS_PER_PAGE));
+          bookPage = Math.max(0, Math.min(bookPage, pageCount - 1));
+          const list = el("div", "reading-stats-book-list");
+          list.setAttribute("role", "list");
+          const start = bookPage * BOOKS_PER_PAGE;
+          for (const [bookId, ms] of ranked.slice(start, start + BOOKS_PER_PAGE)) {
+            const book = knownBooks.get(bookId);
+            const item = el("div", "reading-stats-book-row");
+            item.setAttribute("role", "listitem");
+            const coverSlot = el("div", "reading-stats-book-cover");
+            if (book?.cover) coverSlot.append(book.cover());
+            else {
+              const fallback = el("div", "reading-stats-book-cover-placeholder", "✦");
+              fallback.setAttribute("aria-hidden", "true");
+              coverSlot.append(fallback);
+            }
+            const details = el("div", "reading-stats-book-details");
+            details.append(el("strong", "", book?.name || tr("unavailableLibrary")));
+            if (book?.author) details.append(el("span", "reading-stats-muted", book.author));
+            const share = total > 0 ? Math.round(ms / total * 100) : 0;
+            const duration = el("span", "reading-stats-book-time", `${timeLabel(ms)} · ${share}%`);
+            const track = el("div", "reading-stats-book-track");
+            const fill = el("span", "reading-stats-book-fill");
+            fill.style.width = `${ms > 0 ? Math.max(2, ms / maxBook * 100) : 0}%`;
+            track.append(fill);
+            const textColumn = el("div", "reading-stats-book-text");
+            textColumn.append(details, track);
+            item.append(coverSlot, textColumn, duration);
+            list.append(item);
           }
-          const details = el("div", "reading-stats-book-details");
-          details.append(el("strong", "", book?.name || tr("unavailableLibrary")));
-          if (book?.author) details.append(el("span", "reading-stats-muted", book.author));
-          const share = total > 0 ? Math.round(ms / total * 100) : 0;
-          const duration = el("span", "reading-stats-book-time", `${timeLabel(ms)} · ${share}%`);
-          const track = el("div", "reading-stats-book-track");
-          const fill = el("span", "reading-stats-book-fill");
-          fill.style.width = `${ms > 0 ? Math.max(2, ms / maxBook * 100) : 0}%`;
-          track.append(fill);
-          const textColumn = el("div", "reading-stats-book-text");
-          textColumn.append(details, track);
-          item.append(coverSlot, textColumn, duration);
-          list.append(item);
-        }
-        bookPanel.append(list);
+          if (pageCount === 1) { pages.replaceChildren(list); return; }
+          const pagination = el("nav", "reading-stats-book-pagination");
+          pagination.setAttribute("aria-label", tr("byBook"));
+          const previous = el("button", "text-link", `← ${tr("previousPage")}`);
+          previous.type = "button";
+          previous.disabled = bookPage === 0;
+          previous.addEventListener("click", () => { bookPage--; renderBookPage(); });
+          const pageLabel = tr("pageOf").replace("{current}", String(bookPage + 1)).replace("{total}", String(pageCount));
+          const position = el("span", "reading-stats-book-page", pageLabel);
+          position.setAttribute("aria-current", "page");
+          const next = el("button", "text-link", `${tr("nextPage")} →`);
+          next.type = "button";
+          next.disabled = bookPage === pageCount - 1;
+          next.addEventListener("click", () => { bookPage++; renderBookPage(); });
+          pagination.append(previous, position, next);
+          pages.replaceChildren(list, pagination);
+        };
+        renderBookPage();
+        bookPanel.append(pages);
       }
       lowerGrid.append(bookPanel);
       const distribution = el("section", "reading-stats-panel reading-stats-distribution");
@@ -297,14 +382,18 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
       lowerGrid.append(distribution);
       content.append(lowerGrid);
       const extra = el("section", "reading-stats-extra");
-      const hoursPanel = el("div", "reading-stats-panel");
+      const hoursPanel = el("div", "reading-stats-panel reading-stats-hours-panel");
       hoursPanel.append(el("h3", "", tr("readingHours")), el("p", "reading-stats-muted", tr("sessionHours")));
       const hourly = Array.from({ length: 24 }, () => 0);
       for (const session of sessions) if (Number.isFinite(session.startedAt)) hourly[new Date(session.startedAt).getHours()] += Math.max(0, session.activeMs);
       const hourPeak = Math.max(1, ...hourly);
       const hourChart = el("div", "reading-stats-hour-chart");
+      hourChart.setAttribute("role", "list");
+      hourChart.setAttribute("aria-label", tr("sessionHours"));
       hourly.forEach((ms, hour) => {
         const col = el("div", "reading-stats-hour-column");
+        col.setAttribute("role", "listitem");
+        col.setAttribute("aria-label", `${String(hour).padStart(2,"0")}:00 — ${timeLabel(ms)}`);
         const bar = el("span", "reading-stats-hour-bar");
         bar.style.height = `${ms ? Math.max(4, ms / hourPeak * 100) : 0}%`;
         bar.title = `${String(hour).padStart(2,"0")}:00 — ${timeLabel(ms)}`;
@@ -312,20 +401,7 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
         hourChart.append(col);
       });
       hoursPanel.append(hourChart);
-      const features = el("div", "reading-stats-panel reading-stats-features");
-      features.append(el("h3", "", tr("habits")), el("p", "reading-stats-muted", tr("subscription")));
-      const featureGrid = el("div", "reading-stats-feature-grid");
-      for (const [label, detail, tier] of [
-        [tr("finished"), tr("finishedDetail"), "Autumn+"],
-        [tr("trends"), tr("trendsDetail"), "Autumn+"],
-        [tr("comparisons"), tr("comparisonsDetail"), "Autumn Pro"],
-      ]) {
-        const feature = el("div", "reading-stats-feature");
-        feature.append(el("span", "reading-stats-feature-lock", "◇"), el("strong", "", label), el("small", "", detail), el("em", "", tier));
-        featureGrid.append(feature);
-      }
-      features.append(featureGrid);
-      extra.append(hoursPanel, features);
+      extra.append(hoursPanel);
       content.append(extra, note);
     } catch (error) {
       if (token === revision) content.textContent = tr("loadError");
@@ -338,6 +414,7 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
     toggle.disabled = true;
     void hasAccess(owner).then(allowed => {
       if (!allowed) { toggle.hidden = true; return; }
+      bookPage = 0;
       onOpen();
       void render();
     }).finally(() => { toggle.disabled = false; });

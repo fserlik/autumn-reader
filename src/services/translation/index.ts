@@ -2,17 +2,32 @@ import { translationRequest, type TranslationRequest, type TranslationResult } f
 import { auth } from "../auth";
 import { cloud } from "../client";
 import { t, type TranslationKey } from "../../i18n";
-export interface TranslationService { translate(request:TranslationRequest,signal?:AbortSignal):Promise<TranslationResult> }
+export interface TranslationUsage {
+  plan:"free"|"premium";includedCharacters:number;usedCharacters:number;remainingCharacters:number;
+  cycleStartsAt:string;resetsAt:string;serviceAvailable:boolean;globalLimitReached:boolean;providerUsageVerified:boolean;
+}
+export interface TranslationService {
+  translate(request:TranslationRequest,signal?:AbortSignal):Promise<TranslationResult>;
+  usage():Promise<TranslationUsage>;
+}
 const translationKeys: Record<string, TranslationKey> = {
   offline:"translationOffline", session_expired:"translationSession", text_too_long:"translationTooLong",
   invalid_text:"translationNoText", invalid_language:"translationBadLanguage", not_configured:"translationNotConfigured",
   quota_exceeded:"translationQuota", provider_unavailable:"translationProvider", forbidden:"translationForbidden",
+  translation_pending:"translationProvider",provider_usage_unverified:"translationProvider",
   device_revoked:"deviceRevoked",
 };
 export class TranslationError extends Error {
   constructor(readonly code:string){super(t(translationKeys[code] ?? "translationProvider"));}
 }
 export class SupabaseTranslationService implements TranslationService {
+  async usage():Promise<TranslationUsage>{
+    if(!navigator.onLine)throw new TranslationError("offline");
+    if(auth.state.status!=="authenticated")throw new TranslationError("session_expired");
+    const {data,error}=await cloud().functions.invoke<TranslationUsage>("translate-text",{body:{action:"usage"}});
+    if(error||!data||typeof data.remainingCharacters!=="number")throw new TranslationError("provider_unavailable");
+    return data;
+  }
   async translate(request:TranslationRequest,signal?:AbortSignal):Promise<TranslationResult>{
     let valid:TranslationRequest;
     try { valid=translationRequest(request); } catch(error:unknown){throw new TranslationError(error instanceof Error?error.message:"invalid_text");}

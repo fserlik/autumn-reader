@@ -83,7 +83,7 @@ test("custom cover previews, validates and syncs privately without changing book
 test("editing a local title never renames or rewrites the EPUB", async ({page}) => {
   const cloud = await mockCloud(page,true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Original_file-name.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#back-button").click();
+  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   const stored = () => page.evaluate(() => new Promise<{name:string;hash?:string;bytes:number[]}>(resolve => {
     const open=indexedDB.open("autumn-reader"); open.onsuccess=() => {

@@ -1,137 +1,79 @@
-# Autumn Reader billing
+# Autumn Reader: facturación, derechos y presupuestos
 
-## Architecture
+## Catálogo definitivo
+
+| Modalidad | Precio | Almacenamiento | Dispositivos | Polly Neural | DeepL |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Free | US$0 | 1 GiB | 2 | No incluido | 2.000 caracteres/mes |
+| Autumn Pro mensual | US$5,99/mes | 25 GiB | Ilimitados | 25.000 caracteres/mes | 20.000 caracteres/mes |
+| Autumn Pro Lifetime | US$119,99 una vez | 25 GiB | Ilimitados | 25.000 caracteres/mes | 20.000 caracteres/mes |
+
+Mensual y Lifetime conceden el mismo nivel funcional interno `premium`. El tipo de derecho se conserva aparte como `monthly`, `lifetime` o `legacy`. Lifetime significa acceso permanente a las funciones de Autumn Pro bajo las condiciones de compra; no significa consumo ilimitado de proveedores. El TTS local, la lectura offline, la sincronización y la cantidad de libros no tienen cuota numérica. Los límites globales compartidos pueden pausar temporalmente DeepL o Polly antes de que una cuenta agote su cuota individual.
+
+## Fuente de verdad
 
 ```text
-Lemon Squeezy (commercial source)
-  -> signed webhook
-  -> private.subscriptions (Supabase operational source)
+Webhook Lemon Squeezy firmado
+  -> subscriptions / purchases / legacy_billing_records
+  -> access_grants (derechos aditivos independientes)
+  -> effective_access_tier() [free | premium]
   -> get_user_entitlements()
-  -> Windows, Android and future clients
+  -> clientes Windows, Android y web
 ```
 
-Microsoft Store and Google Play are distribution channels only. A subscription belongs to the Supabase `auth.users.id`, never to a device or operating system. Clients cannot read private billing tables or write plan, provider, status, dates, or entitlements.
+Cancelar una suscripción no afecta una compra Lifetime. Un reembolso total o contracargo perdido revoca únicamente el derecho vinculado a esa compra; nunca elimina la cuenta, los libros ni otro derecho válido. El reembolso parcial se registra en `billing_adjustments` con revisión requerida y no revoca acceso. Las disputas quedan en `billing_disputes`; un resultado favorable puede restaurar exactamente el derecho previamente afectado.
 
-The plan catalog defines capabilities centrally:
+Los identificadores históricos `plus` y `pro` permanecen únicamente en migraciones, compatibilidad de webhooks y registros archivados. Se mantienen precio, ciclo, vencimiento, transacciones y derechos adquiridos; no se cambia el precio de clientes existentes.
 
-| Plan | Cloud storage | Devices | Sync | Offline | Notes/highlights |
-| --- | ---: | ---: | --- | --- | --- |
-| Free | 1 GiB | 2 | Yes | Yes | Yes |
-| Autumn+ | 25 GiB | Unlimited | Yes | Yes | Yes |
-| Autumn Pro | 100 GiB | Unlimited | Yes | Yes | Yes |
+## Migraciones
 
-Cloud upload reservations and final library writes are checked in PostgreSQL under the existing account lock. The check is based only on total bytes; there is no book-count quota. Existing over-quota books remain downloadable and removable.
+1. `202610180001_premium_entitlements.sql`: niveles `free|premium`, ofertas mensual/Lifetime, compras, suscripciones normalizadas, derechos aditivos y backfill histórico.
+2. `202610180002_service_quotas.sql`: Polly Neural a 25.000 caracteres por mes UTC, presupuesto global efectivo y cuotas DeepL 2.000/20.000.
+3. `202610180003_provider_controls_billing_audit_and_r2_gc.sql`: reservas DeepL atómicas, instantáneas `/v2/usage`, alertas 80/90/100, auditoría de reembolsos/disputas, resumen centralizado de consumo y recolector R2 exclusivamente en simulación.
 
-## Lemon Squeezy catalog
+Son migraciones aditivas: no eliminan libros, transacciones, suscripciones ni tablas históricas. Antes de aplicarlas se debe crear un backup y comparar los conteos del backfill. El rollback seguro consiste en deshabilitar nuevos checkouts/funciones y restaurar el snapshot previo; no se deben borrar las tablas nuevas una vez que contengan compras reales.
 
-Autumn Reader uses two recurring products and four variants:
+## Lemon Squeezy
 
-| Product | Interval | Price | Variant ID |
-| --- | --- | ---: | ---: |
-| Autumn+ | Monthly | US$4.99 | 2216029 |
-| Autumn+ | Annual | US$39.99 | 2216031 |
-| Autumn Pro | Monthly | US$9.99 | 2216032 |
-| Autumn Pro | Annual | US$79.99 | 2216034 |
+```dotenv
+LEMONSQUEEZY_API_KEY=
+LEMONSQUEEZY_WEBHOOK_SECRET=
+LEMONSQUEEZY_STORE_ID=
+LEMONSQUEEZY_MODE=test
+LEMONSQUEEZY_PREMIUM_MONTHLY_VARIANT_ID=2236412
+LEMONSQUEEZY_PREMIUM_LIFETIME_VARIANT_ID=2236414
+```
 
-Test Mode and Live Mode use separate Lemon Squeezy objects and credentials. Verify the live variant IDs before production.
+Cada proyecto Supabase debe tener un conjunto coherente de Test o Live Mode. Antes de habilitar pagos, ejecutar `npm run verify:billing-config` con las variables del entorno correspondiente. El verificador consulta la API y confirma tienda, modo, estado, precio y que 2236412 sea mensual recurrente por US$5,99 y 2236414 pago único por US$119,99. No imprime secretos. `billing-checkout` repite esas comprobaciones contra la API antes de crear un checkout y falla cerrado si existe una discrepancia.
 
-## Environment and secrets
-
-Set these only as Supabase Edge Function secrets:
+El webhook debe apuntar a:
 
 ```text
-LEMONSQUEEZY_API_KEY
-LEMONSQUEEZY_WEBHOOK_SECRET
-LEMONSQUEEZY_STORE_ID
-LEMONSQUEEZY_PLUS_MONTHLY_VARIANT_ID
-LEMONSQUEEZY_PLUS_ANNUAL_VARIANT_ID
-LEMONSQUEEZY_PRO_MONTHLY_VARIANT_ID
-LEMONSQUEEZY_PRO_ANNUAL_VARIANT_ID
+https://PROJECT_REF.supabase.co/functions/v1/lemonsqueezy-webhook
 ```
 
-The existing `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ALLOWED_ORIGINS` are also required. Never expose the Lemon Squeezy API key, webhook secret, or Supabase service-role key through a `VITE_` variable.
+Suscribir `order_created`, `order_refunded` y los eventos de ciclo/pago de suscripción manejados por la función. La firma HMAC se valida contra el cuerpo original, `store_id` y `test_mode` deben coincidir con el entorno configurado y las claves de evento hacen el procesamiento idempotente. Un reembolso se considera total automáticamente solo cuando la señal firmada del proveedor y los importes en centavos coinciden; cualquier inconsistencia queda como parcial para revisión.
 
-## Checkout and identity
+Lemon Squeezy no expone un webhook específico de contracargo en su lista actual. Un operador debe registrar el caso mediante la RPC exclusiva de service role `record_purchase_dispute(...)` después de verificar la evidencia: `opened`, `lost` o `won`.
 
-`billing-checkout` verifies the bearer token with Supabase Auth and ignores any user ID supplied by a client. It creates a Lemon Squeezy hosted checkout for the server-owned variant and writes the authenticated Supabase UUID, plan and billing period into checkout custom data.
+## Presupuestos y observabilidad
 
-The checkout URL is returned directly to Autumn Reader. A successful redirect or checkout page never grants premium access by itself. Only a verified Lemon Squeezy webhook may call the service-role-only `process_billing_event` RPC.
+- Polly Neural: 25.000 caracteres por usuario Premium/mes, US$10 globales/mes, costo estimado US$16 por millón. La reutilización de caché no consume cuota.
+- DeepL: 2.000 Free/20.000 Premium, 250.000 globales/mes, US$0 de gasto adicional y techo vitalicio conservador de 1.000.000.
+- R2: 1 GiB Free/25 GiB Premium; se cuentan bytes canónicos referenciados y reservas de subida.
 
-## Webhook
+`provider_usage_summary()` entrega consumo por proveedor, costo estimado de Polly, presupuesto y alertas. Para R2 muestra bytes canónicos conocidos y una estimación bruta de almacenamiento Standard a US$0,015/GB-mes; no incluye operaciones ni audio porque sus bytes físicos no están disponibles en PostgreSQL. `service_usage_for_user()` entrega el resumen individual. La configuración está en `private.service_quota_config`, modificable por backend sin recompilar clientes. Los logs no incluyen texto de libros ni credenciales.
 
-Configure the Lemon Squeezy webhook destination as:
+El endpoint interno `r2-orphan-collector` y `preview_r2_orphan_collection()` son solo simulación: registran candidatos sin referencias activas ni subidas pendientes, exigen siete días de observación y siempre informan `physicalDeletes: 0`. Esta versión no contiene ninguna operación física de borrado.
 
-```text
-https://YOUR_PROJECT_REF.supabase.co/functions/v1/lemonsqueezy-webhook
-```
+## Orden de despliegue pendiente
 
-The deployed webhook verifies Lemon Squeezy's signature against the unmodified request body, maps the purchased variant to the Autumn plan/billing period, and writes billing state through `process_billing_event`.
+1. Crear backup y auditar suscripciones, compras Microsoft Store y conteos históricos.
+2. Aplicar las tres migraciones en un proyecto Supabase no productivo.
+3. Configurar secretos Test Mode y ejecutar `npm run verify:billing-config`.
+4. Desplegar en staging `billing-checkout`, `billing-portal`, `lemonsqueezy-webhook`, `ai-speech`, `translate-text`, `book-storage` y `r2-orphan-collector`.
+5. Probar ambos checkouts, renovaciones, fallos, cancelaciones, duplicados, orden temporal, reembolsos parciales/totales, disputas y restauración.
+6. Validar DeepL, Polly, R2, Windows y Android con servicios reales de prueba.
+7. Repetir con credenciales Live solo después de revisión y autorización explícita.
 
-`private.billing_webhook_events` makes repeated delivery idempotent and the billing RPC prevents stale events from replacing newer subscription state.
-
-`private.legacy_billing_records` retains old Microsoft Store subscription rows for audit. They are removed from the operational table and can never grant an entitlement.
-
-## Customer portal
-
-`billing-portal` verifies the Supabase session and retrieves the account's stored Lemon Squeezy subscription server-side. It then obtains the signed Lemon Squeezy customer portal URL and returns it to the app.
-
-Portal URLs are generated when needed rather than stored permanently. In Test Mode, portal availability can depend on the Lemon Squeezy store being activated.
-
-## Deploy
-
-```powershell
-npm install
-npx supabase login
-npx supabase link --project-ref YOUR_PROJECT_REF
-npx supabase db push
-
-npx supabase secrets set LEMONSQUEEZY_API_KEY=YOUR_KEY
-npx supabase secrets set LEMONSQUEEZY_WEBHOOK_SECRET=YOUR_WEBHOOK_SECRET
-npx supabase secrets set LEMONSQUEEZY_STORE_ID=YOUR_STORE_ID
-npx supabase secrets set LEMONSQUEEZY_PLUS_MONTHLY_VARIANT_ID=YOUR_VARIANT_ID
-npx supabase secrets set LEMONSQUEEZY_PLUS_ANNUAL_VARIANT_ID=YOUR_VARIANT_ID
-npx supabase secrets set LEMONSQUEEZY_PRO_MONTHLY_VARIANT_ID=YOUR_VARIANT_ID
-npx supabase secrets set LEMONSQUEEZY_PRO_ANNUAL_VARIANT_ID=YOUR_VARIANT_ID
-
-npx supabase functions deploy billing-checkout
-npx supabase functions deploy billing-portal
-npx supabase functions deploy lemonsqueezy-webhook --no-verify-jwt
-npx supabase functions deploy book-storage --no-verify-jwt
-```
-
-## Verification before release
-
-```powershell
-npm test
-npm run test:backend
-npm run check:backend
-npm run build
-npx playwright test tests/plans.spec.ts
-Push-Location src-tauri
-cargo check
-Pop-Location
-```
-
-## Test Mode
-
-1. Configure the Lemon Squeezy Test Mode API key, store, four variant IDs and webhook secret.
-2. Sign in to Autumn Reader and start each monthly/annual checkout.
-3. Complete checkout using a Lemon Squeezy Test Mode payment method.
-4. Confirm the verified event appears once in `private.billing_webhook_events`.
-5. Confirm `select public.get_user_entitlements()` returns the expected account capabilities for the authenticated account.
-6. Test creation, plan changes, renewal, payment failure, scheduled cancellation, cancellation and duplicate webhook delivery.
-7. Sign into the same Supabase account on Windows and Android; both must show the same plan.
-8. Confirm `Administrar suscripción` opens the Lemon Squeezy customer portal once the store supports portal access.
-
-## Production checklist
-
-Before production:
-
-- Activate/approve the Lemon Squeezy store.
-- Create or verify the Live Mode products/variants and use their live IDs.
-- Create the Live Mode API key and webhook secret.
-- Configure the production webhook destination.
-- Replace Test Mode Lemon Squeezy secrets/IDs with Live Mode values.
-- Deploy `billing-checkout`, `billing-portal` and `lemonsqueezy-webhook`.
-- Run a low-risk real purchase, cancellation and refund test.
-- Verify that normal Autumn Reader startup reads entitlement state from Supabase and does not depend on Lemon Squeezy being online.
+Ningún paso de despliegue ni modificación de producción fue ejecutado por estos cambios locales.

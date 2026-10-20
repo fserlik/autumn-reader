@@ -12,7 +12,7 @@ test("local imports remain available offline without uploading or enqueueing clo
   const files = await Promise.all([1, 2, 3].map(async i => ({name:`Local ${i}.epub`, mimeType:"application/epub+zip", buffer:await epubFixture(`local-${i}`)})));
   await page.locator("#file-input").setInputFiles(files);
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator("#library-list .book-title")).toHaveCount(3);
   await expect(page.locator("#library-list .cloud-badge.state-local")).toHaveCount(3);
@@ -20,6 +20,7 @@ test("local imports remain available offline without uploading or enqueueing clo
   expect(cloud.syncCount).toBe(0);
   await context.setOffline(false);
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await page.locator("#account-logout").click();
   await login(page,"b@example.org");
   await expect(page.locator("#library-list .book-title")).toHaveCount(0);
@@ -41,7 +42,7 @@ test("account library warms metadata once; EPUB reads offline, queues changes an
   expect(cloud.downloads).toBe(1);
   await context.setOffline(true);
   await page.locator("#next-button").click();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator("#view-library .book-menu summary").first().click();
   await page.locator("#view-library .book-menu-options").first().getByRole("button", { name: "Favorito" }).click();
   await expect
@@ -70,7 +71,7 @@ test("account library warms metadata once; EPUB reads offline, queues changes an
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect.poll(() => cloud.syncCount).toBeGreaterThan(0);
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   cloud.stalled = true;
   const start = Date.now();
   await page.locator("#library-list .book-title").click();
@@ -88,8 +89,9 @@ test("offline logout and another account hide the first account's cached file an
   await page.locator("#library-list .book-title").click();
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
   await context.setOffline(true);
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await page.locator("#account-logout").click();
   await expect(page.locator("#auth-entry")).toBeVisible();
   await expect(page.locator(".shell")).toBeHidden();

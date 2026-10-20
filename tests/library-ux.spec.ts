@@ -97,7 +97,7 @@ test("touch library keeps its folder selector and does not start desktop preview
   test.skip(info.project.name !== "android", "Touch viewport");
   await mockCloud(page, true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Touch.epub", mimeType: "application/octet-stream", buffer: await epubFixture() });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#back-button").click();
+  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator("#library-list .book-folder")).toBeVisible();
   await expect(page.locator(".book-drag-preview")).toHaveCount(0);
@@ -108,7 +108,7 @@ test("a legacy IndexedDB EPUB with empty MIME and missing format can still sync"
   const cloud = await mockCloud(page, true);
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "A_buen_fin-Shakespeare.epub", mimeType: "application/epub+zip", buffer: await epubFixture() });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#back-button").click();
+  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open("autumn-reader"); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
     const old = await new Promise<Record<string, unknown>>((resolve, reject) => { const tx = db.transaction("books"); const r = tx.objectStore("books").getAll(); r.onsuccess = () => resolve(r.result.find((row: { cloudId?: string }) => !row.cloudId)); r.onerror = () => reject(r.error); });
@@ -131,7 +131,7 @@ test("a corrupt historical EPUB reports a specific error and retains its local r
   const cloud = await mockCloud(page, true);
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Damaged.epub", mimeType: "application/epub+zip", buffer: await epubFixture("damaged", "Damaged") });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#back-button").click();
+  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open("autumn-reader"); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
     const row = await new Promise<Record<string, unknown>>((resolve, reject) => { const tx = db.transaction("books"); const r = tx.objectStore("books").getAll(); r.onsuccess = () => resolve(r.result.find((book: { cloudId?: string }) => !book.cloudId)); r.onerror = () => reject(r.error); });
@@ -139,7 +139,7 @@ test("a corrupt historical EPUB reports a specific error and retains its local r
     await new Promise<void>((resolve, reject) => { const tx = db.transaction("books", "readwrite"); tx.objectStore("books").put(row); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
     db.close();
   });
-  await page.reload(); await page.locator('.nav-button[data-view="settings"]').click();
+  await page.reload(); await page.locator('.nav-button[data-view="settings"]').click(); await page.locator("#settings-account-tab").click();
   await page.locator("#migrate-library").click();
   await expect(page.locator("#migration-status")).toContainText("El archivo EPUB está dañado o incompleto");
   expect(cloud.uploads).toBe(0);

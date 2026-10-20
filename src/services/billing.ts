@@ -51,9 +51,9 @@ async function openExternal(url: string): Promise<void> {
 }
 
 export const billing = {
-  async checkout(plan: "plus" | "pro", billingPeriod: "monthly" | "annual"): Promise<void> {
+  async checkout(billingPeriod: "monthly" | "lifetime"): Promise<void> {
     const { data, error } = await cloud().functions.invoke<{ checkoutUrl?: string }>("billing-checkout", {
-      body: { plan, billingPeriod },
+      body: { plan: "premium", billingPeriod },
     });
     if (error || typeof data?.checkoutUrl !== "string") throw await code(error, data);
     await openExternal(data.checkoutUrl);

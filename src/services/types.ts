@@ -35,7 +35,7 @@ export interface CloudUsage {
   used_books: number;
   used_bytes: number;
   max_bytes: number;
-  plan?: "free" | "plus" | "pro";
+  plan?: "free" | "premium";
   active_pending_uploads?: number;
   reserved_bytes?: number;
 }
@@ -179,7 +179,7 @@ export interface Database {
       };
       library_quota: {
         Args: Record<string, never>;
-        Returns: { used_books: number; used_bytes: number; max_bytes: number; plan: "free" | "plus" | "pro";
+        Returns: { used_books: number; used_bytes: number; max_bytes: number; plan: "free" | "premium";
           active_pending_uploads?: number; reserved_bytes?: number; recent_unique_uploads?: number;
           expired_reservations?: number; max_pending_uploads?: number };
       };
@@ -188,14 +188,14 @@ export interface Database {
       get_user_entitlements: {
         Args: Record<string, never>;
         Returns: {
-          plan: "free" | "plus" | "pro"; cloudStorageBytes: number; maxDevices: number | null;
+          plan: "free" | "premium"; cloudStorageBytes: number; maxDevices: number | null;
           sync: boolean; offline: boolean; notesAndHighlights: boolean; advancedThemes: boolean;
-          advancedStats: boolean; translationTier: "very_limited" | "standard" | "high";
-          premiumTtsTier: "none" | "limited" | "full"; subscriptionStatus: string;
-          billingPeriod: "monthly" | "annual" | null; currentPeriodStart: string | null;
+          advancedStats: boolean; translationMonthlyCharacters: number;
+          cloudTtsMonthlyCharacters: number; subscriptionStatus: string;
+          billingPeriod: "monthly" | "annual" | "lifetime" | null; currentPeriodStart: string | null;
           currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean;
           provider: "lemonsqueezy" | "google_play" | "apple" | "microsoft_store" | "manual" | null;
-          activeDevices: number;
+          activeDevices: number; accessSource: "free" | "subscription" | "purchase" | "legacy" | "manual";
         };
       };
       register_device: { Args: { p_device: string; p_platform: string; p_name: string }; Returns: import("./devices").DeviceAccess };

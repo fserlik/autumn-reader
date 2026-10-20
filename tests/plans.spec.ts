@@ -34,24 +34,32 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
   const comparison = page.locator(".plan-comparison-dialog");
   await expect(comparison).toBeVisible();
   await expect(comparison.locator(".note-close")).toBeFocused();
-  await expect(comparison.locator(".plan-card")).toHaveCount(3);
+  await expect(comparison.locator(".plan-card")).toHaveCount(2);
   if (page.viewportSize()!.width >= 800) {
     const boxes = await comparison.locator(".plan-card").evaluateAll(cards => cards.map(card => card.getBoundingClientRect().left));
     expect(boxes[0]).toBeLessThan(boxes[1]);
-    expect(boxes[1]).toBeLessThan(boxes[2]);
   } else {
     const boxes = await comparison.locator(".plan-card").evaluateAll(cards => cards.map(card => card.getBoundingClientRect()));
     expect(Math.max(...boxes.map(box => box.right))).toBeLessThanOrEqual(page.viewportSize()!.width);
-    expect(boxes[0].top).toBeLessThan(boxes[1].top);
-    expect(boxes[1].top).toBeLessThan(boxes[2].top);
+    const premiumTop = (await comparison.locator('.plan-card[data-plan="premium"]').boundingBox())!.y;
+    const freeTop = (await comparison.locator('.plan-card[data-plan="free"]').boundingBox())!.y;
+    expect(premiumTop).toBeLessThan(freeTop);
   }
-  await expect(comparison.locator(".plan-card-featured")).toContainText("Autumn+");
-  await expect(comparison.locator(".plan-card-featured")).toContainText("4.99");
-  await expect(comparison.locator(".plan-card-featured")).toContainText("5 GB");
+  await expect(comparison.locator(".plan-card-featured")).toContainText("Autumn Pro");
+  await expect(comparison.locator(".plan-card-featured")).toContainText("5,99");
+  await expect(comparison.locator(".plan-card-featured")).toContainText("119,99");
+  await expect(comparison.locator(".plan-card-featured")).toContainText("25 GB");
+  await expect(comparison.locator(".plan-card-featured")).toContainText("20.000");
   await expect(comparison.locator(".plan-card button").first()).toBeDisabled();
   await page.screenshot({ path: testInfo.outputPath("plan-comparison-dialog.png"), fullPage: true });
   await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
   await page.screenshot({ path: testInfo.outputPath("plan-comparison-dialog-dark.png"), fullPage: true });
+  await comparison.locator(".plan-cards").evaluate(element => { element.scrollTop = element.scrollHeight; });
+  const purchaseAction = comparison.locator('.plan-card[data-plan="premium"] .plan-purchase-actions button');
+  await purchaseAction.scrollIntoViewIfNeeded();
+  await expect(purchaseAction).toBeVisible();
+  expect((await purchaseAction.boundingBox())!.height).toBeGreaterThanOrEqual(page.viewportSize()!.width < 800 ? 48 : 44);
+  await page.screenshot({ path: testInfo.outputPath("plan-comparison-dialog-bottom.png"), fullPage: true });
   if (testInfo.project.name === "android") {
     await page.setViewportSize({ width: 375, height: 812 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -61,12 +69,12 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
   }
   await page.keyboard.press("Escape");
   await expect(comparison).not.toBeVisible();
-  cloud.setPlan("plus");
+  cloud.setPlan("premium");
   await page.reload();
   await page.locator('.nav-button[data-view="settings"]').click();
   await page.locator("#settings-account-tab").click();
-  await expect(page.locator(".plan-name")).toHaveText("Autumn+");
-  await expect(page.locator(".plan-storage")).toContainText("5 GB");
+  await expect(page.locator(".plan-name")).toHaveText("Autumn Pro");
+  await expect(page.locator(".plan-storage")).toContainText("25 GB");
   await expect(page.locator(".plan-devices")).toContainText("Ilimitados");
   await expect(page.locator("#account-logout")).toHaveCount(1);
   await expect(page.locator("#settings-account-panel #account-logout")).toBeVisible();
@@ -99,17 +107,17 @@ test("Account shows server plan, byte quota, devices, and a read-only localized 
   await page.locator("#settings-account-tab").click();
   const light = await page.locator(".plan-feature").evaluate(el => getComputedStyle(el).backgroundColor);
   expect(light).toBeTruthy();
-  cloud.setPlan("pro");
+  cloud.setPlan("premium");
   await page.reload();
   await page.locator('.nav-button[data-view="settings"]').click();
   await page.locator("#settings-account-tab").click();
   await expect(page.locator(".plan-name")).toHaveText("Autumn Pro");
-  await expect(page.locator(".plan-storage")).toContainText("20 GB");
+  await expect(page.locator(".plan-storage")).toContainText("25 GB");
 });
 
 test("paid plans keep subscription management visible while provider metadata is delayed", async ({ page }) => {
   const cloud = await mockCloud(page, true);
-  cloud.setPlan("pro");
+  cloud.setPlan("premium");
   cloud.setPlanProvider("manual");
   await page.goto("/");
   await login(page);
@@ -122,13 +130,45 @@ test("paid plans keep subscription management visible while provider metadata is
 });
 
 test("Lemon Squeezy choices are account-based on every platform", async ({ page }) => {
-  await mockCloud(page, true); await page.goto("/"); await login(page);
+  const cloud = await mockCloud(page, true);
+  cloud.setPlanCatalogResponse([
+    { code: "free", monthly_usd_cents: 0, cloud_bytes: 1_073_741_824, max_devices: 2, advanced_themes: false, advanced_stats: false },
+    { code: "autumn_plus", monthly_usd_cents: 399, cloud_bytes: 5_368_709_120, max_devices: 5 },
+    { code: "autumn_pro", monthly_usd_cents: 799, cloud_bytes: 26_843_545_600, max_devices: null },
+  ]);
+  await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="settings"]').click(); await page.locator("#settings-account-tab").click(); await page.locator(".plan-compare").click();
+  await expect(page.locator(".plan-comparison-dialog .plan-card")).toHaveCount(2);
+  await expect(page.locator(".plan-comparison-dialog")).not.toContainText("NaN");
   await expect(page.locator(".plan-card-featured .plan-price-choice")).toHaveCount(2);
   await expect(page.locator(".plan-card-featured .plan-price-choice").first()).toContainText("mes");
-  await expect(page.locator(".plan-card-featured .plan-price-choice").first()).toContainText("4.99");
+  await expect(page.locator(".plan-card-featured .plan-price-choice").first()).toContainText("5,99");
   await expect(page.locator(".plan-card-featured .plan-price-choice").first()).toBeEnabled();
+  await expect(page.locator(".plan-card-featured .plan-price-choice").last()).toContainText("pago único");
+  await expect(page.locator(".plan-card-featured .plan-price-choice").last()).toHaveAttribute("aria-pressed", "false");
+  await page.locator(".plan-card-featured .plan-price-choice").last().click();
+  await expect(page.locator(".plan-card-featured .plan-price-choice").last()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".plan-card-featured .plan-purchase-actions button")).toContainText("De por vida");
   await expect(page.locator(".plan-dialog-intro")).toContainText("Lemon Squeezy");
+  await page.evaluate(() => {
+    Object.defineProperty(window, "open", {
+      configurable: true,
+      value: (url?: string | URL) => {
+        (window as typeof window & { __checkoutUrl?: string }).__checkoutUrl = String(url ?? "");
+        return window;
+      },
+    });
+  });
+  await page.locator(".plan-card-featured .plan-purchase-actions button").click();
+  await expect.poll(() => cloud.billingCheckoutRequests.at(-1)?.billingPeriod).toBe("lifetime");
+  await expect.poll(() => page.evaluate(() =>
+    (window as typeof window & { __checkoutUrl?: string }).__checkoutUrl,
+  )).toBe("https://autumn-reader.lemonsqueezy.com/buy/test-session");
+  expect(cloud.billingCheckoutRequests.at(-1)).toEqual({ plan: "premium", billingPeriod: "lifetime" });
+  await page.locator(".plan-card-featured .plan-price-choice").first().click();
+  await page.locator(".plan-card-featured .plan-purchase-actions button").click();
+  await expect.poll(() => cloud.billingCheckoutRequests.at(-1)?.billingPeriod).toBe("monthly");
+  expect(cloud.billingCheckoutRequests.at(-1)).toEqual({ plan: "premium", billingPeriod: "monthly" });
 });
 
 test("a third Free installation can revoke an old device and then register", async ({ page }) => {
@@ -234,6 +274,37 @@ test("the unified account card keeps its actions in all four languages", async (
       expect(card).not.toBeNull();
       expect(card!.x).toBeGreaterThanOrEqual(0);
       expect(card!.x + card!.width).toBeLessThanOrEqual(390);
+    } finally { await context.close(); }
+  }
+});
+
+test("the sidebar collapse control uses one localized word while its accessible action follows state", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop-only control; mobile navigation does not expose the collapse button.");
+  const labels = {
+    en: ["Collapse", "Expand sidebar"],
+    es: ["Contraer", "Expandir barra lateral"],
+    it: ["Comprimi", "Espandi barra laterale"],
+    fr: ["Réduire", "Développer la barre latérale"],
+  } as const;
+  for (const [locale, [collapse, expand]] of Object.entries(labels)) {
+    const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    try {
+      await context.addInitScript(value => {
+        localStorage.setItem("autumn-language", value);
+        localStorage.setItem("autumn-sidebar-collapsed", "false");
+      }, locale);
+      const localized = await context.newPage();
+      await mockCloud(localized, true);
+      await localized.goto("/");
+      await login(localized);
+      const control = localized.locator("#sidebar-collapse");
+      await expect(localized.locator(".shell")).toHaveClass(/sidebar-collapsed/);
+      await expect(control).toHaveAttribute("aria-label", expand);
+      await expect(control.locator("span")).toHaveText(collapse);
+      await control.click();
+      await expect(localized.locator(".shell")).not.toHaveClass(/sidebar-collapsed/);
+      await expect(control).toHaveAttribute("aria-label", collapse);
+      await expect(control.locator("span")).toHaveText(collapse);
     } finally { await context.close(); }
   }
 });

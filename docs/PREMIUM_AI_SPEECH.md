@@ -1,18 +1,18 @@
-# Premium AI Speech
+# Autumn Pro cloud speech
 
-Premium AI Speech adds Amazon Polly Neural to the existing device TTS. Device voices remain the default, work offline, and are available on Free. Autumn+ receives 60 generation minutes per monthly entitlement cycle; Autumn Pro receives 180. Annual subscriptions are split into monthly cycles anchored to `current_period_start`.
+Autumn Pro cloud speech adds Amazon Polly Neural to the existing device TTS. Device voices remain the default, work offline, and are unlimited on Free and Autumn Pro. Premium access includes 25,000 Polly Neural characters per UTC calendar month, whether it comes from a monthly subscription, Lifetime purchase, or valid historical paid right.
 
 ## Architecture and security
 
 - The reader sends one visible fragment at a time to `ai-speech`. Requests are capped at 3,000 normalized characters.
 - The Edge Function verifies the Supabase JWT and active device session, then authorizes the private cloud book. Before calling Polly, it downloads that owned EPUB/PDF from R2 and verifies that the requested text is present in the source file.
 - PDF validation uses a static, versioned `npm:unpdf@1.8.0/pdfjs` import so the dependency is included in Supabase's ESZip instead of being resolved lazily at request time. Its worker is inlined for Deno/Edge runtimes; validation disables font rendering, system fonts, WASM and remote worker/font fetches because it extracts text only. A local `Math.sumPrecise` compatibility shim covers Supabase Edge Runtime 1.77/Deno 2.1.4, while newer runtimes keep their native implementation. The browser reader keeps its existing `pdfjs-dist` integration.
-- `reserve_ai_speech` serializes work by user/fragment and also takes a global budget lock. It reserves estimated seconds before Polly is called. A duplicate returns the existing audio or a pending response; it cannot create a second charge.
+- `reserve_ai_speech` serializes work by user/fragment and also takes a global budget lock. It reserves characters before Polly is called. A duplicate returns the existing audio or a pending response; it cannot create a second charge.
 - Polly credentials, the Supabase service role and R2 credentials exist only in Edge Function secrets. The client receives a two-minute signed GET URL, never an object key or credential.
 - Audio uses deterministic keys under `ai-speech/<user>/<book>/<request-hash>.mp3`. The hash includes the text, voice, language, speed and provider version. Previously generated audio is replayed without consuming quota again.
-- The reader's voice-sample control synthesizes only a short excerpt from the current owned book. Its first generation uses a few quota seconds and subsequent plays reuse the deterministic cached object; it does not activate or pre-generate paid sample assets.
-- Provider failures release the user's reserved seconds. If Polly succeeded but R2 failed, `provider_billed` keeps the estimated provider cost in the global budget while releasing user quota.
-- `private.ai_speech_admin_alerts` records an alert once at 80% and 100% of the monthly budget. Connect this private table to the team's existing Supabase database alert/webhook process if notifications outside Supabase are desired; none are activated automatically.
+- The reader's voice-sample control synthesizes only a short excerpt from the current owned book. Its first generation uses a few quota characters and subsequent plays reuse the deterministic cached object; it does not activate or pre-generate paid sample assets.
+- Provider failures release the user's reserved characters. If Polly succeeded but R2 failed, `provider_billed` keeps the estimated provider cost in the global budget while releasing user quota.
+- `private.ai_speech_admin_alerts` records an alert once at 80%, 90% and 100% of the monthly budget. At US$10 the backend blocks new cloud generations even when a user still has individual quota; local TTS remains available. Connect this private table to the team's existing Supabase database alert/webhook process if notifications outside Supabase are desired; none are activated automatically.
 
 Amazon Polly's synchronous response does not contain the final audio duration. Autumn Reader therefore uses the documented conservative fallback `ceil(characters / 12 / playback_rate)` seconds. The estimated duration, billable characters and estimated cost are retained with every generation. `actual_seconds` is available for a future trusted duration probe; client-reported durations are deliberately not accepted for quota accounting.
 
@@ -67,6 +67,9 @@ Review and apply, in order:
 
 ```text
 supabase/migrations/202610100001_premium_ai_speech.sql
+supabase/migrations/202610180001_premium_entitlements.sql
+supabase/migrations/202610180002_service_quotas.sql
+supabase/migrations/202610180003_provider_controls_billing_audit_and_r2_gc.sql
 ```
 
 Then set secrets and deploy only the new function. The PDF parser correction itself does not require a migration:

@@ -9,7 +9,7 @@ test("picker rejects identical bytes despite renamed files, but accepts the same
   const original = await epubFixture("original");
   await page.locator("#file-input").setInputFiles({ name: "Dune.epub", mimeType: "", buffer: original });
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator("#file-input").setInputFiles({ name: "Dune-copia.epub", mimeType: "application/octet-stream", buffer: original });
   await expect(page.locator("#library-list .library-book-card")).toHaveCount(1);
   await expect(page.locator("#toast")).toContainText("Este libro ya está en tu biblioteca");
@@ -22,7 +22,7 @@ test("picker rejects identical bytes despite renamed files, but accepts the same
   await expect(page.locator("#library-list .library-book-card")).toHaveCount(1);
   await page.locator("#file-input").setInputFiles({ name: "Dune.epub", mimeType: "application/epub+zip", buffer: await epubFixture("different-edition") });
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await expect(page.locator("#library-list .library-book-card")).toHaveCount(2);
   expect(cloud.uploads).toBe(0);
 });
@@ -31,7 +31,7 @@ test("a downloaded cloud book rejects the same manually selected bytes", async (
   const cloud = await mockCloud(page); await page.goto("/"); await login(page);
   await page.locator("#library-list .book-title").click();
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   expect(cloud.downloads).toBe(1);
   await page.locator("#file-input").setInputFiles({name:"another-name.epub",mimeType:"",buffer:cloud.fixtureBytes});
   await expect(page.locator("#library-list .library-book-card")).toHaveCount(1);
@@ -43,12 +43,12 @@ test("batch import keeps seven new books and omits three repeated binary files",
   await mockCloud(page, true); await page.goto("/"); await login(page);
   const repeated = await epubFixture("repeat");
   await page.locator("#file-input").setInputFiles({name:"Already.epub",mimeType:"",buffer:repeated});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#back-button").click();
+  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   const files = [1, 2, 3].map(i => ({ name: `Repeat-${i}.epub`, mimeType: "", buffer: repeated }));
   files.push(...await Promise.all(Array.from({ length: 7 }, async (_, i) => ({ name: `Unique-${i}.epub`, mimeType: "", buffer: await epubFixture(`unique-${i}`) }))));
   await page.locator("#file-input").setInputFiles(files);
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await expect(page.locator("#library-list .library-book-card")).toHaveCount(8);
   await expect(page.locator("#toast")).toContainText("7 libros importados. 3 ya estaban");
 });
@@ -61,7 +61,7 @@ test("four local plus five cloud with two matching hashes reconcile to seven wit
   const data = await Promise.all(names.map((name, i) => i === 0 ? cloud.fixtureBytes : epubFixture(name)));
   await page.locator("#file-input").setInputFiles(names.map((name, i) => ({ name: `${name}.epub`, mimeType: "", buffer: data[i] })));
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await cloud.addCloudBook("11111111-1111-4111-8111-111111111111", "B", data[1]);
   for (const [i, name] of ["E", "F", "G"].entries())
     await cloud.addCloudBook(`22222222-2222-4222-8222-22222222222${i}`, name, await epubFixture(name));

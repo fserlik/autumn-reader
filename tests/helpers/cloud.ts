@@ -68,11 +68,13 @@ export async function mockCloud(page: Page, emptyLibrary = false, cloudFile?: Bu
   let quotaOverride: {used_books:number;used_bytes:number;max_bytes:number;active_pending_uploads:number;reserved_bytes:number} | undefined;
   const activeDevices = deviceRegistry.active;
   const planCatalog = [
-    {code:"free",monthly_usd_cents:0,annual_usd_cents:null,cloud_bytes:1073741824,max_devices:2,advanced_themes:false,advanced_stats:false,translation_tier:"very_limited",premium_tts_tier:"none"},
-    {code:"plus",monthly_usd_cents:499,annual_usd_cents:3999,cloud_bytes:5368709120,max_devices:null,advanced_themes:true,advanced_stats:true,translation_tier:"standard",premium_tts_tier:"limited"},
-    {code:"pro",monthly_usd_cents:999,annual_usd_cents:7999,cloud_bytes:21474836480,max_devices:null,advanced_themes:true,advanced_stats:true,translation_tier:"high",premium_tts_tier:"full"},
+    {code:"free",monthly_usd_cents:0,lifetime_usd_cents:null,cloud_bytes:1073741824,max_devices:2,advanced_themes:false,advanced_stats:false,translation_monthly_characters:2000,cloud_tts_monthly_characters:0},
+    {code:"premium",monthly_usd_cents:599,lifetime_usd_cents:11999,cloud_bytes:26843545600,max_devices:null,advanced_themes:true,advanced_stats:true,translation_monthly_characters:20000,cloud_tts_monthly_characters:25000},
   ] as const;
-  let planCode: "free"|"plus"|"pro" = "free";
+  let planCatalogResponse: unknown[] | null = null;
+  const billingCheckoutRequests: Array<{ plan: string; billingPeriod: string }> = [];
+  const aiSpeechRequests: Array<Record<string, unknown>> = [];
+  let planCode: "free"|"premium" = "free";
   let planProvider: "lemonsqueezy"|"google_play"|"apple"|"microsoft_store"|"manual"|null = null;
   let cloudRemoved = false;
   let removeRequests = 0;
@@ -273,18 +275,19 @@ export async function mockCloud(page: Page, emptyLibrary = false, cloudFile?: Bu
           book_id: extra.id, added_at: timestamp, last_opened_at: null, favorite: false,
           status: "unread", updated_at: timestamp, deleted_at: null,
           display_title: null, display_author: null, cover_path: null, metadata_updated_at: timestamp })));
-    } else if (url.pathname.endsWith("/rpc/plan_catalog")) data = planCatalog;
+    } else if (url.pathname.endsWith("/rpc/plan_catalog")) data = planCatalogResponse ?? planCatalog;
     else if (url.pathname.endsWith("/rpc/get_user_entitlements")) {
       const selected=planCatalog.find(plan=>plan.code===planCode)!;
       data={
         plan:selected.code,cloudStorageBytes:selected.cloud_bytes,maxDevices:selected.max_devices,
         sync:true,offline:true,notesAndHighlights:true,advancedThemes:selected.advanced_themes,
-        advancedStats:selected.advanced_stats,translationTier:selected.translation_tier,
-        premiumTtsTier:selected.premium_tts_tier,subscriptionStatus:planCode==="free"?"free":"active",
+        advancedStats:selected.advanced_stats,translationMonthlyCharacters:selected.translation_monthly_characters,
+        cloudTtsMonthlyCharacters:selected.cloud_tts_monthly_characters,subscriptionStatus:planCode==="free"?"free":"active",
         billingPeriod:planCode==="free"?null:"monthly",currentPeriodStart:null,
+        purchaseType:planCode==="free"?null:"monthly",
         currentPeriodEnd:planCode==="free"?null:new Date(Date.now()+30*86400000).toISOString(),
         cancelAtPeriodEnd:false,provider:planCode==="free"?null:planProvider??"lemonsqueezy",
-        activeDevices:activeDevices.get(current)?.size??0,
+        activeDevices:activeDevices.get(current)?.size??0,accessSource:planCode==="free"?"free":"subscription",
       };
     }
     else if (url.pathname.endsWith("/rpc/account_plan")) data = {
@@ -349,19 +352,25 @@ export async function mockCloud(page: Page, emptyLibrary = false, cloudFile?: Bu
       }
       data = ops.map((o) => ({ id: o.id, outcome: "applied" }));
     } else if (url.pathname.includes("/functions/v1/ai-speech")) {
-      const action = req.postDataJSON() as { action: string };
-      if (action.action === "voices") data = { tier:planCode==="pro"?"full":"limited", voices:[
-        {id:"Lucia",name:"Lucía",language:"es-ES",gender:"female",proOnly:false},
-        {id:"Mia",name:"Mia",language:"es-MX",gender:"female",proOnly:false},
-        {id:"Joanna",name:"Joanna",language:"en-US",gender:"female",proOnly:false},
-        {id:"Lea",name:"Léa",language:"fr-FR",gender:"female",proOnly:false},
-        {id:"Bianca",name:"Bianca",language:"it-IT",gender:"female",proOnly:false},
+      const action = req.postDataJSON() as { action: string } & Record<string, unknown>;
+      aiSpeechRequests.push(action);
+      if (action.action === "voices") data = { tier:"full", voices:[
+        {id:"Lucia",name:"Lucía",language:"es-ES",gender:"female"},
+        {id:"Mia",name:"Mia",language:"es-MX",gender:"female"},
+        {id:"Joanna",name:"Joanna",language:"en-US",gender:"female"},
+        {id:"Lea",name:"Léa",language:"fr-FR",gender:"female"},
+        {id:"Bianca",name:"Bianca",language:"it-IT",gender:"female"},
       ]};
-      else if (action.action === "usage") data = {plan:planCode,includedSeconds:planCode==="plus"?3600:planCode==="pro"?10800:0,usedSeconds:1080,remainingSeconds:planCode==="plus"?2520:planCode==="pro"?9720:0,cycleStartsAt:timestamp,resetsAt:new Date(Date.now()+20*86400000).toISOString(),serviceAvailable:planCode!=="free",budgetPaused:false};
+      else if (action.action === "usage") data = {plan:planCode,includedCharacters:planCode==="premium"?25000:0,usedCharacters:planCode==="premium"?1080:0,remainingCharacters:planCode==="premium"?23920:0,cycleStartsAt:timestamp,resetsAt:new Date(Date.now()+20*86400000).toISOString(),serviceAvailable:planCode!=="free",budgetPaused:false};
       else data = {audioUrl:"https://audio.example.test/sample.mp3",cached:true,durationSeconds:10,expiresAt:new Date(Date.now()+120000).toISOString()};
+    } else if (url.pathname.includes("/functions/v1/translate-text")) {
+      const action = req.postDataJSON() as { action?: string };
+      if (action.action === "usage") data = {plan:planCode,includedCharacters:planCode==="premium"?20000:2000,usedCharacters:planCode==="premium"?1250:250,remainingCharacters:planCode==="premium"?18750:1750,cycleStartsAt:timestamp,resetsAt:new Date(Date.now()+20*86400000).toISOString(),serviceAvailable:true,globalLimitReached:false,providerUsageVerified:true};
+      else data = {translatedText:"Texto traducido",detectedSourceLanguage:"EN"};
     } else if (url.pathname.includes("/functions/v1/billing-portal")) {
       data={portalUrl:"https://app.lemonsqueezy.com/my-orders/test-session"};
     } else if (url.pathname.includes("/functions/v1/billing-checkout")) {
+      billingCheckoutRequests.push(req.postDataJSON() as { plan: string; billingPeriod: string });
       data={checkoutUrl:"https://autumn-reader.lemonsqueezy.com/buy/test-session"};
     } else if (url.pathname.includes("/functions/v1/book-storage")) {
       const action = req.postDataJSON() as { action: string; bookId?: string };
@@ -462,7 +471,10 @@ export async function mockCloud(page: Page, emptyLibrary = false, cloudFile?: Bu
     set passwordFailure(value: "current" | "weak" | null) { passwordFailure = value; },
     set prepareFailures(value:number) { prepareFailures = value; },
     setQuota(value:{used_books:number;used_bytes:number;max_bytes:number;active_pending_uploads:number;reserved_bytes:number}) { quotaOverride=value; },
-    setPlan(value:"free"|"plus"|"pro") { planCode=value;planProvider=value==="free"?null:"lemonsqueezy";quotaOverride=undefined; },
+    setPlanCatalogResponse(value: unknown[]) { planCatalogResponse = value; },
+    billingCheckoutRequests,
+    aiSpeechRequests,
+    setPlan(value:"free"|"premium") { planCode=value;planProvider=value==="free"?null:"lemonsqueezy";quotaOverride=undefined; },
     setPlanProvider(value:"lemonsqueezy"|"google_play"|"apple"|"microsoft_store"|"manual"|null) { planProvider=value; },
     get registeredUsername() { return registeredUsername; },
     verifyTypes,

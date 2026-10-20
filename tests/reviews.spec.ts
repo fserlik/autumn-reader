@@ -5,7 +5,7 @@ test.afterEach(async({page})=>{await page.unrouteAll({behavior:"wait"});});
 test("local book reviews publish only metadata, appear in profile, edit/delete and survive offline",async({page,context},info)=>{
   const cloud=await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:"Local philosophy.epub",mimeType:"application/epub+zip",buffer:await epubFixture("philosophy", "Local philosophy")});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.locator("#back-button").click();await page.locator('.nav-button[data-view="library"]').click();
+  await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.locator("#desktop-reader-back:visible, #back-button:visible").click();await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator("#folder-filter")).toHaveCount(0);
   await page.locator("#library-list .book-menu summary").click();await page.locator("#library-list .book-menu-options").getByRole("button",{name:"Reseñar",exact:true}).click();await expect(page.locator("#review-dialog")).toBeVisible();
   await page.getByRole("radio",{name:"4 estrellas",exact:true}).check();await expect(page.locator("#review-rating-label")).toHaveText("4 de 5 estrellas");
@@ -32,7 +32,7 @@ test("offline/error drafts persist, public reviews are readable and another acco
   await page.locator("#profile-review-drafts button").click();await expect(page.locator("#review-text")).toHaveValue("Mi borrador protegido.");
   await context.setOffline(false);cloud.reviewFailure=true;await page.locator("#review-publish").click();await expect(page.locator("#review-status")).toContainText("inaccesibles");await expect(page.locator("#review-text")).toHaveValue("Mi borrador protegido.");
   cloud.reviewFailure=false;await page.locator("#review-publish").click();await expect(page.locator("#review-dialog")).toBeHidden();expect([...cloud.reviewRows.values()][0].user_id).toBe(a);
-  await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#account-logout").click();await login(page,"b@example.org");await page.locator('.nav-button[data-view="profile"]').click();
+  await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-account-tab").click();await page.locator("#account-logout").click();await login(page,"b@example.org");await page.locator('.nav-button[data-view="profile"]').click();
   await expect(page.locator("#profile-reviews .profile-review")).toHaveCount(0);await expect(page.locator("#profile-review-drafts button")).toHaveCount(0);
   await page.evaluate(id=>{location.hash=`/books/${id}`;},bookId);await expect(page.locator("#view-details")).toContainText("Mi borrador protegido.");
   await expect(page.locator("#view-details").getByRole("button",{name:"Guardar reseña",exact:true})).toHaveCount(0);await expect(page.locator("#view-details").getByRole("button",{name:"Borrar reseña",exact:true})).toHaveCount(0);

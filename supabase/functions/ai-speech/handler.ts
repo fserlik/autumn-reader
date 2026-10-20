@@ -11,6 +11,7 @@ import type { SpeechVoice } from "./providers/types.ts";
 type Json = string|number|boolean|null|{[key:string]:Json|undefined}|Json[];
 type Database={public:{Tables:Record<string,never>;Views:Record<string,never>;Enums:Record<string,never>;CompositeTypes:Record<string,never>;Functions:{
   authorize_account_device:{Args:{p_user:string;p_session:string};Returns:boolean};
+  effective_service_budget:{Args:{p_service:string;p_environment_microusd:number};Returns:number};
   reserve_ai_speech:{Args:{p_user:string;p_book:string;p_request_key:string;p_fragment_hash:string;p_fragment_id:string;p_voice:string;p_language:string;p_rate:number;p_characters:number;p_estimated_seconds:number;p_cost_microusd:number;p_budget_microusd:number;p_retention_days:number};Returns:Json};
   mark_ai_speech_generating:{Args:{p_user:string;p_id:string};Returns:boolean};
   complete_ai_speech:{Args:{p_user:string;p_id:string;p_audio_key:string;p_actual_seconds:number|null};Returns:Json};
@@ -18,8 +19,8 @@ type Database={public:{Tables:Record<string,never>;Views:Record<string,never>;En
   ai_speech_usage_for_user:{Args:{p_user:string;p_budget_microusd:number};Returns:Json};
   authorize_book_download:{Args:{p_user:string;p_book:string};Returns:Json};
 }}};
-interface Reservation { outcome:"reserved"|"pending"|"cached";generationId:string;audioKey?:string;durationSeconds?:number;expiresAt?:string; }
-interface Usage { plan:"free"|"plus"|"pro";includedSeconds:number;usedSeconds:number;remainingSeconds:number;cycleStartsAt:string;resetsAt:string;serviceAvailable:boolean;budgetPaused:boolean; }
+interface Reservation { outcome:"reserved"|"pending"|"cached"|"budget_exhausted";generationId?:string;audioKey?:string;durationSeconds?:number;expiresAt?:string; }
+interface Usage { plan:"free"|"premium";includedCharacters:number;usedCharacters:number;remainingCharacters:number;cycleStartsAt:string;resetsAt:string;serviceAvailable:boolean;budgetPaused:boolean; }
 const voices:readonly SpeechVoice[]=amazonPollyNeural.voices;
 const env=(name:string):string=>{const value=Deno.env.get(name)?.trim();if(!value)throw new Error("not_configured");return value;};
 const numberEnv=(name:string,fallback:number,min:number,max:number):number=>{const value=Number(Deno.env.get(name)??fallback);if(!Number.isFinite(value)||value<min||value>max)throw new Error("not_configured");return value;};
@@ -96,12 +97,15 @@ export async function handleAiSpeechRequest(request:Request):Promise<Response>{
     stage="device_authorization";
     const session=sessionId(token);if(!session)throw new ServiceError("device_revoked","invalid_session_claim");
     const device=await db.rpc("authorize_account_device",{p_user:user,p_session:session});if(device.error)throw rpcFailure("authorize_account_device",device.error);if(!device.data)throw new ServiceError("device_revoked","device_not_authorized","supabase");ok();
-    stage="request_validation";const input=validateAiSpeechRequest(await boundedJson(request));const budget=budgetMicros();ok({action:input.action});
+    stage="request_validation";const input=validateAiSpeechRequest(await boundedJson(request));const environmentBudget=budgetMicros();
+    const budgetResult=await db.rpc("effective_service_budget",{p_service:"amazon_polly_neural",p_environment_microusd:environmentBudget});
+    if(budgetResult.error||!Number.isSafeInteger(budgetResult.data)||budgetResult.data<=0)throw rpcFailure("effective_service_budget",budgetResult.error);
+    const budget=budgetResult.data;ok({action:input.action});
     stage="quota_lookup";const usageResult=await db.rpc("ai_speech_usage_for_user",{p_user:user,p_budget_microusd:budget});if(usageResult.error||!usageResult.data)throw rpcFailure("ai_speech_usage_for_user",usageResult.error);ok();
     const usage=usageResult.data as unknown as Usage;
     if(input.action==="usage")return reply(usage);
     if(usage.plan==="free")return reply({code:"subscription_required"},403);
-    const tier=usage.plan==="pro"?"full":"limited",available=voices.filter(voice=>tier==="full"||!voice.proOnly);
+    const tier="full" as const,available=voices;
     stage="polly_configuration";const providerConfig=amazonPollyNeural.configuration();ok({...providerConfig});
     if(input.action==="voices")return reply({voices:available,tier});
     if(!input.bookId||!input.text||!input.voiceId||!input.language||input.rate===undefined||!input.fragmentId)throw new Error("invalid_request");
@@ -112,6 +116,7 @@ export async function handleAiSpeechRequest(request:Request):Promise<Response>{
     if(reservation.error||!reservation.data)throw rpcFailure("reserve_ai_speech",reservation.error,"provider_unavailable",databaseCodes);const record=reservation.data as unknown as Reservation;ok({reservationOutcome:record.outcome});
     if(record.outcome==="cached"&&record.audioKey){stage="r2_audio_presign";const audioUrl=await presign(record.audioKey);ok();return reply({audioUrl,cached:true,durationSeconds:record.durationSeconds,expiresAt:record.expiresAt});}
     if(record.outcome==="pending")return reply({code:"generation_pending",retryAfterMs:800},202);
+    if(record.outcome==="budget_exhausted")throw new ServiceError("global_budget","monthly_budget_exhausted","supabase");
     if(record.outcome!=="reserved"||!uuid(record.generationId))throw new ServiceError("provider_unavailable","invalid_reservation_response","supabase");
     generationId=record.generationId;
     stage="book_authorization";const fileResult=await db.rpc("authorize_book_download",{p_user:user,p_book:input.bookId});

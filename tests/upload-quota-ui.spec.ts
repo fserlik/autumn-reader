@@ -9,8 +9,9 @@ test("Settings distinguishes three pending states and retries failed local uploa
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Libro local.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await expect(page.locator("#settings-plan .plan-storage")).toContainText("19 MB de 1 GB");
   await expect(page.locator("#settings-plan .plan-storage")).not.toContainText("50 libros");
   await expect(page.locator("#server-pending")).toBeEmpty();
@@ -35,8 +36,9 @@ test("double-clicking Sync all starts only one migration for a local book", asyn
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Solo una vez.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
   await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.locator("#back-button").click();
+  await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="settings"]').click();
+  await page.locator("#settings-account-tab").click();
   await page.locator("#migrate-library").evaluate((button:HTMLButtonElement) => { button.click(); button.click(); });
   await expect(page.locator("#migration-status")).toContainText("1 libros migrados; 0 pendientes de reintento");
   await expect(page.locator("#migration-count")).toBeEmpty();

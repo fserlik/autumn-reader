@@ -103,10 +103,11 @@
       ["If the browser does not return", "Update to a build that registers the autumnreader callback protocol. Finish the Google flow in the browser and allow the operating system to open Autumn Reader when prompted."]
     ]],
     ["ACCOUNT", "plans", "Plans and limits", "Compare the current capabilities of each tier.", [
-      ["Free", "The Free plan includes 1 GiB of cloud storage, two active devices, local reading, and local text to speech. The reader does not show premium audio controls when they are not part of the active plan."],
-      ["Autumn+", "Autumn+ currently includes 5 GiB of cloud storage, unlimited devices, and 60 minutes of premium voice generation each month."],
-      ["Autumn Pro", "Autumn Pro currently includes 20 GiB of cloud storage, unlimited devices, and 180 minutes of premium voice generation each month."],
-      ["Billing", "Subscriptions are managed through the billing service connected to the app. Confirm current prices, billing periods, and availability on the plan screen before purchasing."],
+      ["Free", "Free includes 1 GiB of cloud storage, two active devices, sync, offline reading, and unlimited local text to speech."],
+      ["Autumn Pro monthly", "Autumn Pro costs US$5.99 per month and includes 25 GiB of cloud storage, unlimited devices, 25,000 Amazon Polly Neural characters, and 20,000 DeepL characters per UTC month."],
+      ["Autumn Pro Lifetime", "Autumn Pro Lifetime costs US$119.99 once and unlocks the same features. Lifetime does not make third-party cloud services unlimited; the same monthly service quotas apply."],
+      ["DeepL", "Translation includes 2,000 characters per UTC month on Free and 20,000 on Autumn Pro. Shared global, provider, lifetime, and zero-paid-budget safeguards can pause new requests before an individual quota is exhausted."],
+      ["Billing", "Monthly subscriptions and one-time Lifetime purchases are managed through Lemon Squeezy. Confirm availability on the in-app plan screen before purchasing."],
       ["Downgrading", "A lower quota does not automatically delete existing files. If your account exceeds the new limit, new uploads may be paused until you free enough space."]
     ]],
     ["HELP", "troubleshooting", "Troubleshooting", "Try these quick checks for common problems.", [

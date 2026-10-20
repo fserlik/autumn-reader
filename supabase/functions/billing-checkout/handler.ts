@@ -8,13 +8,92 @@ import {
   type PaidPlan,
 } from "../_shared/billing.ts";
 
-function variantId(plan: PaidPlan, billingPeriod: BillingPeriod): string {
-  const planKey = plan === "plus" ? "PLUS" : "PRO";
-  const periodKey = billingPeriod === "monthly" ? "MONTHLY" : "ANNUAL";
-  const value = required(`LEMONSQUEEZY_${planKey}_${periodKey}_VARIANT_ID`);
+function variantId(_plan: PaidPlan, billingPeriod: BillingPeriod): string {
+  const periodKey = billingPeriod === "monthly" ? "MONTHLY" : "LIFETIME";
+  const value = required(`LEMONSQUEEZY_PREMIUM_${periodKey}_VARIANT_ID`);
 
   if (!/^\d+$/.test(value)) throw new Error("backend_not_configured");
   return value;
+}
+
+type LemonResource = { data?: { attributes?: Record<string, unknown> } };
+
+async function lemonResource(path: string, apiKey: string): Promise<Record<string, unknown>> {
+  const response = await fetch(`https://api.lemonsqueezy.com/v1${path}`, {
+    headers: {
+      Accept: "application/vnd.api+json",
+      "Content-Type": "application/vnd.api+json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+  const payload = await response.json().catch(() => null) as LemonResource | null;
+  if (!response.ok || !payload?.data?.attributes) {
+  console.error("Lemon resource verification failed", {
+    path,
+    status: response.status,
+    hasAttributes: Boolean(payload?.data?.attributes),
+  });
+  throw new Error("backend_not_configured");
+}
+  return payload.data.attributes;
+}
+
+async function verifyConfiguredOffer(
+  billingPeriod: BillingPeriod,
+  selectedVariantId: string,
+  storeId: string,
+  apiKey: string,
+): Promise<void> {
+  const mode = required("LEMONSQUEEZY_MODE");
+
+  if (mode !== "test" && mode !== "live") {
+    throw new Error("backend_not_configured");
+  }
+
+  const variant = await lemonResource(`/variants/${selectedVariantId}`, apiKey);
+
+  const productId = variant.product_id;
+
+  if (!Number.isInteger(productId)) {
+    throw new Error("backend_not_configured");
+  }
+
+  const product = await lemonResource(`/products/${String(productId)}`, apiKey);
+
+  const expectedTestMode = mode === "test";
+  const expectedPrice = billingPeriod === "monthly" ? 599 : 11999;
+
+  const cadenceMatches = billingPeriod === "monthly"
+    ? variant.is_subscription === true &&
+      variant.interval === "month" &&
+      variant.interval_count === 1
+    : variant.is_subscription === false;
+
+  // DIAGNÓSTICO: identificar qué configuración falla
+  console.log("Billing variant verification", {
+    billingPeriod,
+    selectedVariantId,
+    configuredStoreId: storeId,
+    actualStoreId: product.store_id,
+    configuredMode: mode,
+    productTestMode: product.test_mode,
+    variantTestMode: variant.test_mode,
+    expectedPrice,
+    actualPrice: variant.price,
+    cadenceMatches,
+    status: variant.status,
+  });
+
+  if (
+    String(product.store_id) !== storeId ||
+    product.test_mode !== expectedTestMode ||
+    variant.test_mode !== expectedTestMode ||
+    variant.price !== expectedPrice ||
+    !cadenceMatches ||
+    !["published", "pending"].includes(String(variant.status))
+  ) {
+    throw new Error("backend_not_configured");
+  }
 }
 
 export async function handleRequest(request: Request): Promise<Response> {
@@ -44,9 +123,9 @@ export async function handleRequest(request: Request): Promise<Response> {
 
     if (
       !body ||
-      (body.plan !== "plus" && body.plan !== "pro") ||
+      body.plan !== "premium" ||
       (body.billingPeriod !== "monthly" &&
-        body.billingPeriod !== "annual")
+        body.billingPeriod !== "lifetime")
     ) {
       return json(request, { code: "invalid_plan" }, 400);
     }
@@ -56,10 +135,13 @@ export async function handleRequest(request: Request): Promise<Response> {
 
     const storeId = required("LEMONSQUEEZY_STORE_ID");
     const selectedVariantId = variantId(plan, billingPeriod);
+    const apiKey = required("LEMONSQUEEZY_API_KEY");
 
     if (!/^\d+$/.test(storeId)) {
       throw new Error("backend_not_configured");
     }
+
+    await verifyConfiguredOffer(billingPeriod, selectedVariantId, storeId, apiKey);
 
     const response = await fetch(
       "https://api.lemonsqueezy.com/v1/checkouts",
@@ -68,7 +150,7 @@ export async function handleRequest(request: Request): Promise<Response> {
         headers: {
           Accept: "application/vnd.api+json",
           "Content-Type": "application/vnd.api+json",
-          Authorization: `Bearer ${required("LEMONSQUEEZY_API_KEY")}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           data: {

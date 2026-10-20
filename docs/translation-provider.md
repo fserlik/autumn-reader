@@ -1,24 +1,46 @@
-# Traducción: proveedor y configuración (29-09-2026)
+# DeepL: proveedor, cuotas y despliegue
 
-Este documento se creó antes de integrar el proveedor. La primera implementación usa la API oficial de DeepL detrás de una Edge Function Supabase. El lector depende de `TranslationService`, no del proveedor. No se ha creado una cuenta, contratado un plan ni desplegado un servicio.
+Autumn Reader usa la API oficial de DeepL desde la Edge Function `translate-text`. La clave nunca llega al cliente y no se guarda el texto de los libros ni la traducción en PostgreSQL. Solo se persisten hashes de solicitud, cantidades de caracteres, estados y un identificador técnico saneado del proveedor.
 
-## Coste y límites
+## Configuración confirmada
 
-Según [los planes oficiales de la API](https://support.deepl.com/hc/en-us/articles/360021200939-DeepL-API-plans), API Developer incluye **1.000.000 de caracteres en total**, sin reinicio mensual: es un crédito de inicio, no un millón gratis cada mes. El antiguo API Free ofrece 500.000/mes para cuentas existentes y ya no se ofrece a nuevas cuentas. Comprueba las condiciones al crear manualmente tu cuenta; no actives Growth ni otro plan de pago para probar esta función. Los precios posteriores dependen del plan/región y no forman parte de esta configuración.
+La cuenta informada por el propietario corresponde a **API Developer**, sin gasto facturable autorizado. El panel muestra 500.000 caracteres mensuales y también 1.000.000 de caracteres vitalicios. Como `/v2/usage` informa el período actual pero no permite confirmar programáticamente el saldo vitalicio, Autumn Reader aplica ambos límites de forma conservadora.
 
-Autumn limita cada fragmento a 2.000 unidades UTF-16, 60 peticiones y 20.000 caracteres por cuenta/día, y 250.000 caracteres globales/mes. Estos límites se reservan atómicamente en PostgreSQL; las peticiones fallidas consumen reserva para impedir abuso/reintentos costosos. Los límites de DeepL siguen aplicándose. El crédito Developer agotado requiere una decisión manual; la aplicación nunca cambia de plan.
+Cuotas por mes UTC:
 
-## Privacidad
+| Nivel | Caracteres |
+| --- | ---: |
+| Free | 2.000 |
+| Premium | 20.000 |
 
-Solo se envía el fragmento seleccionado y los códigos de idioma. No se envían el EPUB/PDF, nombre del archivo, ID del libro, notas completas, email ni ID de cuenta a DeepL. Supabase verifica la sesión y guarda únicamente contadores de uso: no guarda texto ni traducciones. El proveedor recibe la IP del backend y la clave del operador. La UI avisa antes del botón que inicia la petición. No hay traducción automática por seleccionar texto.
+Además se aplican un máximo global local de 250.000 caracteres por mes, el saldo actual devuelto por `/v2/usage`, el techo vitalicio de 1.000.000 y el presupuesto monetario de US$0. El presupuesto cero permite usar la capacidad gratuita comprobada, pero no autoriza cambiar a un endpoint o plan facturable.
 
-El tratamiento/retención del texto depende del plan del proveedor; no se promete ausencia de entrenamiento o borrado inmediato en una cuenta gratuita. Consulta la [política vigente de privacidad](https://www.deepl.com/en/privacy) antes de enviar fragmentos sensibles. La integración usa la [API oficial de texto](https://developers.deepl.com/api-reference/translate/request-translation), con detección automática del idioma al omitir `source_lang`.
+Antes de cada traducción, la función consulta `/v2/usage`, guarda una instantánea sin contenido y reserva caracteres en una transacción serializada. Las reservas concurrentes, éxitos aún no reflejados por el proveedor y resultados inciertos cuentan contra los límites. Los fallos confirmados antes de que DeepL procese el texto liberan la reserva. Se crean alertas privadas al 80%, 90% y 100%; al alcanzar un techo se bloquean solicitudes nuevas.
 
-## Variables SOLO del backend
+## Variables de backend
 
-- `DEEPL_AUTH_KEY`: clave privada de API, nunca `VITE_*`.
-- `DEEPL_API_PLAN=developer`: endpoint `https://api.deepl.com/v2/translate` para Developer. `legacy-free` usa `https://api-free.deepl.com/v2/translate` únicamente si tienes ese plan existente. No se permite una URL arbitraria desde el cliente.
-- El valor debe corresponder a la clave real: una clave API Free en el endpoint Developer recibe HTTP 403 y Autumn Reader muestra «Translation is not configured yet». Para diagnosticar sin gastar caracteres, consulta `/v2/usage` en ambos hosts con la clave privada; configura `legacy-free` si solo responde `api-free.deepl.com`. Actualiza `DEEPL_API_PLAN` como secreto de Supabase y en `supabase/.env`; no copies la clave al frontend.
-- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_ORIGINS`: ya existentes.
+```dotenv
+DEEPL_AUTH_KEY=
+DEEPL_API_PLAN=developer-free
+DEEPL_API_ENDPOINT=https://api-free.deepl.com
+DEEPL_GLOBAL_MONTHLY_CHARACTER_LIMIT=250000
+DEEPL_MONTHLY_BUDGET_USD=0
+DEEPL_LIFETIME_CHARACTER_LIMIT=1000000
+DEEPL_LIFETIME_USED_BASELINE=
+```
 
-Aplicar la migration de cuotas, configurar secretos y desplegar `translate-text` es un paso manual opcional. Sin clave configurada, leer/buscar/resaltar continúa funcionando y la UI explica que la traducción aún no está configurada. Las pruebas usan respuestas simuladas, sin consumir crédito ni enviar texto real.
+`DEEPL_LIFETIME_USED_BASELINE` es obligatorio: debe copiarse desde el consumo vitalicio ya utilizado que muestre el panel justo antes de habilitar la función. Si falta, no es entero o el uso del proveedor no puede comprobarse, la integración falla cerrada. No usar `api.deepl.com` mientras el presupuesto sea cero; ese host queda reservado para un plan facturable expresamente autorizado.
+
+## Privacidad y límites técnicos
+
+- Se envía únicamente el fragmento seleccionado y los códigos de idioma.
+- Cada solicitud admite como máximo 2.000 unidades UTF-16.
+- No se envían EPUB/PDF completos, nombres de archivo, notas, correo ni UUID de cuenta.
+- No se registran el texto origen ni el traducido.
+- La lectura, las notas y el TTS local siguen funcionando si DeepL queda pausado.
+
+El endpoint efectivo y sus condiciones deben verificarse en Test/Staging con la clave real antes de habilitar producción. Las pruebas locales usan respuestas simuladas y no consumen caracteres.
+
+## Despliegue manual pendiente
+
+Aplicar primero las migraciones `202610180001`, `202610180002` y `202610180003`; configurar los secretos en un proyecto no productivo; desplegar `translate-text`; y probar cuota individual, techo global, instantánea vencida, límite vitalicio y solicitudes concurrentes. Ninguno de esos pasos se ejecutó desde este cambio local.
