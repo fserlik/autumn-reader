@@ -7,7 +7,6 @@ src-tauri/target/
 src-tauri/gen/android/app/src/main/jniLibs/
 *.log
 .env*
-!.env.example
 src-tauri/tauri.cloud.conf.json
 .supabase/
 supabase/.temp/
@@ -17,3 +16,16 @@ src-tauri/gen/schemas/
 /deno.lock
 .env.billing.local
 .artifact-work/
+# Owner-only release, store, and deployment material. Keep local copies out of the public tree.
+/.env.example
+/supabase/.env.example
+/locales.csv
+/scripts/export-locales-csv.mjs
+/scripts/build-desktop-portable.ps1
+/scripts/build-store-msix.ps1
+/.github/workflows/release.yml
+/.github/workflows/store-msix.yml
+/docs/BILLING.md
+/docs/cloud-architecture.md
+/docs/PREMIUM_AI_SPEECH.md
+/docs/google-auth.md

@@ -10,11 +10,9 @@ Autumn Reader is a calm, customizable place to read and organize the PDF and EPU
 - Use configurable keyboard shortcuts in the desktop app.
 - Find and organize books with the refreshed library and folder views.
 
-The complete set of 925 translated interface strings is published as [`locales.csv`](./locales.csv) and attached to each GitHub release.
-
 ## Download
 
-[Download the Windows installer from GitHub Releases](https://github.com/fserlik/autumn-reader/releases/latest), or visit [autumnreader.lat](https://autumnreader.lat/#descargas) for platform information.
+Install Autumn Reader through the official app store for your device. Visit [autumnreader.lat](https://autumnreader.lat/#descargas) for current platform availability.
 
 ## Features
 

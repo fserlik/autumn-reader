@@ -13,8 +13,6 @@
     "build": "tsc --noEmit && vite build",
     "test:reader": "playwright test",
     "android:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android-local.ps1",
-    "desktop:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-desktop-portable.ps1",
-    "locales:csv": "node scripts/export-locales-csv.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },
