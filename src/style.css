@@ -814,7 +814,9 @@ html.android-app .shell { padding-top: max(32px, env(safe-area-inset-top, 0px));
 }
 .spacing-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; max-width: 350px; font-size: 12px; }
 .spacing-control input { min-width: 100px; accent-color: var(--accent); }
-.reader-history { position: absolute; left: 12px; right: 12px; bottom: calc(44px + env(safe-area-inset-bottom, 0px)); z-index: 22; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 3px 14px #0002; font-size: 12px; }
+.reader-history { position: absolute; left: 12px; right: 12px; bottom: calc(44px + env(safe-area-inset-bottom, 0px)); z-index: 22; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 5px; padding: 8px 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); box-shadow: 0 3px 14px #0002; font-size: 12px; }
+.reader-history #reading-return { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+.reader-history #reading-adopt { justify-self: start; min-height: 32px; padding: 3px 0; text-align: left; }
 .reader-view { position: relative; }
 .book-search-panel { position: absolute; right: 12px; z-index: 20; width: min(390px, calc(100% - 24px)); max-height: 55%; overflow: auto; padding: 12px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 6px 24px #0003; }
 .reader-panel-header, .search-navigation { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -838,7 +840,7 @@ html.android-app .shell { padding-top: max(32px, env(safe-area-inset-top, 0px));
 .translation-panel select { margin: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--bg); }
 .translation-privacy,#translation-language,#translation-status { font-size: 12px; color: var(--muted); line-height: 1.6; }
 #reader-toc { max-width: 180px; padding: 6px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; }
-@media (max-width: 700px) { #book-search-button { grid-column: 1; grid-row: 4; } #reader-toc { grid-column: 2; grid-row: 4; max-width: 100%; } .reader-history { bottom: 8px; } .reader-history button { min-height: 38px; } }
+@media (max-width: 700px) { #book-search-button { grid-column: 1; grid-row: 4; } #reader-toc { grid-column: 2; grid-row: 4; max-width: 100%; } .reader-history { bottom: calc(56px + env(safe-area-inset-bottom, 0px)); } .reader-history button { min-height: 38px; } }
 .pdf-text-layer { position: absolute; inset: 0; overflow: clip; color-scheme: only light; line-height: 1; letter-spacing: normal; word-spacing: normal; text-align: initial; text-size-adjust: none; transform-origin: 0 0; --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
 .pdf-text-layer :is(span, br) { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0 0; user-select: text; }
 .pdf-text-layer > :not(.markedContent), .pdf-text-layer .markedContent span:not(.markedContent) { --font-height: 0; --scale-x: 1; --rotate: 0deg; font-size: calc(var(--text-scale-factor) * var(--font-height)); transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
@@ -1718,6 +1720,8 @@ html.android-app .dictionary-panel { bottom: calc(10px + max(24px, env(safe-area
 .interface-settings-sheet .settings-group:last-child { border-bottom: 0; }
 .account-settings-sheet .account-feature { margin: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
 .account-settings-sheet .account-settings { justify-content: flex-end; margin: 0; padding: 17px 24px; border: 0; }
+.account-settings-sheet .account-auto-sync-row { min-height: 84px; margin: 0; border: 0; border-top: 1px solid var(--line); background: transparent; }
+.account-settings-sheet .account-auto-sync-row:hover { background: color-mix(in srgb, var(--surface-alt) 45%, transparent); }
 .account-settings-sheet .plan-identity h3 { font-family: inherit; font-size: 16px; font-weight: 700; line-height: 1.35; letter-spacing: 0; }
 .general-setting-row .settings-copy strong,
 .tts-setting-row .settings-copy h3,

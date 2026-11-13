@@ -14,10 +14,29 @@ import { connectivity } from "../services/connectivity";
 import { library } from "../services/books";
 import { t } from "../i18n";
 import { accountIcon } from "./account-icons";
+import { autoSyncBooksEnabled, saveAutoSyncBooks } from "../services/preferences/auto-sync-books";
 export function mountSync(
   parent: HTMLElement,
   reload: () => Promise<void>,
 ): void {
+  const autoSync = document.createElement("label");
+  autoSync.className = "general-setting-row account-auto-sync-row";
+  autoSync.htmlFor = "account-auto-sync-books";
+  autoSync.innerHTML = `<span class="settings-copy"><strong>${t("accountAutoSyncBooks")}</strong><small>${t("accountAutoSyncBooksHelp")}</small></span><span class="general-switch"><input id="account-auto-sync-books" type="checkbox" /><span aria-hidden="true"></span></span>`;
+  parent.append(autoSync);
+  const autoSyncInput = autoSync.querySelector<HTMLInputElement>("#account-auto-sync-books")!;
+  const renderAutoSync = () => {
+    const owner = auth.state.ownerId;
+    autoSyncInput.checked = Boolean(owner && autoSyncBooksEnabled(owner));
+    autoSyncInput.disabled = !owner;
+  };
+  autoSyncInput.addEventListener("change", () => {
+    const owner = auth.state.ownerId;
+    if (!owner) { renderAutoSync(); return; }
+    saveAutoSyncBooks(owner, autoSyncInput.checked);
+  });
+  auth.subscribe(renderAutoSync);
+
   const actions = parent.querySelector<HTMLElement>(".plan-actions")!;
   const feedback = parent.querySelector<HTMLElement>(".plan-sync-feedback")!;
   actions.insertAdjacentHTML("beforeend", `<button id="migrate-library" class="secondary-button plan-action" type="button">${accountIcon("sync")}<span>${t("syncAllLocal")}</span>${accountIcon("arrow")}</button>`);

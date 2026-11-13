@@ -52,6 +52,7 @@ import type { MigrationState } from "./services/sync/migration";
 import { bookColors, colorName, hexColor } from "./book-colors";
 import { loadPagePreferences, savePagePreferences, defaultPagePreferences, pageSpacingCss, columnCount, resolvePagePreferences, pagePreferencesEqual, loadBookPageOverrides, saveBookPageOverrides, type BookPageOverrides } from "./services/preferences/page";
 import { loadDesktopGeneralPreferences, saveDesktopGeneralPreferences, type DesktopGeneralPreferences } from "./services/preferences/general";
+import { initializeAutoBookSync } from "./services/preferences/auto-sync-books";
 import { loadShortcutBindings, shortcutActionForEvent, type ShortcutAction } from "./services/preferences/shortcuts";
 import { availableSystemFonts, fontCss } from "./services/preferences/fonts";
 import { dictionaryService, type DictionarySource } from "./services/dictionary";
@@ -393,7 +394,7 @@ app.innerHTML = `
               </section>
             </div>
           </div>
-          <div id="reader-history" class="reader-history" hidden><button id="history-back" class="text-link" type="button" aria-label="${t("historyBack")}">${t("historyBackShort")}</button><button id="history-forward" class="text-link" type="button" aria-label="${t("historyForward")}">${t("historyForwardShort")}</button><button id="reading-return" class="secondary-button" type="button"></button><button id="reading-adopt" class="text-link" type="button">${t("continueReadingHere")}</button></div>
+          <div id="reader-history" class="reader-history" hidden><button id="reading-return" class="secondary-button" type="button"></button><button id="reading-adopt" class="text-link" type="button">${t("continueReadingHere")}</button></div>
           <section id="book-search-panel" class="book-search-panel" aria-label="${t("searchInBook")}" hidden></section>
           <section id="translation-panel" class="book-search-panel translation-panel" aria-label="${t("selectedTextTranslation")}" hidden></section>
           <div id="reading-surface" class="reading-surface" tabindex="-1"><div id="reader-content" class="reader-content"></div><section id="page-overview" class="page-overview" hidden></section></div>
@@ -484,7 +485,6 @@ const storedNoteStyle = localStorage.getItem(noteStyleKey);
 let noteStyle: NoteStyle = storedNoteStyle === "underline" || storedNoteStyle === "strikethrough" || storedNoteStyle === "wavy" ? storedNoteStyle : "highlight";
 const noteHighlights = new Map<string,EpubNoteAnnotation>();
 const readerHistory = new ReaderHistory();
-let temporaryNavigationSource: "note" | "other" | null = null;
 let pdfPosition = { page: 1, offset: 0 };
 let epubPosition = { cfi: "", label: "" };
 let readerJumpBusy = false;
@@ -1551,13 +1551,7 @@ function epubReadingPercentage(location: Location): number {
   return location.atEnd ? 1 : Math.max(0, Math.min(1, epubBook?.locations.length() ? location.start.percentage : approximate));
 }
 function updateHistory(): void {
-  $("#reader-history").hidden = !readerHistory.canBack && !readerHistory.canForward;
-  const visitingNote = readerHistory.temporary && temporaryNavigationSource === "note";
-  const historyBack = $<HTMLButtonElement>("#history-back");
-  const historyForward = $<HTMLButtonElement>("#history-forward");
-  historyBack.hidden = historyForward.hidden = visitingNote;
-  historyBack.disabled = !readerHistory.canBack || readerJumpBusy;
-  historyForward.disabled = !readerHistory.canForward || readerJumpBusy;
+  $("#reader-history").hidden = !readerHistory.temporary;
   const origin = readerHistory.readingOrigin;
   $("#reading-return").hidden = $("#reading-adopt").hidden = !readerHistory.temporary;
   $<HTMLButtonElement>("#reading-return").disabled = $<HTMLButtonElement>("#reading-adopt").disabled = readerJumpBusy;
@@ -1600,7 +1594,6 @@ async function displayPosition(position: ReaderPosition): Promise<void> {
 async function jumpToSearch(result: SearchResult, source: BookSearch,signal?:AbortSignal): Promise<void> {
   const sequence = loadSequence, position = await source.position(result,signal);
   if (sequence !== loadSequence || !currentBook || signal?.aborted) return;
-  temporaryNavigationSource = "other";
   readerHistory.jump(capturePosition(), position); await displayPosition(position);
   if (position.format === "epub" && rendition) {
     searchHighlight = position.cfi;
@@ -1623,7 +1616,6 @@ async function jumpToSearch(result: SearchResult, source: BookSearch,signal?:Abo
 }
 async function jumpToContents(href: string): Promise<void> {
   if (!rendition || !href || readerJumpBusy) return;
-  temporaryNavigationSource = "other";
   const from = capturePosition(); readerHistory.jump(from, from); readerJumpBusy = true; updateHistory();
   try { ++readerPositionRevision; restoringRemotePosition = false; await displayEpub(href); readerHistory.observe(capturePosition()); }
   finally { readerJumpBusy = false; updateHistory(); }
@@ -1633,7 +1625,6 @@ async function jumpToPdfReference(destination: unknown): Promise<void> {
   const sequence = loadSequence, target = await pdfDestination(pdfDocument, destination);
   if (sequence !== loadSequence) return;
   const position: ReaderPosition = { format: "pdf", page: target.page, offset: 0, scrollTop: 0, scrollLeft: 0 };
-  temporaryNavigationSource = "other";
   readerHistory.jump(capturePosition(), position); await displayPosition(position);
   if (target.sourceY !== undefined) {
     if (pdfTextView) { pdfTextView.show(pdfTextView.pageForSourceY(target.sourceY)); pdfPosition.offset = pdfTextView.visibleOffset(); }
@@ -1862,7 +1853,6 @@ async function goToNote(note: BookNote): Promise<void> {
   if (!currentBook || readerJumpBusy) return;
   closeAllNotes();
   const from = capturePosition();
-  temporaryNavigationSource = "note";
   readerHistory.jump(from, note.format === "pdf" ? { format: "pdf", page: note.page, offset: 0, scrollTop: 0, scrollLeft: 0 } : { format: "epub", cfi: note.cfi, label: t("noteLocationLabel") });
   readerJumpBusy = true; updateHistory();
   try {
@@ -1992,7 +1982,7 @@ async function clearReader(): Promise<void> {
   clearAdjacentEpubPages();
   pageTurn?.pdfDraft?.renderTask?.cancel(); pageTurn?.pdfDraft?.textLayer?.cancel();
   pageTurn?.snapshot.remove(); pageTurn?.preview?.destroy(); if(pageTurn?.live !== readerContent)pageTurn?.live.remove(); pageTurn = undefined; pagePreviewActive = false; resetPageTransform();
-  searchUI?.close(); searchUI?.setSource(); readerHistory.commit(); temporaryNavigationSource = null; updateHistory();
+  searchUI?.close(); searchUI?.setSource(); readerHistory.commit(); updateHistory();
   searchHighlight = undefined; $("#reader-toc").hidden = true; resetReaderToc(); pdfOutlineDestinations.clear();
   hideNoteMenu();
   closeNoteDialog();
@@ -2057,7 +2047,7 @@ function configureEpubReader(active: Rendition, book: StoredBook): void {
         contents.document.addEventListener("click", event => {
           const link = (event.target as Element | null)?.closest("a[href]");
           const href = link?.getAttribute("href");
-          if (href && !/^(?:[a-z]+:|\/\/)/i.test(href)) { temporaryNavigationSource = "other"; const from = capturePosition(); readerHistory.jump(from, from); updateHistory(); }
+          if (href && !/^(?:[a-z]+:|\/\/)/i.test(href)) { const from = capturePosition(); readerHistory.jump(from, from); updateHistory(); }
         }, { capture: true });
         return typographyReady;
       });
@@ -2397,6 +2387,7 @@ async function importFiles(files: FileList): Promise<void> {
       if (auth.state.ownerId !== importOwner) return;
       if (!result.imported) { duplicates++; continue; }
       imported++;
+      window.dispatchEvent(new CustomEvent("autumn-book-imported", { detail: { ownerId: importOwner, bookId: book.id } }));
       importedRefs.set(book.id, book);
       books.unshift(book);
       first ??= book;
@@ -4256,7 +4247,6 @@ pageOverview = mountPageOverview($<HTMLElement>("#page-overview"), {
   },
   async onSelect(position) {
     if (!currentBook) return;
-    temporaryNavigationSource = null;
     await displayPosition(position);
     readerHistory.commit(capturePosition());
     if (currentBook.format === "epub" && rendition?.location) {
@@ -4309,19 +4299,15 @@ $("#reader-toc").addEventListener("change", () => {
     .catch(error => showToast(errorMessage(error)))
     .finally(() => updateReaderTocActive());
 });
-const historyAction = (direction: "back" | "forward" | "return"): void => {
+const historyAction = (): void => {
   if (readerJumpBusy) return;
-  const position = direction === "return" ? readerHistory.returnToReading() : direction === "back" ? readerHistory.back() : readerHistory.forward();
-  if (direction === "return") temporaryNavigationSource = null;
+  const position = readerHistory.returnToReading();
   if (position) void displayPosition(position).catch(error => showToast(errorMessage(error)));
 };
-$("#history-back").addEventListener("click", () => historyAction("back"));
-$("#history-forward").addEventListener("click", () => historyAction("forward"));
-$("#reading-return").addEventListener("click", () => historyAction("return"));
+$("#reading-return").addEventListener("click", historyAction);
 $("#reading-adopt").addEventListener("click", () => {
   if (readerJumpBusy) return;
   readerHistory.commit(capturePosition());
-  temporaryNavigationSource = null;
   if (currentBook?.format === "epub") { stableLayoutAnchor = null; stableLayoutPercentage = null; currentBook.cfi = epubPosition.cfi; if (rendition?.location) currentBook.percentage = epubReadingPercentage(rendition.location); }
   void persistCurrent(); updateHistory();
 });
@@ -4400,6 +4386,7 @@ bookLayoutUI = mountLayoutFields($("#book-layout-fields"), {
     if (!pagePreferencesEqual(previousEffective, nextEffective)) void relayoutReader();
   },
 });
+initializeAutoBookSync();
 mountAccountSecurity($("#settings-security"));
 const accountPlans = mountAccountPlans($("#settings-account-sheet"));
 mountSync($("#settings-account-sheet"), accountPlans.refresh);
