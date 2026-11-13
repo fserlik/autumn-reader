@@ -1,7 +1,9 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $localBuilds = Join-Path $projectRoot 'local-builds'
-$generatedExe = Join-Path $projectRoot 'src-tauri\target\release\autumn-reader.exe'
+$desktopTarget = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'src-tauri\target\windows-desktop'))
+$env:CARGO_TARGET_DIR = $desktopTarget
+$generatedExe = Join-Path $desktopTarget 'release\autumn-reader.exe'
 $portableExe = Join-Path $localBuilds 'AutumnReader-PC-portable.exe'
 
 $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'

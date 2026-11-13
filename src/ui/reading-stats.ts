@@ -2,6 +2,7 @@ import { language, type Language } from "../i18n";
 import { auth } from "../services/auth";
 import { plans } from "../services/plans";
 import { readingActivity } from "../services/reading/activity";
+import { connectivity } from "../services/connectivity";
 
 const dayKey = (date: Date): string => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const dateOffset = (days: number): Date => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + days); return d; };
@@ -142,7 +143,11 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
   });
 
   const hasAccess = async (owner: string): Promise<boolean> => {
-    if (auth.state.status !== "authenticated" || auth.state.ownerId !== owner || !navigator.onLine) return false;
+    if (auth.state.ownerId !== owner) return false;
+    if (auth.state.status !== "authenticated" || !connectivity.usable) {
+      await plans.restore(owner);
+      return auth.state.ownerId === owner && plans.canUse("advanced_stats");
+    }
     try {
       const entitlement = await plans.current();
       return auth.state.ownerId === owner && Boolean(entitlement.advanced_stats);
@@ -422,10 +427,10 @@ export function mountReadingStats(parent: HTMLElement, page: HTMLElement, onOpen
   auth.subscribe(() => {
     ++revision;
     content.replaceChildren();
-    if (!page.hidden) onBack();
+    if (!page.hidden) void render();
     void refreshAccess();
   });
   window.addEventListener("online", () => void refreshAccess());
-  window.addEventListener("offline", () => { ++revision; toggle.hidden = true; if (!page.hidden) onBack(); });
+  window.addEventListener("offline", () => { ++revision; void refreshAccess(); if (!page.hidden) void render(); });
   window.addEventListener("autumn-local-change", () => { if (!page.hidden) void render(); });
 }

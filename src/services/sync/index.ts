@@ -1,5 +1,6 @@
 import { auth } from "../auth";
 import { devices } from "../devices";
+import { connectivity, isNetworkFailure } from "../connectivity";
 import { cloud, checkError } from "../client";
 import { queued, settleOperation, resetRetry } from "./queue";
 import { errorMessage } from "../errors";
@@ -43,7 +44,7 @@ export const sync = {
       const all = await queued(owner);
       if (auth.state.ownerId !== owner) return;
       publish({ pending: all.length });
-      if (!navigator.onLine || auth.state.status !== "authenticated") {
+      if (!connectivity.usable || auth.state.status !== "authenticated") {
         publish({
           message: all.length
             ? t("changesWaiting")
@@ -128,6 +129,7 @@ export const sync = {
         window.dispatchEvent(new Event("autumn-synced"));
       } catch (error: unknown) {
         if (auth.state.ownerId !== owner) return;
+        if (isNetworkFailure(error)) connectivity.markOffline();
         for (const op of due) await settleOperation(op, errorMessage(error));
         publish({ message: errorMessage(error) });
       } finally {
@@ -145,7 +147,7 @@ export const sync = {
   },
   initialize(): void {
     window.addEventListener("autumn-local-change", () => sync.schedule());
-    window.addEventListener("online", () => void sync.flush(true));
+    connectivity.subscribe(state => { if (state.status === "online") void sync.flush(true); });
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) void auth.refresh().then(() => sync.flush(true));
     });

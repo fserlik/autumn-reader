@@ -9,6 +9,9 @@ const key = (
   import.meta.env.VITE_SUPABASE_ANON_KEY
 )?.trim();
 export const cloudConfigured = Boolean(url && key);
+/** Public connection details used only by the lightweight reachability probe. */
+export const cloudHealthUrl = url ? `${url.replace(/\/$/, "")}/auth/v1/health` : null;
+export const cloudPublishableKey = key ?? null;
 let client: SupabaseClient<Database> | undefined;
 export function cloud(): SupabaseClient<Database> {
   if (!cloudConfigured) throw new CloudError("not_configured");

@@ -1,5 +1,6 @@
 import { translationRequest, type TranslationRequest, type TranslationResult } from "../../../shared/translation";
 import { auth } from "../auth";
+import { connectivity } from "../connectivity";
 import { cloud } from "../client";
 import { t, type TranslationKey } from "../../i18n";
 export interface TranslationUsage {
@@ -22,7 +23,7 @@ export class TranslationError extends Error {
 }
 export class SupabaseTranslationService implements TranslationService {
   async usage():Promise<TranslationUsage>{
-    if(!navigator.onLine)throw new TranslationError("offline");
+    if(!connectivity.usable)throw new TranslationError("offline");
     if(auth.state.status!=="authenticated")throw new TranslationError("session_expired");
     const {data,error}=await cloud().functions.invoke<TranslationUsage>("translate-text",{body:{action:"usage"}});
     if(error||!data||typeof data.remainingCharacters!=="number")throw new TranslationError("provider_unavailable");
@@ -31,7 +32,7 @@ export class SupabaseTranslationService implements TranslationService {
   async translate(request:TranslationRequest,signal?:AbortSignal):Promise<TranslationResult>{
     let valid:TranslationRequest;
     try { valid=translationRequest(request); } catch(error:unknown){throw new TranslationError(error instanceof Error?error.message:"invalid_text");}
-    if(!navigator.onLine)throw new TranslationError("offline");
+    if(!connectivity.usable)throw new TranslationError("offline");
     if(auth.state.status!=="authenticated")throw new TranslationError("session_expired");
     const {data,error}=await cloud().functions.invoke<TranslationResult>("translate-text",{body:valid,signal});
     if(signal?.aborted)throw new DOMException("Cancelled","AbortError");

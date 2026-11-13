@@ -1,0 +1,88 @@
+const en = {
+  offlineDisconnected: "Reading offline",
+  offlineDisconnectedHelp: "{available} of {total} available on this device. Changes will sync when you reconnect.",
+  offlineLibraryReady: "Your library is ready offline",
+  offlineLibraryReadyHelp: "Every book in this library can be opened without a connection.",
+  offlineLibraryPartial: "Prepare your library for offline reading",
+  offlineLibraryPartialHelpOne: "One cloud book still needs to be downloaded to this device.",
+  offlineLibraryPartialHelp: "{missing} cloud books still need to be downloaded to this device.",
+  offlinePrepareLibrary: "Prepare library",
+  offlinePreparingLibrary: "Preparing {done} of {total} books…",
+  offlineDownloadBook: "Download for offline reading",
+  offlineDownloadNeedsConnection: "Connect to the internet once to download this book for offline reading.",
+  offlineDownloadFailed: "The book could not be downloaded. Check your connection and try again.",
+  offlineBookCloudOnly: "Cloud only",
+  offlineBookReady: "Available offline",
+  offlinePreparedSummary: "Offline preparation finished: {done} of {total} books downloaded.",
+  offlineModeLabel: "Offline",
+  offlineLibraryEmpty: "No books are available offline on this device yet.",
+  authOfflineAccess: "Offline mode · showing the last account used on this device.",
+} as const;
+
+export type OfflineKey = keyof typeof en;
+type Set = Record<OfflineKey, string>;
+
+const es: Set = {
+  offlineDisconnected: "Leyendo sin conexión",
+  offlineDisconnectedHelp: "{available} de {total} disponibles en este dispositivo. Los cambios se sincronizarán cuando vuelvas a conectarte.",
+  offlineLibraryReady: "Tu biblioteca está lista sin conexión",
+  offlineLibraryReadyHelp: "Todos los libros de esta biblioteca se pueden abrir sin conexión.",
+  offlineLibraryPartial: "Prepara tu biblioteca para leer sin conexión",
+  offlineLibraryPartialHelpOne: "Todavía falta descargar un libro de la nube en este dispositivo.",
+  offlineLibraryPartialHelp: "Todavía falta descargar {missing} libros de la nube en este dispositivo.",
+  offlinePrepareLibrary: "Preparar biblioteca",
+  offlinePreparingLibrary: "Preparando {done} de {total} libros…",
+  offlineDownloadBook: "Descargar para leer sin conexión",
+  offlineDownloadNeedsConnection: "Conéctate una vez a internet para descargar este libro y leerlo sin conexión.",
+  offlineDownloadFailed: "No se pudo descargar el libro. Revisa tu conexión e inténtalo de nuevo.",
+  offlineBookCloudOnly: "Solo en la nube",
+  offlineBookReady: "Disponible sin conexión",
+  offlinePreparedSummary: "Preparación terminada: se descargaron {done} de {total} libros.",
+  offlineModeLabel: "Sin conexión",
+  offlineLibraryEmpty: "Todavía no hay libros disponibles sin conexión en este dispositivo.",
+  authOfflineAccess: "Modo sin conexión · se muestra la última cuenta usada en este dispositivo.",
+};
+
+const it: Set = {
+  offlineDisconnected: "Lettura offline",
+  offlineDisconnectedHelp: "{available} su {total} disponibili su questo dispositivo. Le modifiche verranno sincronizzate alla riconnessione.",
+  offlineLibraryReady: "La tua biblioteca è pronta offline",
+  offlineLibraryReadyHelp: "Tutti i libri di questa biblioteca possono essere aperti senza connessione.",
+  offlineLibraryPartial: "Prepara la biblioteca per la lettura offline",
+  offlineLibraryPartialHelpOne: "Manca ancora un libro dal cloud da scaricare su questo dispositivo.",
+  offlineLibraryPartialHelp: "Mancano ancora {missing} libri dal cloud da scaricare su questo dispositivo.",
+  offlinePrepareLibrary: "Prepara biblioteca",
+  offlinePreparingLibrary: "Preparazione di {done} libri su {total}…",
+  offlineDownloadBook: "Scarica per la lettura offline",
+  offlineDownloadNeedsConnection: "Connettiti una volta a internet per scaricare questo libro e leggerlo offline.",
+  offlineDownloadFailed: "Impossibile scaricare il libro. Controlla la connessione e riprova.",
+  offlineBookCloudOnly: "Solo nel cloud",
+  offlineBookReady: "Disponibile offline",
+  offlinePreparedSummary: "Preparazione offline completata: scaricati {done} libri su {total}.",
+  offlineModeLabel: "Offline",
+  offlineLibraryEmpty: "Non ci sono ancora libri disponibili offline su questo dispositivo.",
+  authOfflineAccess: "Modalità offline · viene mostrato l'ultimo account usato su questo dispositivo.",
+};
+
+const fr: Set = {
+  offlineDisconnected: "Lecture hors connexion",
+  offlineDisconnectedHelp: "{available} sur {total} disponibles sur cet appareil. Les modifications seront synchronisées à la reconnexion.",
+  offlineLibraryReady: "Votre bibliothèque est prête hors connexion",
+  offlineLibraryReadyHelp: "Tous les livres de cette bibliothèque peuvent être ouverts sans connexion.",
+  offlineLibraryPartial: "Préparez la bibliothèque pour la lecture hors connexion",
+  offlineLibraryPartialHelpOne: "Il reste un livre du cloud à télécharger sur cet appareil.",
+  offlineLibraryPartialHelp: "Il reste {missing} livres du cloud à télécharger sur cet appareil.",
+  offlinePrepareLibrary: "Préparer la bibliothèque",
+  offlinePreparingLibrary: "Préparation de {done} livres sur {total}…",
+  offlineDownloadBook: "Télécharger pour lire hors connexion",
+  offlineDownloadNeedsConnection: "Connectez-vous une fois à internet pour télécharger ce livre et le lire hors connexion.",
+  offlineDownloadFailed: "Impossible de télécharger le livre. Vérifiez la connexion et réessayez.",
+  offlineBookCloudOnly: "Dans le cloud uniquement",
+  offlineBookReady: "Disponible hors connexion",
+  offlinePreparedSummary: "Préparation terminée : {done} livres sur {total} ont été téléchargés.",
+  offlineModeLabel: "Hors connexion",
+  offlineLibraryEmpty: "Aucun livre n'est encore disponible hors connexion sur cet appareil.",
+  authOfflineAccess: "Mode hors connexion · affichage du dernier compte utilisé sur cet appareil.",
+};
+
+export const offlineTranslations: Record<"en" | "es" | "it" | "fr", Set> = { en, es, it, fr };

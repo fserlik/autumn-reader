@@ -1,6 +1,7 @@
 import { auth } from "../auth";
 import { cloud, checkError } from "../client";
 import { CloudError } from "../errors";
+import { localGet, localPut } from "../local/database";
 
 export type PlanCode = "free" | "premium";
 export type PlanFeature = "advanced_themes" | "advanced_stats";
@@ -56,6 +57,8 @@ let current: AccountPlan | undefined;
 let currentOwner: string | null = null;
 let currentCheckedAt = 0;
 let catalogCache: PlanDefinition[] | undefined;
+type CachedPlan = { id: string; ownerId: string; checkedAt: number; value: AccountPlan };
+const planCacheId = (owner: string) => `account_plan:${owner}`;
 
 const canonicalCatalog: Record<PlanCode, PlanDefinition> = {
   free: {
@@ -129,6 +132,17 @@ function normalizeCatalog(value: unknown): PlanDefinition[] {
 }
 
 export const plans = {
+  async restore(owner = auth.state.ownerId): Promise<AccountPlan | undefined> {
+    if (!owner || auth.state.ownerId !== owner) return undefined;
+    if (currentOwner === owner && current) return current;
+    const cached = await localGet<CachedPlan>("cloud_state", planCacheId(owner)).catch(() => undefined);
+    if (!cached || cached.ownerId !== owner || auth.state.ownerId !== owner) return undefined;
+    currentOwner = owner;
+    // A persisted entitlement is sufficient for local/offline feature access,
+    // but it must never suppress fresh server validation after reconnection.
+    currentCheckedAt = 0;
+    return current = cached.value;
+  },
   async current(): Promise<AccountPlan> {
     const owner = auth.requireUser();
     if (currentOwner === owner && current && Date.now() - currentCheckedAt < 60_000) return current;
@@ -138,7 +152,7 @@ export const plans = {
     currentOwner = owner;
     currentCheckedAt = Date.now();
     const value = data as EntitlementResponse;
-    return current = {
+    current = {
       code: value.plan,
       monthly_usd_cents: 0,
       lifetime_usd_cents: null,
@@ -163,6 +177,10 @@ export const plans = {
       provider: value.provider,
       access_source: value.accessSource,
     };
+    void localPut("cloud_state", {
+      id: planCacheId(owner), ownerId: owner, checkedAt: currentCheckedAt, value: current,
+    } satisfies CachedPlan).catch(() => {});
+    return current;
   },
   async catalog(): Promise<PlanDefinition[]> {
     auth.requireUser();

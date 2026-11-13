@@ -5,7 +5,7 @@ test.afterEach(async({page})=>{await page.unrouteAll({behavior:"wait"});});
 test("local book reviews publish only metadata, appear in profile, edit/delete and survive offline",async({page,context},info)=>{
   const cloud=await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:"Local philosophy.epub",mimeType:"application/epub+zip",buffer:await epubFixture("philosophy", "Local philosophy")});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.locator("#desktop-reader-back:visible, #back-button:visible").click();await page.locator('.nav-button[data-view="library"]').click();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();await page.locator("#desktop-reader-back:visible, #back-button:visible").click();await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator("#folder-filter")).toHaveCount(0);
   await page.locator("#library-list .book-menu summary").click();await page.locator("#library-list .book-menu-options").getByRole("button",{name:"Reseñar",exact:true}).click();await expect(page.locator("#review-dialog")).toBeVisible();
   await page.getByRole("radio",{name:"4 estrellas",exact:true}).check();await expect(page.locator("#review-rating-label")).toHaveText("4 de 5 estrellas");

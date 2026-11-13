@@ -1,4 +1,4 @@
-import ePub, { type Book as EpubBook, type Contents, type Location, type Rendition } from "epubjs";
+import ePub, { EpubCFI, type Book as EpubBook, type Contents, type Location, type Rendition } from "epubjs";
 import type {
   TextLayer,
   PDFDocumentLoadingTask,
@@ -11,7 +11,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { pdfTextBlocks, PdfTextView, type PdfTextBlock } from "./pdf-text";
 import { countText, language, saveLanguage, t, type Language } from "./i18n";
 import leafUrl from "./assets/autumn-leaf.png";
-import { assertBookOwner, claimUnownedBooks, deleteBook, listBooks, nativeBookUrl, readBookData, saveBook, setCloudBookLoader, hasLocalFile, unclaimedBookCount, type BookNote, type StoredBook } from "./storage";
+import { assertBookOwner, claimUnownedBooks, deleteBook, listBooks, nativeBookUrl, readBookData, saveBook, setCloudBookLoader, hasLocalFile, hasReadableLocalFile, unclaimedBookCount, type BookNote, type StoredBook } from "./storage";
 import "./style.css";
 import { auth } from "./services/auth";
 import { mountAccount } from "./ui/account";
@@ -29,7 +29,7 @@ import { downloadPrivateCover } from "./services/storage/book-covers";
 import { mountBookEditor, type BookEditor } from "./ui/edit-book";
 import { library } from "./services/books";
 import { importUniqueBook, reconcileLocalLibrary } from "./services/books/identity";
-import { sync } from "./services/sync";
+import { sync, type SyncStatus } from "./services/sync";
 import { cancelMigration, migrateLibrary, resumeApprovedMigrations } from "./services/sync/migration";
 import { errorMessage } from "./services/errors";
 import { mountDetails } from "./ui/social-details";
@@ -40,9 +40,11 @@ import { homeReadingSelection, presentationCard } from "./ui/book-presentation";
 import { mountReviewComposer, type ReviewComposer } from "./ui/reviews";
 import type { ReviewEntry } from "./services/reviews/personal";
 import { mountSettings } from "./ui/settings";
+import { mountShortcutSettings } from "./ui/shortcuts-settings";
 import { mountLayoutFields } from "./ui/layout-controls";
 import { platformFilePicker } from "./services/platform/files";
 import { mountFolders, type FolderUI } from "./ui/folders";
+import { mountSelectMenu } from "./ui/select-menu";
 import { mountLibraryDrag } from "./ui/library-drag";
 import { folders } from "./services/folders";
 import { localAll } from "./services/local/database";
@@ -50,6 +52,7 @@ import type { MigrationState } from "./services/sync/migration";
 import { bookColors, colorName, hexColor } from "./book-colors";
 import { loadPagePreferences, savePagePreferences, defaultPagePreferences, pageSpacingCss, columnCount, resolvePagePreferences, pagePreferencesEqual, loadBookPageOverrides, saveBookPageOverrides, type BookPageOverrides } from "./services/preferences/page";
 import { loadDesktopGeneralPreferences, saveDesktopGeneralPreferences, type DesktopGeneralPreferences } from "./services/preferences/general";
+import { loadShortcutBindings, shortcutActionForEvent, type ShortcutAction } from "./services/preferences/shortcuts";
 import { availableSystemFonts, fontCss } from "./services/preferences/fonts";
 import { dictionaryService, type DictionarySource } from "./services/dictionary";
 import { cancelLocalSynthesis, chooseVoiceFile, discardPreparedVoiceImport, formatModelBytes, importedVoices, installPreparedVoice, installedPackages, knownVoices, loadBookTtsPreferences, loadTtsPreferences, localDeviceVoices, LocalTtsPlayer, nativeDeviceVoices, nativePause, nativeResume, nativeSpeak, nativeStop, prepareVoiceImport, preferredVoice, refreshDeviceVoices, removeImportedVoice, runtimeStatus, saveBookTtsPreferences, saveTtsPreferences, supportsLocalNeuralTts, synthesizeLocal, ttsEngines, usesNativeSystemTts, type BookTtsPreferences, type CatalogVoice, type InstalledPackage, type PreparedVoiceImport, type TtsEngineId, type TtsGlobalPreferences, type TtsRuntimeStatus, type TtsVoice } from "./services/tts";
@@ -57,7 +60,8 @@ import { clearSpeechHighlight, collectVisibleSpeechSource, locateSpeechChunks, s
 import { ReaderHistory, type ReaderPosition } from "./readers/history";
 import { epubSearch, pdfSearch, quoteRects, type BookSearch, type SearchResult } from "./readers/search";
 import { mountBookSearch, type SearchUI } from "./ui/book-search";
-import { bindPageGestures } from "./readers/gestures";
+import { mountPageOverview, type PageOverview } from "./ui/page-overview";
+import { bindPageGestures, cancelPageGesture } from "./readers/gestures";
 import { pageSnapshot, pageTurnSheetTransform, settledPageMove, slide, waitForStableTypography } from "./readers/page-turn";
 import { translationService } from "./services/translation";
 import { mountTranslation, type TranslationUI } from "./ui/translation";
@@ -66,6 +70,7 @@ import { readingActivity } from "./services/reading/activity";
 import { splitSpeechText } from "../shared/ai-speech";
 import { aiSpeech, loadAiSpeechPreferences, saveAiSpeechPreferences, type AiSpeechUsage, type AiSpeechVoice } from "./services/ai-speech";
 import { plans } from "./services/plans";
+import { connectivity, isNetworkFailure } from "./services/connectivity";
 
 const icons = {
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
@@ -81,6 +86,7 @@ const icons = {
   trash: '<path d="M4 7h16m-10 4v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/>',
   notes: '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  bookmark: '<path d="M7 4h10a1 1 0 0 1 1 1v16l-6-4-6 4V5a1 1 0 0 1 1-1z"/>',
   brightness: '<circle cx="12" cy="12" r="3.5"/><path d="M12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6m11 11 1.6 1.6M2 12h2.2M19.8 12H22M4.9 19.1l1.6-1.6m11-11 1.6-1.6"/>',
   textSize: '<path d="M3 6V4h10v2M8 4v16M5 20h6M15 10V8h6v2m-3-2v12m-2.5 0h5"/>',
   speech: '<path d="M5 10v4h3l4 3V7l-4 3H5zM16 9.2a4 4 0 0 1 0 5.6M18.5 6.5a7.5 7.5 0 0 1 0 11"/>',
@@ -91,6 +97,9 @@ const icons = {
   nextTrack: '<path d="M18 5v14M6 6l9 6-9 6V6z"/>',
   refresh: '<path d="M20 7v5h-5M4 17v-5h5M6.1 8A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 11.9-2"/>',
   bookLayout: '<path d="M3 5.5A4.5 4.5 0 0 1 7.5 4H11v16H7.5A4.5 4.5 0 0 0 3 21.5v-16zM21 5.5A4.5 4.5 0 0 0 16.5 4H13v16h3.5a4.5 4.5 0 0 1 4.5 1.5v-16z"/>',
+  pageGrid: '<rect x="3" y="3" width="7" height="8" rx=".7"/><rect x="14" y="3" width="7" height="8" rx=".7"/><rect x="3" y="15" width="7" height="6" rx=".7"/><rect x="14" y="15" width="7" height="6" rx=".7"/>',
+  list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".8" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r=".8" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r=".8" fill="currentColor" stroke="none"/>',
+  sort: '<path d="M8 4v16m0 0-3-3m3 3 3-3M16 20V4m0 0-3 3m3-3 3 3"/>',
   more: '<circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.2" fill="currentColor" stroke="none"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
   cloud: '<path d="M7 19h11a4 4 0 0 0 .4-8A6.5 6.5 0 0 0 6 9a5 5 0 0 0 1 10z"/>',
@@ -106,6 +115,7 @@ function svg(name: keyof typeof icons, size = 19): string {
 
 const isAndroid = /\bAndroid\b/i.test(navigator.userAgent);
 const isWindowsDesktop = isTauri() && !isAndroid && /\bWindows\b/i.test(navigator.userAgent);
+const desktopShortcutsEnabled = !isAndroid && (isTauri() || window.matchMedia("(pointer: fine)").matches);
 const windowLabels = {
   en: { minimize: "Minimize", maximize: "Maximize", restore: "Restore", close: "Close" },
   es: { minimize: "Minimizar", maximize: "Maximizar", restore: "Restaurar", close: "Cerrar" },
@@ -133,7 +143,7 @@ app.innerHTML = `
       <div class="nav-caption">${t("yourSpace")}</div>
       <nav class="sidebar-nav" aria-label="${t("mainNavigation")}">
         <button class="nav-button active" data-view="home" type="button">${svg("home")}<span>${t("home")}</span></button>
-        <button class="nav-button" data-view="library" type="button">${svg("library")}<span>${t("library")}</span><span id="nav-book-count" class="nav-count">0</span></button>
+        <button class="nav-button" data-view="library" type="button">${svg("library")}<span>${t("library")}</span></button>
         <button class="nav-button" data-view="profile" type="button">${svg("profile")}<span>${t("profile")}</span></button>
       </nav>
       <div class="sidebar-bottom">
@@ -145,6 +155,7 @@ app.innerHTML = `
     <div class="workspace">
       <header class="topbar">
         <div class="topbar-copy"><h1 id="page-title">${t("home")}</h1><p id="page-subtitle">${t("homeSubtitle")}</p></div>
+        <div id="connection-status" class="connection-status" role="status" aria-live="polite" aria-atomic="true" hidden>${svg("cloud", 16)}<span>${t("offlineModeLabel")}</span></div>
         <button id="import-button" class="primary-button" type="button">${svg("plus", 18)}<span>${t("addBooks")}</span></button>
         <input id="file-input" type="file" accept=".pdf,.epub,application/pdf,application/epub+zip" multiple hidden />
       </header>
@@ -168,6 +179,12 @@ app.innerHTML = `
             <label class="search-field">${svg("search", 18)}<input id="library-search" type="search" placeholder="${t("searchTitle")}" aria-label="${t("searchBooks")}" /></label>
             <div class="library-display-tools"><label class="library-sort-label" for="library-sort">${t("sortLibrary")}</label><select id="library-sort" aria-label="${t("sortLibrary")}"><option value="recent">${t("sortRecent")}</option><option value="title-asc">${t("sortTitleAsc")}</option><option value="title-desc">${t("sortTitleDesc")}</option><option value="author">${t("sortAuthor")}</option><option value="progress">${t("sortProgress")}</option><option value="added">${t("sortAdded")}</option></select><div class="library-layout-toggle" role="group" aria-label="${t("library")}"><button id="library-grid-button" type="button" aria-label="${t("libraryGrid")}" aria-pressed="true">▦</button><button id="library-list-button" type="button" aria-label="${t("libraryList")}" aria-pressed="false">☰</button></div></div>
           </div>
+          <div id="library-offline-status" class="library-offline-status" role="status" aria-live="polite" aria-atomic="true" hidden>
+            <span class="library-offline-mark" aria-hidden="true">${svg("cloud", 20)}</span>
+            <div class="library-offline-copy"><strong id="library-offline-title"></strong><span id="library-offline-help"></span><small id="library-sync-state"></small></div>
+            <progress id="library-offline-progress" max="1" value="0" hidden></progress>
+            <button id="prepare-offline-library" class="library-offline-action" type="button">${t("offlinePrepareLibrary")}</button>
+          </div>
           <div id="legacy-recovery" class="legacy-recovery" hidden><div><h3>${t("legacyBooksTitle")}</h3><p>${t("legacyBooksHelp")}</p></div><button id="legacy-recovery-button" class="secondary-button" type="button">${t("legacyBooksClaim")}</button></div>
           <div id="library-folders"></div>
           <div id="library-list" class="book-grid library-grid"></div>
@@ -176,6 +193,7 @@ app.innerHTML = `
         <section id="view-settings" class="view settings-view" hidden>
           <div class="settings-tabs" role="tablist" aria-label="${t("settings")}">
             ${isAndroid ? "" : `<button id="settings-general-tab" type="button" role="tab" aria-controls="settings-general-panel" aria-selected="true">${t("generalSettings")}</button>`}
+            ${desktopShortcutsEnabled ? `<button id="settings-shortcuts-tab" type="button" role="tab" aria-controls="settings-shortcuts-panel" aria-selected="false" tabindex="-1">${t("shortcutSettings")}</button>` : ""}
             <button id="settings-account-tab" type="button" role="tab" aria-controls="settings-account-panel" aria-selected="${String(isAndroid)}"${isAndroid ? "" : ' tabindex="-1"'}>${t("accountSettings")}</button>
             <button id="settings-page-tab" type="button" role="tab" aria-controls="settings-page-panel" aria-selected="false" tabindex="-1">${({ en: "Font and Layout", es: "Fuente y diseño", it: "Carattere e layout", fr: "Police et mise en page" } as Record<Language, string>)[language]}</button>
             <button id="settings-tts-tab" type="button" role="tab" aria-controls="settings-tts-panel" aria-selected="false" tabindex="-1">${t("ttsTab")}</button>
@@ -194,9 +212,14 @@ app.innerHTML = `
             </div>
             <p id="general-settings-status" class="general-settings-status" role="status" aria-live="polite"></p>
           </section>`}
+          ${desktopShortcutsEnabled ? `<section id="settings-shortcuts-panel" class="settings-section shortcut-settings" role="tabpanel" aria-labelledby="settings-shortcuts-tab" tabindex="0" hidden>
+            <div class="settings-section-heading"><h2>${t("shortcutSettings")}</h2><p>${t("shortcutSettingsHelp")}</p></div>
+            <div class="shortcut-settings-groups"></div>
+            <footer class="shortcut-settings-footer"><p id="shortcut-status" role="status" aria-live="polite"></p><button id="shortcut-reset" class="secondary-button" type="button">${t("shortcutReset")}</button></footer>
+          </section>` : ""}
           <section id="settings-account-panel" class="settings-section" role="tabpanel" aria-labelledby="settings-account-tab" tabindex="0"${isAndroid ? "" : " hidden"}>
             <div class="settings-section-heading"><h2>${t("accountSettings")}</h2><p>${t("accountSettingsHelp")}</p></div>
-            <div id="settings-account-sheet" class="account-settings-sheet">
+            <div id="settings-account-sheet" data-online-only class="account-settings-sheet">
               <div id="settings-security"></div>
             </div>
             <div id="settings-account-footer" class="account-settings-footer"></div>
@@ -219,7 +242,7 @@ app.innerHTML = `
           <section id="settings-tts-panel" class="settings-section tts-settings" role="tabpanel" aria-labelledby="settings-tts-tab" tabindex="0" hidden>
             <div class="settings-section-heading"><h2>${t("ttsSettingsTitle")}</h2><p>${t("ttsVoiceLibraryHelp")}</p></div>
             <div class="tts-settings-sheet">
-              <section id="tts-cloud-settings" class="tts-cloud-settings" aria-labelledby="tts-cloud-settings-title" aria-busy="false">
+              <section id="tts-cloud-settings" data-online-only class="tts-cloud-settings" aria-labelledby="tts-cloud-settings-title" aria-busy="false">
                 <div class="tts-cloud-heading">
                   <div><h3 id="tts-cloud-settings-title">${t("aiSpeechSettingsTitle")}</h3><p>${t("aiSpeechSettingsHelp")}</p></div>
                   <strong id="tts-cloud-service-status" class="tts-cloud-service-status" role="status" aria-live="polite">${t("aiSpeechLoading")}</strong>
@@ -315,6 +338,8 @@ app.innerHTML = `
               <button id="speech-toggle" class="reader-tool-button reader-mobile-tool" data-reader-options-trigger type="button" title="${t("textToSpeech")}" aria-label="${t("textToSpeech")}" aria-controls="speech-panel" aria-expanded="false" hidden>${svg("speech", 19)}</button>
               <button id="layout-toggle" class="reader-tool-button reader-mobile-tool" data-reader-options-trigger type="button" title="${t("layoutOptions")}" aria-label="${t("layoutOptions")}" aria-controls="layout-panel" aria-expanded="false">${svg("bookLayout", 19)}</button>
               <button id="all-notes-button" class="reader-notes-button reader-mobile-tool" type="button" aria-haspopup="dialog" aria-controls="all-notes-dialog">${svg("notes", 17)}<span>${t("notes")}</span><span id="notes-count" class="notes-count">0</span></button>
+              <button id="bookmark-button" class="reader-tool-button" type="button" title="${t("addBookmark")}" aria-label="${t("addBookmark")}" aria-pressed="false" disabled>${svg("bookmark", 18)}</button>
+              <button id="page-overview-button" class="reader-tool-button" type="button" title="${t("pageOverview")}" aria-label="${t("pageOverview")}" aria-controls="page-overview" aria-pressed="false" disabled>${svg("pageGrid", 18)}</button>
               <button id="book-search-button" class="reader-tool-button" type="button" title="${t("searchInBook")}" aria-label="${t("searchInBook")}" aria-controls="book-search-panel">${svg("search", 18)}</button>
               <button id="reader-settings-toggle" class="reader-tool-button reader-desktop-tool" type="button" title="${t("readerBookSettings")}" aria-label="${t("readerBookSettings")}" aria-controls="reader-options" aria-expanded="false">${svg("more", 21)}</button>
             </div>
@@ -371,12 +396,12 @@ app.innerHTML = `
           <div id="reader-history" class="reader-history" hidden><button id="history-back" class="text-link" type="button" aria-label="${t("historyBack")}">${t("historyBackShort")}</button><button id="history-forward" class="text-link" type="button" aria-label="${t("historyForward")}">${t("historyForwardShort")}</button><button id="reading-return" class="secondary-button" type="button"></button><button id="reading-adopt" class="text-link" type="button">${t("continueReadingHere")}</button></div>
           <section id="book-search-panel" class="book-search-panel" aria-label="${t("searchInBook")}" hidden></section>
           <section id="translation-panel" class="book-search-panel translation-panel" aria-label="${t("selectedTextTranslation")}" hidden></section>
-          <div id="reading-surface" class="reading-surface" tabindex="-1"><div id="reader-content" class="reader-content"></div></div>
+          <div id="reading-surface" class="reading-surface" tabindex="-1"><div id="reader-content" class="reader-content"></div><section id="page-overview" class="page-overview" hidden></section></div>
           <div class="reader-bottom"><div class="reader-controls page-controls"><button id="previous-button" class="tool-button" type="button" aria-label="${t("previousPage")}">←</button><span id="chapter-label" class="chapter-label"></span><span id="position-label" class="position-label">—</span><select id="reader-toc" aria-label="${t("tableOfContents")}" hidden></select><button id="next-button" class="tool-button" type="button" aria-label="${t("nextPage")}">→</button></div><span id="save-status">${t("progressSaved")}</span></div>
         </section>
       </main>
       <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-      <div id="note-menu" class="note-menu" hidden><button id="note-add" type="button">${t("addNote")}</button><button id="selection-copy" type="button">${t("copy")}</button><button id="selection-dictionary" type="button">${t("dictionary")}</button><button id="selection-translate" type="button">${t("translate")}</button></div>
+      <div id="note-menu" class="note-menu" hidden><button id="note-add" type="button">${t("addNote")}</button><button id="selection-copy" type="button">${t("copy")}</button><button id="selection-dictionary" data-online-only type="button">${t("dictionary")}</button><button id="selection-translate" data-online-only type="button">${t("translate")}</button></div>
       <div id="dictionary-panel" class="dictionary-panel" role="dialog" aria-labelledby="dictionary-word" hidden>
         <div class="dictionary-head"><div><span id="dictionary-language" class="dictionary-kicker"></span><strong id="dictionary-word"></strong></div><button id="dictionary-close" type="button" aria-label="${t("close")}">×</button></div>
         <label class="dictionary-source-control" for="dictionary-source"><span>${t("dictionarySourceLabel")}</span><select id="dictionary-source"><option value="automatic">${t("dictionaryAutomatic")}</option><option value="wiktionary">${t("dictionaryWiktionary")}</option><option value="wikipedia">${t("dictionaryWikipedia")}</option></select></label>
@@ -432,7 +457,7 @@ function mountNativeTitlebar(): void {
 
 mountNativeTitlebar();
 const fileInput = $<HTMLInputElement>("#file-input");
-const readerContent = $<HTMLDivElement>("#reader-content");
+let readerContent = $<HTMLDivElement>("#reader-content");
 const readingSurface = $<HTMLDivElement>("#reading-surface");
 const coverCache = new Map<string, { signature: Blob | string; url: string }>();
 type LibraryLayout = "grid" | "list";
@@ -450,6 +475,7 @@ let bookEditor: BookEditor | undefined;
 let folderUI: FolderUI | undefined;
 let searchUI: SearchUI | undefined;
 let translationUI: TranslationUI | undefined;
+let pageOverview: PageOverview | undefined;
 let selectedTranslationText = "";
 type NoteStyle = "highlight" | "underline" | "strikethrough" | "wavy";
 type EpubNoteAnnotation = { color: string; type: "highlight" | "underline"; style: NoteStyle };
@@ -464,14 +490,19 @@ let epubPosition = { cfi: "", label: "" };
 let readerJumpBusy = false;
 let searchHighlight: string | undefined;
 let pagePreviewActive = false;
-interface PageTurn { snapshot: HTMLElement; live: HTMLElement; preview?: Rendition; preloadOnly?: boolean; origin: ReaderPosition; direction: -1|1; dx: number; width: number; sequence: number; ready: Promise<void>; readySettled: boolean; failed: boolean; ending: boolean }
+interface PdfPageDraft { target: HTMLDivElement; position: {page:number;offset:number}; textIndex?:number; textView?:PdfTextView; renderTask?:RenderTask; textLayer?:TextLayer }
+interface PageTurn { snapshot: HTMLElement; live: HTMLElement; preview?: Rendition; pdfDraft?:PdfPageDraft; preloadOnly?: boolean; manual?: boolean; promoted?: boolean; origin: ReaderPosition; direction: -1|1; dx: number; width: number; sequence: number; ready: Promise<void>; readySettled: boolean; failed: boolean; ending: boolean }
 let pageTurn: PageTurn | undefined;
+interface AdjacentEpubPage { element: HTMLDivElement; active: Rendition; ready: Promise<void>; settled: boolean }
+const adjacentEpubPages = new Map<-1|1, AdjacentEpubPage>();
+let adjacentEpubKey = "", adjacentEpubTimer: number | undefined;
 const pageTurnAnimationKey = "autumn-page-turn-animation";
 let pageTurnAnimationEnabled = localStorage.getItem(pageTurnAnimationKey) !== "off";
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const animatePageTurn = (): boolean => pageTurnAnimationEnabled && !reducedMotion.matches;
 let globalPagePreferences = loadPagePreferences();
 let desktopGeneralPreferences = loadDesktopGeneralPreferences();
+let desktopShortcutBindings = loadShortcutBindings();
 let ttsPreferences: TtsGlobalPreferences = loadTtsPreferences();
 let bookTtsPreferences: BookTtsPreferences = { rate: 1, pitch: 1, voiceId: "" };
 let ttsVoices: TtsVoice[] = [];
@@ -495,6 +526,10 @@ let pagePreferences = globalPagePreferences;
 let view: View = "home";
 let lastCollectionView: "home" | "library" | "profile" = "home";
 let books: StoredBook[] = [];
+const offlineDownloadState = new Map<string, "downloading" | "error">();
+let offlineBatch: Promise<void> | undefined;
+let offlineBatchProgress: { done: number; total: number; successful: number } | undefined;
+let latestSyncStatus: SyncStatus = { pending: 0, syncing: false, message: "" };
 let homeCarousel: ReturnType<typeof mountBookCarousel> | undefined;
 let currentBook: StoredBook | null = null;
 let readerCleanup: Promise<void> = Promise.resolve();
@@ -503,6 +538,19 @@ let pdfLoadingTask: PDFDocumentLoadingTask | null = null;
 let pdfRenderTask: RenderTask | null = null;
 let pdfTextLayer: TextLayer | null = null;
 const pdfOutlineDestinations = new Map<string, unknown>();
+interface ReaderTocTarget {
+  button: HTMLButtonElement;
+  value: string;
+  order: number;
+  format: "pdf" | "epub";
+  destination?: unknown;
+  pdfPage?: number;
+  sectionIndex?: number;
+  fragment?: string;
+  cfi?: string;
+}
+const readerTocTargets: ReaderTocTarget[] = [];
+const epubCfiComparator = new EpubCFI();
 let pdfSelectionListener: AbortController | null = null;
 let epubBook: EpubBook | null = null;
 let rendition: Rendition | null = null;
@@ -606,6 +654,7 @@ function setView(next: View): void {
   if (next !== "reader") {
     closeReaderOptions();
     searchUI?.close(); translationUI?.close();
+    pageOverview?.close({ restoreFocus: false });
     hideNoteMenu();
     closeNoteDialog();
     closeAllNotes();
@@ -762,8 +811,10 @@ function applyBookReaderTheme(): void {
 async function refreshReaderAppearanceAccess(): Promise<void> {
   const sequence = ++readerAppearanceAccessSequence;
   const owner = auth.state.ownerId;
+  if (owner && !connectivity.usable) await plans.restore(owner);
   let allowed = Boolean(owner && auth.state.status === "authenticated" && readerAppearanceVerifiedOwner === owner && plans.canUse("advanced_themes"));
-  if (owner && auth.state.status === "authenticated" && navigator.onLine) {
+  if (owner && !connectivity.usable && plans.canUse("advanced_themes")) allowed = true;
+  if (owner && auth.state.status === "authenticated" && connectivity.usable) {
     try {
       allowed = (await plans.current()).advanced_themes;
       readerAppearanceVerifiedOwner = owner;
@@ -917,7 +968,7 @@ function coverElement(book: StoredBook): HTMLElement {
     title.textContent = titleOf(book);
     cover.append(ornament, title);
   }
-  if (!book.cover && book.coverPath && navigator.onLine) {
+  if (!book.cover && book.coverPath && connectivity.usable) {
     cover.dataset.coverBookId = book.id;
     coverObserver.observe(cover);
   }
@@ -932,6 +983,7 @@ function renderReaderBookSummary(book: StoredBook): void {
 
 function resetReaderToc(): HTMLSelectElement {
   const select = $<HTMLSelectElement>("#reader-toc");
+  readerTocTargets.length = 0;
   select.replaceChildren(new Option(t("tableOfContents"), ""));
   const empty = document.createElement("p");
   empty.className = "reader-sidebar-empty";
@@ -940,7 +992,7 @@ function resetReaderToc(): HTMLSelectElement {
   return select;
 }
 
-function addReaderTocEntry(select: HTMLSelectElement, label: string, value: string, depth = 0): void {
+function addReaderTocEntry(select: HTMLSelectElement, label: string, value: string, depth = 0, location?: Pick<ReaderTocTarget, "format" | "destination" | "sectionIndex" | "fragment">): ReaderTocTarget {
   select.add(new Option(`${"– ".repeat(depth)}${label}`, value));
   const list = $<HTMLElement>("#reader-toc-list");
   if (list.querySelector(".reader-sidebar-empty")) list.replaceChildren();
@@ -948,12 +1000,90 @@ function addReaderTocEntry(select: HTMLSelectElement, label: string, value: stri
   button.type = "button";
   button.className = "reader-toc-entry";
   button.style.setProperty("--toc-depth", String(Math.min(depth, 5)));
+  button.dataset.tocValue = value;
   button.textContent = label;
   button.addEventListener("click", () => {
     void (currentBook?.format === "pdf" ? jumpToPdfReference(pdfOutlineDestinations.get(value)) : jumpToContents(value))
       .catch(error => showToast(errorMessage(error)));
   });
   list.append(button);
+  const target: ReaderTocTarget = {
+    button, value, order: readerTocTargets.length,
+    format: location?.format ?? (currentBook?.format === "pdf" ? "pdf" : "epub"),
+    destination: location?.destination, sectionIndex: location?.sectionIndex, fragment: location?.fragment,
+  };
+  readerTocTargets.push(target);
+  return target;
+}
+
+function updateReaderTocActive(reveal = false): void {
+  let active: ReaderTocTarget | undefined;
+  if (currentBook?.format === "pdf") {
+    for (const target of readerTocTargets) {
+      if (target.format !== "pdf" || target.pdfPage === undefined || target.pdfPage > pdfPosition.page) continue;
+      if (!active || target.pdfPage > (active.pdfPage ?? -1) || target.pdfPage === active.pdfPage && target.order > active.order) active = target;
+    }
+  } else if (currentBook?.format === "epub") {
+    const currentCfi = rendition?.location?.start?.cfi ?? epubPosition.cfi;
+    const visibleEndCfi = rendition?.location?.end?.cfi ?? currentCfi;
+    const currentSection = rendition?.location?.start?.index ?? epubBook?.spine.get(currentCfi)?.index ?? -1;
+    for (const target of readerTocTargets) {
+      if (target.format !== "epub" || target.sectionIndex === undefined || target.sectionIndex > currentSection) continue;
+      if (target.sectionIndex === currentSection && target.fragment) {
+        if (!target.cfi || !visibleEndCfi) continue;
+        try { if (epubCfiComparator.compare(target.cfi, visibleEndCfi) > 0) continue; }
+        catch { continue; }
+      }
+      if (!active || (target.sectionIndex ?? -1) > (active.sectionIndex ?? -1) || target.sectionIndex === active.sectionIndex && target.order > active.order) active = target;
+    }
+  }
+  const previous = readerTocTargets.find(target => target.button.getAttribute("aria-current") === "location");
+  for (const target of readerTocTargets) {
+    if (target === active) target.button.setAttribute("aria-current", "location");
+    else target.button.removeAttribute("aria-current");
+  }
+  const select = $<HTMLSelectElement>("#reader-toc");
+  select.value = active?.value ?? "";
+  if (active && (reveal || previous !== active) && !$<HTMLElement>("#reader-sidebar-contents").hidden)
+    active.button.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+async function resolvePdfTocTargets(document: PDFDocumentProxy, sequence: number): Promise<void> {
+  for (const target of readerTocTargets) {
+    if (target.format !== "pdf" || target.destination === undefined) continue;
+    try {
+      const resolved = await pdfDestination(document, target.destination);
+      if (sequence !== loadSequence || pdfDocument !== document) return;
+      target.pdfPage = resolved.page;
+    } catch { /* Keep malformed outline entries navigable without marking them current. */ }
+  }
+  updateReaderTocActive();
+}
+
+async function resolveEpubTocTargets(book: EpubBook, sequence: number): Promise<void> {
+  const sections = new Map<number, ReaderTocTarget[]>();
+  for (const target of readerTocTargets) {
+    if (target.format !== "epub" || target.sectionIndex === undefined || !target.fragment) continue;
+    const group = sections.get(target.sectionIndex) ?? [];
+    group.push(target);
+    sections.set(target.sectionIndex, group);
+  }
+  for (const [sectionIndex, targets] of sections) {
+    if (sequence !== loadSequence || epubBook !== book) return;
+    const section = book.spine.get(sectionIndex);
+    if (!section) continue;
+    try {
+      await section.load(book.load.bind(book));
+      for (const target of targets) {
+        let id = target.fragment!;
+        try { id = decodeURIComponent(id); } catch { /* Use the literal fragment. */ }
+        const element = section.document.getElementById(id) ?? section.document.getElementsByName(id)[0];
+        if (element) target.cfi = section.cfiFromElement(element);
+      }
+    } catch { /* A missing fragment falls back to its spine section. */ }
+    finally { section.unload(); }
+  }
+  updateReaderTocActive();
 }
 const coverLoading = new Set<string>();
 const coverObserver = new IntersectionObserver(entries => {
@@ -1008,6 +1138,105 @@ function sortedLibraryBooks(items: StoredBook[]): StoredBook[] {
   });
 }
 
+function renderOfflineLibraryStatus(): void {
+  const region = $<HTMLDivElement>("#library-offline-status");
+  const offline = connectivity.state.status !== "online";
+  const ready = books.length > 0 && books.every(hasLocalFile);
+  region.hidden = books.length === 0 || (!offline && ready);
+  if (!books.length) return;
+  const available = books.filter(hasLocalFile).length;
+  const missing = books.filter(book => book.cloudId && !hasLocalFile(book)).length;
+  const progress = $<HTMLProgressElement>("#library-offline-progress");
+  const action = $<HTMLButtonElement>("#prepare-offline-library");
+  const title = $<HTMLElement>("#library-offline-title");
+  const help = $<HTMLElement>("#library-offline-help");
+  const syncState = $<HTMLElement>("#library-sync-state");
+  region.dataset.state = offline && !ready ? "offline" : ready ? "ready" : "partial";
+  region.setAttribute("aria-busy", String(Boolean(offlineBatch)));
+
+  if (offline && ready) {
+    title.textContent = t("offlineLibraryReady");
+    help.textContent = t("offlineLibraryReadyHelp");
+  } else if (offline) {
+    title.textContent = t("offlineDisconnected");
+    help.textContent = t("offlineDisconnectedHelp", { available, total: books.length });
+  } else if (ready) {
+    title.textContent = t("offlineLibraryReady");
+    help.textContent = t("offlineLibraryReadyHelp");
+  } else {
+    title.textContent = t("offlineLibraryPartial");
+    help.textContent = t(missing === 1 ? "offlineLibraryPartialHelpOne" : "offlineLibraryPartialHelp", { missing });
+  }
+
+  if (offlineBatchProgress) {
+    progress.hidden = false;
+    progress.max = Math.max(1, offlineBatchProgress.total);
+    progress.value = offlineBatchProgress.done;
+    syncState.textContent = t("offlinePreparingLibrary", offlineBatchProgress);
+  } else {
+    progress.hidden = true;
+    syncState.textContent = latestSyncStatus.pending || latestSyncStatus.syncing ? latestSyncStatus.message : "";
+  }
+  action.textContent = offlineBatchProgress
+    ? t("offlinePreparingLibrary", offlineBatchProgress)
+    : t("offlinePrepareLibrary");
+  action.hidden = offline || ready || !missing || auth.state.status !== "authenticated";
+  action.disabled = Boolean(offlineBatch);
+}
+
+async function downloadBookForOffline(book: StoredBook, notify = true): Promise<boolean> {
+  if (hasLocalFile(book)) return true;
+  if (!book.cloudId || !connectivity.usable || auth.state.status !== "authenticated") {
+    if (notify) showToast(t("offlineDownloadNeedsConnection"));
+    return false;
+  }
+  offlineDownloadState.set(book.id, "downloading");
+  renderCollections();
+  try {
+    const downloaded = await loadCloudBook(book);
+    Object.assign(book, downloaded);
+    books = books.map(item => item.id === book.id ? book : item);
+    offlineDownloadState.delete(book.id);
+    renderCollections();
+    if (notify) showToast(t("offlineBookReady"));
+    return true;
+  } catch (error: unknown) {
+    offlineDownloadState.set(book.id, "error");
+    renderCollections();
+    if (notify) showToast(errorMessage(error) || t("offlineDownloadFailed"));
+    return false;
+  }
+}
+
+function prepareLibraryOffline(): void {
+  if (offlineBatch) return;
+  if (!connectivity.usable || auth.state.status !== "authenticated") {
+    showToast(t("offlineDownloadNeedsConnection"));
+    return;
+  }
+  const queue = books.filter(book => book.cloudId && !hasLocalFile(book));
+  if (!queue.length) return;
+  offlineBatchProgress = { done: 0, total: queue.length, successful: 0 };
+  renderOfflineLibraryStatus();
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < queue.length) {
+      const book = queue[next++];
+      if (await downloadBookForOffline(book, false)) offlineBatchProgress!.successful++;
+      offlineBatchProgress!.done++;
+      renderOfflineLibraryStatus();
+    }
+  };
+  offlineBatch = Promise.all(Array.from({ length: Math.min(2, queue.length) }, worker)).then(() => {
+    const result = offlineBatchProgress!;
+    showToast(t("offlinePreparedSummary", { done: result.successful, total: result.total }));
+  }).finally(() => {
+    offlineBatch = undefined;
+    offlineBatchProgress = undefined;
+    renderCollections();
+  });
+}
+
 function createBookCard(book: StoredBook): HTMLElement {
   const card = document.createElement("article");
   card.className = "book-card library-book-card";
@@ -1036,8 +1265,10 @@ function createBookCard(book: StoredBook): HTMLElement {
     button.addEventListener("click", () => { menu.open = false; run(); }); options.append(button);
   };
   action(t("editBook"), () => bookEditor?.open(book));
-  if (!book.cloudId && cloudState.get(book.id) !== "syncing") action(t(cloudState.get(book.id) === "error" ? "retrySync" : "syncAction"), () => void syncOneBook(book));
-  action(t("reviewAction"), () => void reviewComposer?.openBook(book));
+  if (connectivity.usable && book.cloudId && !hasLocalFile(book) && offlineDownloadState.get(book.id) !== "downloading")
+    action(t("offlineDownloadBook"), () => void downloadBookForOffline(book));
+  if (connectivity.usable && !book.cloudId && cloudState.get(book.id) !== "syncing") action(t(cloudState.get(book.id) === "error" ? "retrySync" : "syncAction"), () => void syncOneBook(book));
+  if (connectivity.usable) action(t("reviewAction"), () => void reviewComposer?.openBook(book));
   action(t(book.favorite ? "removeFavoriteAction" : "favoriteAction"), () => void toggleFavorite(book));
   action(t("removeLibrary"), () => void removeBook(book));
   menu.append(options); titleRow.append(menu); info.append(titleRow);
@@ -1045,18 +1276,27 @@ function createBookCard(book: StoredBook): HTMLElement {
   author.textContent = book.author?.trim() || t("authorUnknown"); info.append(author);
   const badges = document.createElement("div"); badges.className = "library-book-badges";
   const state = book.status ?? (book.lastOpenedAt ? "reading" : "unread");
+  card.dataset.readingState = state;
   const badge = document.createElement("span"); badge.className = `reading-badge status-${state}`;
   badge.textContent = t(state === "finished" ? "statusFinished" : state === "reading" ? "statusReading" : "statusUnread");
-  const cloudBadge = document.createElement("span"); cloudBadge.className = `cloud-badge state-${book.cloudId ? "cloud" : cloudState.get(book.id) ?? "local"}`;
-  const cloudLabel = book.cloudId ? t("inCloud") : cloudState.get(book.id) === "syncing" ? t("synchronizing") : cloudState.get(book.id) === "error" ? t("syncError") : t("localOnly");
+  const cloudBadge = document.createElement("span");
+  const offlineState = offlineDownloadState.get(book.id);
+  const cloudAvailability = book.cloudId
+    ? hasLocalFile(book) ? "offline" : offlineState === "downloading" ? "syncing" : offlineState === "error" ? "error" : "cloud-only"
+    : cloudState.get(book.id) ?? "local";
+  cloudBadge.className = `cloud-badge${book.cloudId ? " state-cloud" : ""} state-${cloudAvailability}`;
+  const cloudLabel = book.cloudId
+    ? hasLocalFile(book) ? t("offlineBookReady") : offlineState === "downloading" ? t("synchronizing") : offlineState === "error" ? t("syncError") : t("offlineBookCloudOnly")
+    : cloudState.get(book.id) === "syncing" ? t("synchronizing") : cloudState.get(book.id) === "error" ? t("syncError") : t("localOnly");
+  coverButton.title = `${titleOf(book)} — ${cloudLabel}`;
   cloudBadge.innerHTML = book.cloudId ? svg("cloud", 13) : '<span class="cloud-state-dot" aria-hidden="true"></span>';
   cloudBadge.append(document.createTextNode(cloudLabel)); badges.append(badge, cloudBadge); info.append(badges);
   const percent = state === "finished" ? 100 : Math.round(Math.max(0, Math.min(1, book.percentage ?? 0)) * 100);
   const progress = document.createElement("div"); progress.className = "library-book-progress";
   const track = document.createElement("span"); track.className = "library-progress-track";
   const fill = document.createElement("span"); fill.style.width = `${percent}%`; track.append(fill);
-  const value = document.createElement("span"); value.textContent = t("progressPercent", { value: percent });
-  progress.setAttribute("aria-label", value.textContent); progress.append(track, value); info.append(progress);
+  const value = document.createElement("span"); value.textContent = `${percent}%`;
+  progress.setAttribute("aria-label", t("progressPercent", { value: percent })); progress.append(track, value); info.append(progress);
   const controls = document.createElement("div"); controls.className = "library-book-controls";
   const status = document.createElement("select"); status.className = "book-status"; status.setAttribute("aria-label", t("statusOfBook", { title: titleOf(book) }));
   status.add(new Option(t("statusUnread"), "unread")); status.add(new Option(t("statusReading"), "reading")); status.add(new Option(t("statusFinished"), "finished")); status.value = book.status ?? "unread";
@@ -1065,7 +1305,10 @@ function createBookCard(book: StoredBook): HTMLElement {
     void saveBook(book).then(() => { books = books.map(existing => existing.id === book.id ? book : existing); renderCollections(); })
       .catch(() => { book.status = previous; status.value = previous ?? "unread"; showToast(t("progressSaveFailed")); });
   });
-  controls.append(status);
+  controls.append(mountSelectMenu(status, { className: "book-status-menu", prefixHtml: '<span class="book-status-dot"></span>' }));
+  const statusMark = document.createElement("span"); statusMark.className = "book-status-mark"; statusMark.setAttribute("aria-hidden", "true");
+  statusMark.innerHTML = state === "finished" ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/></svg>' : svg("bookLayout", 23);
+  controls.append(statusMark);
   if (folderUI) controls.append(folderUI.control(book));
   info.append(controls); card.append(coverButton, info);
   card.addEventListener("click", event => {
@@ -1094,7 +1337,6 @@ function emptyState(message: string, withAction = false): HTMLElement {
 }
 
 function renderCollections(): void {
-  $<HTMLElement>("#nav-book-count").textContent = String(books.length);
   const { featured, shelf } = homeReadingSelection(books);
   const recentList = $<HTMLDivElement>("#recent-list");
   recentList.replaceChildren(...(shelf.length
@@ -1111,14 +1353,18 @@ function renderCollections(): void {
   $<HTMLElement>("#hero-author").textContent = featured ? featured.author?.trim() || t("authorUnknown") : "";
   $<HTMLElement>("#hero-description").textContent = featured ? "" : t(books.length ? "homeHeroNoCurrentDescription" : "homeHeroEmptyDescription");
   const art = $<HTMLElement>("#hero-art");
-  art.replaceChildren();
   if (featured) {
     const featuredCover = coverElement(featured);
     hero.classList.toggle("hero-cover-image", !featuredCover.classList.contains("book-cover-fallback"));
-    art.append(featuredCover);
+    // Metadata reconciliation can render Home more than once. Keep an
+    // identical cover node mounted so WebView layout/measurement and lazy
+    // image decoding are not interrupted by a needless detach/reattach.
+    if (art.firstElementChild?.outerHTML !== featuredCover.outerHTML || art.childElementCount !== 1)
+      art.replaceChildren(featuredCover);
   } else {
     hero.classList.remove("hero-cover-image");
-    const leaf = document.createElement("img"); leaf.src = leafUrl; leaf.alt = ""; art.append(leaf);
+    const leaf = document.createElement("img"); leaf.src = leafUrl; leaf.alt = "";
+    art.replaceChildren(leaf);
   }
   heroAction.querySelector("span")!.textContent = featured ? t("continueReading") : t("exploreLibrary");
   heroAction.onclick = () => featured ? void openBook(featured) : setView("library");
@@ -1135,7 +1381,11 @@ function renderCollections(): void {
   const libraryList = $<HTMLDivElement>("#library-list");
   libraryList.dataset.layout = libraryLayout;
   libraryList.hidden = !matches.length && !!folderView?.hideEmpty;
-  libraryList.replaceChildren(...(matches.length ? matches.map((book) => createBookCard(book)) : [emptyState(folderView?.emptyMessage ?? (books.length ? t("noSearchResults") : t("libraryEmpty")), books.length === 0)]));
+  const emptyMessage = connectivity.state.status === "offline" && !books.length
+    ? t("offlineLibraryEmpty")
+    : books.length ? t("noSearchResults") : t("libraryEmpty");
+  libraryList.replaceChildren(...(matches.length ? matches.map((book) => createBookCard(book)) : [emptyState(folderView?.emptyMessage ?? emptyMessage, books.length === 0 && connectivity.state.status !== "offline")]));
+  renderOfflineLibraryStatus();
 }
 
 async function toggleFavorite(book: StoredBook): Promise<void> {
@@ -1188,8 +1438,11 @@ function updatePosition(): void {
     ? `${position} · ${pdfTextView.index + 1}/${pdfTextView.count}` : position;
   $<HTMLSpanElement>("#chapter-label").textContent = currentBook.format === "epub" && rendition?.location?.start
     ? t("section", { number: rendition.location.start.index + 1 }) : "";
-  $<HTMLButtonElement>("#previous-button").disabled = Boolean(pageTurn) || pdfNavigationBusy || (currentBook.format === "pdf" && pdfPosition.page <= 1 && (!pdfTextView || pdfTextView.index === 0));
-  $<HTMLButtonElement>("#next-button").disabled = Boolean(pageTurn) || pdfNavigationBusy || (currentBook.format === "pdf" && pdfPosition.page >= (pdfDocument?.numPages ?? Infinity) && (!pdfTextView || pdfTextView.index === pdfTextView.count - 1));
+  $<HTMLButtonElement>("#previous-button").disabled = Boolean(pageOverview?.opened) || Boolean(pageTurn) || pdfNavigationBusy || (currentBook.format === "pdf" && pdfPosition.page <= 1 && (!pdfTextView || pdfTextView.index === 0));
+  $<HTMLButtonElement>("#next-button").disabled = Boolean(pageOverview?.opened) || Boolean(pageTurn) || pdfNavigationBusy || (currentBook.format === "pdf" && pdfPosition.page >= (pdfDocument?.numPages ?? Infinity) && (!pdfTextView || pdfTextView.index === pdfTextView.count - 1));
+  $<HTMLButtonElement>("#page-overview-button").disabled = currentBook.format === "pdf" ? !pdfDocument : !epubBook;
+  updateBookmarkButton();
+  scheduleAdjacentEpubPages();
   const originalPdf = currentBook.format === "pdf" && !pdfTextView;
   $<HTMLButtonElement>("#smaller-button").disabled = pdfNavigationBusy || (originalPdf ? pdfZoom <= 70 : currentBook.fontSize <= 70);
   $<HTMLButtonElement>("#larger-button").disabled = pdfNavigationBusy || (originalPdf ? pdfZoom >= 200 : currentBook.fontSize >= 180);
@@ -1204,6 +1457,7 @@ function updatePosition(): void {
   mode.value = pdfTextView ? "text" : "original";
   mode.options[0].disabled = currentBook.format === "pdf" && pdfTextCache.get(pdfPosition.page)?.length === 0;
   mode.title = mode.options[0].disabled ? t("pdfImagePage") : t("readingMode");
+  updateReaderTocActive();
   if (!$("#speech-panel").hasAttribute("hidden")) updateTtsPlayer();
 }
 
@@ -1228,6 +1482,68 @@ function capturePosition(): ReaderPosition {
   return currentBook?.format === "pdf"
     ? { format: "pdf", page: pdfPosition.page, offset: pdfTextView?.visibleOffset() ?? pdfPosition.offset, scrollTop: readingSurface.scrollTop, scrollLeft: readingSurface.scrollLeft }
     : { format: "epub", ...epubPosition, cfi: stableLayoutAnchor ?? epubPosition.cfi };
+}
+
+// Bookmarks intentionally travel through the existing note/outbox pipeline. The
+// reserved content value survives the current cloud schema without introducing a
+// second synchronization system or a backwards-incompatible database migration.
+const BOOKMARK_NOTE_VALUE = "\u2063autumn-reader:bookmark:v1";
+const isBookmarkNote = (note: BookNote): boolean => note.text === BOOKMARK_NOTE_VALUE;
+
+function bookmarkAtCurrentPosition(): BookNote | undefined {
+  if (!currentBook) return undefined;
+  if (currentBook.format === "pdf") {
+    return currentBook.notes?.find(note => isBookmarkNote(note) && note.format === "pdf" && note.page === pdfPosition.page);
+  }
+  return currentBook.notes?.find(note => isBookmarkNote(note) && note.format === "epub" && epubNoteOnVisiblePage(note));
+}
+
+function updateBookmarkButton(): void {
+  const button = $<HTMLButtonElement>("#bookmark-button");
+  const active = Boolean(bookmarkAtCurrentPosition());
+  button.disabled = !currentBook || (currentBook.format === "epub" && !(stableLayoutAnchor ?? epubPosition.cfi));
+  button.setAttribute("aria-pressed", String(active));
+  const label = t(active ? "removeBookmark" : "addBookmark");
+  button.title = label;
+  button.setAttribute("aria-label", label);
+}
+
+async function toggleBookmark(): Promise<void> {
+  ++readerPositionRevision; restoringRemotePosition = false;
+  const book = currentBook;
+  if (!book) return;
+  const previous = book.notes ?? [];
+  const existing = bookmarkAtCurrentPosition();
+  if (existing) {
+    book.notes = previous.filter(note => note.id !== existing.id);
+  } else if (book.format === "pdf") {
+    book.page = pdfPosition.page;
+    book.pdfTextOffset = pdfTextView?.visibleOffset() ?? pdfPosition.offset;
+    book.notes = [...previous, {
+      id: newId(), quote: t("bookmarkPage", { page: pdfPosition.page }), text: BOOKMARK_NOTE_VALUE,
+      color: noteColors[0], createdAt: Date.now(), format: "pdf", page: pdfPosition.page,
+      y: pdfTextView?.visibleOffset() ?? pdfPosition.offset,
+    }];
+  } else {
+    const cfi = stableLayoutAnchor ?? epubPosition.cfi;
+    if (!cfi) return;
+    book.cfi = cfi;
+    const section = rendition?.location?.start?.index;
+    book.notes = [...previous, {
+      id: newId(), quote: section === undefined ? t("bookmark") : t("section", { number: section + 1 }),
+      text: BOOKMARK_NOTE_VALUE, color: noteColors[0], createdAt: Date.now(), format: "epub", cfi,
+    }];
+  }
+  try {
+    await saveBook(book);
+    updateNotesCount();
+    updateBookmarkButton();
+    showToast(t(existing ? "bookmarkRemoved" : "bookmarkSaved"));
+  } catch {
+    book.notes = previous;
+    updateBookmarkButton();
+    showToast(t("bookmarkSaveFailed"));
+  }
 }
 function epubReadingPercentage(location: Location): number {
   const sections = (epubBook?.spine.last()?.index ?? 0) + 1;
@@ -1457,12 +1773,15 @@ function noteLocation(note: BookNote): string {
 
 function epubNoteOnVisiblePage(note: BookNote): boolean {
   if (note.format !== "epub" || !rendition?.location) return false;
-  const { start, end, atEnd } = rendition.location;
+  const { start, end } = rendition.location;
   if (!start?.cfi || !end?.cfi) return false;
   try {
     const compare = rendition.epubcfi.compare.bind(rendition.epubcfi);
     const endComparison = compare(note.cfi, end.cfi);
-    return compare(note.cfi, start.cfi) >= 0 && (endComparison < 0 || (atEnd && endComparison === 0));
+    // epub.js can report the restored CFI as the inclusive end boundary of a
+    // page after a viewport change (notably Android WebView). Treat that
+    // boundary as visible so a persisted bookmark remains toggleable.
+    return compare(note.cfi, start.cfi) >= 0 && endComparison <= 0;
   } catch { return false; }
 }
 
@@ -1475,13 +1794,15 @@ function sortedCurrentNotes(): BookNote[] {
 }
 
 function noteEntry(note: BookNote, compact = false): HTMLElement {
+  const bookmark = isBookmarkNote(note);
   const card = document.createElement("article");
-  card.className = compact ? "notes-entry reader-sidebar-note" : "notes-entry";
+  card.className = `${compact ? "notes-entry reader-sidebar-note" : "notes-entry"}${bookmark ? " bookmark-entry" : ""}`;
   const header = document.createElement("div");
   header.className = "notes-entry-header";
   const color = document.createElement("span");
-  color.className = "notes-entry-color";
-  color.style.backgroundColor = note.color;
+  color.className = bookmark ? "notes-entry-bookmark" : "notes-entry-color";
+  if (bookmark) color.innerHTML = svg("bookmark", 13);
+  else color.style.backgroundColor = note.color;
   color.setAttribute("aria-hidden", "true");
   const location = document.createElement("span");
   location.textContent = noteLocation(note);
@@ -1491,11 +1812,12 @@ function noteEntry(note: BookNote, compact = false): HTMLElement {
   quote.textContent = note.quote;
   const body = document.createElement("p");
   body.className = "notes-entry-text";
-  body.textContent = note.text;
+  body.textContent = bookmark ? t("bookmarkSavedPosition") : note.text;
   const button = document.createElement("button");
   button.type = "button";
   button.className = "notes-go-button";
   button.textContent = `${t("goToNote")} →`;
+  button.textContent = `${t(bookmark ? "goToBookmark" : "goToNote")} →`;
   button.addEventListener("click", () => void goToNote(note));
   card.append(header, quote, body, button);
   return card;
@@ -1550,7 +1872,7 @@ async function goToNote(note: BookNote): Promise<void> {
       readingSurface.scrollLeft = 0;
       await renderPdfPage();
       if (pdfTextView) {
-        pdfTextView.show(pdfTextView.pageForOffset(note.y, note.quote));
+        pdfTextView.show(isBookmarkNote(note) ? pdfTextView.pageForOffset(note.y) : pdfTextView.pageForOffset(note.y, note.quote));
         pdfPosition.offset = pdfTextView.visibleOffset();
         renderNoteMarkers();
         updatePosition();
@@ -1577,7 +1899,7 @@ async function goToNote(note: BookNote): Promise<void> {
 function renderNoteMarkers(): void {
   readerContent.querySelectorAll(".note-highlight").forEach(e=>e.remove());
   if (rendition) {
-    const visibleNotes = readerNotesVisible ? currentBook?.notes ?? [] : [];
+    const visibleNotes = readerNotesVisible ? (currentBook?.notes ?? []).filter(note => !isBookmarkNote(note)) : [];
     const active = new Map(visibleNotes.filter((n):n is BookNote & {format:"epub";cfi:string}=>n.format==="epub").map(n=>[n.cfi,n.color]));
     for(const [cfi,annotation]of noteHighlights) if(active.get(cfi)!==annotation.color||annotation.style!==noteStyle){rendition.annotations.remove(cfi,annotation.type);noteHighlights.delete(cfi);}
     for(const [cfi,color]of active)if(!noteHighlights.has(cfi)){
@@ -1605,6 +1927,7 @@ function renderNoteMarkers(): void {
   const contentRect = readerContent.getBoundingClientRect();
   const placements: { note: BookNote; x: number; y: number }[] = [];
   for (const note of currentBook.notes) {
+    if (isBookmarkNote(note)) continue;
     if (note.format === "pdf") {
       if (currentBook.format !== "pdf" || note.page !== pdfPosition.page) continue;
       const sheet = readerContent.querySelector<HTMLElement>(".pdf-sheet");
@@ -1657,10 +1980,17 @@ function renderNoteMarkers(): void {
 }
 
 async function clearReader(): Promise<void> {
+  cancelPageGesture();
   readingActivity.stop();
   stopTts();
+  pageOverview?.reset();
+  $<HTMLButtonElement>("#page-overview-button").disabled = true;
+  $<HTMLButtonElement>("#bookmark-button").disabled = true;
+  $<HTMLButtonElement>("#bookmark-button").setAttribute("aria-pressed", "false");
   translationUI?.close(); selectedTranslationText=""; noteHighlights.clear();
   ++pdfNavigationToken; pdfNavigationBusy = false;
+  clearAdjacentEpubPages();
+  pageTurn?.pdfDraft?.renderTask?.cancel(); pageTurn?.pdfDraft?.textLayer?.cancel();
   pageTurn?.snapshot.remove(); pageTurn?.preview?.destroy(); if(pageTurn?.live !== readerContent)pageTurn?.live.remove(); pageTurn = undefined; pagePreviewActive = false; resetPageTransform();
   searchUI?.close(); searchUI?.setSource(); readerHistory.commit(); temporaryNavigationSource = null; updateHistory();
   searchHighlight = undefined; $("#reader-toc").hidden = true; resetReaderToc(); pdfOutlineDestinations.clear();
@@ -1688,31 +2018,91 @@ async function clearReader(): Promise<void> {
   readerContent.classList.remove("pdf-content", "pdf-reflow-content");
 }
 
-async function renderPdfPage(): Promise<void> {
+function configureEpubReader(active: Rendition, book: StoredBook): void {
+      active.hooks.content.register((contents: Contents) => {
+        const typographyReady = standardizeEpubPage(contents);
+        addTapNavigation(contents.document, () => contents.window.getSelection());
+        const selectedText = () => {
+          const selection = contents.window.getSelection();
+          if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
+          const quote = selection.toString().trim();
+          if (!quote) return null;
+          const range = selection.getRangeAt(0);
+          let cfi: string;
+          try { cfi = contents.cfiFromRange(range); }
+          catch { return null; }
+          const frameElement = contents.document.defaultView?.frameElement as HTMLElement | null;
+          if (!frameElement) return null;
+          const frameRect = frameElement.getBoundingClientRect();
+          const rect = range.getBoundingClientRect();
+          return { quote, anchor: { format: "epub" as const, cfi }, x: frameRect.left + rect.left, y: frameRect.top + rect.bottom + 8 };
+        };
+        contents.document.addEventListener("contextmenu", (event) => {
+          const note = selectedText();
+          if (!note) return;
+          event.preventDefault();
+          const frameElement = contents.document.defaultView?.frameElement as HTMLElement | null;
+          if (frameElement) {
+            const frameRect = frameElement.getBoundingClientRect();
+            showNoteMenu(note.quote, note.anchor, frameRect.left + event.clientX, frameRect.top + event.clientY);
+          }
+        });
+        // El contenido EPUB está en un iframe: sus clics no llegan al documento principal.
+        contents.document.addEventListener("pointerdown", () => {
+          if (!$<HTMLDivElement>("#note-menu").hidden) hideNoteMenu();
+        }, { capture: true });
+        contents.document.addEventListener("selectionchange", () => scheduleTouchNote(selectedText));
+        contents.document.addEventListener("keydown", handleReaderKeydown);
+        contents.document.addEventListener("wheel", handleReaderWheel, { passive: false });
+        contents.document.addEventListener("click", event => {
+          const link = (event.target as Element | null)?.closest("a[href]");
+          const href = link?.getAttribute("href");
+          if (href && !/^(?:[a-z]+:|\/\/)/i.test(href)) { temporaryNavigationSource = "other"; const from = capturePosition(); readerHistory.jump(from, from); updateHistory(); }
+        }, { capture: true });
+        return typographyReady;
+      });
+      active.themes.fontSize(`${book.fontSize}%`);
+      active.on("relocated", (location: Location) => {
+        if (active !== rendition || currentBook?.id !== book.id) return;
+        epubPosition = { cfi: location.start.cfi, label: t("sectionPage", { section: location.start.index + 1, page: location.start.displayed.page }) };
+        if (!readerHistory.temporary && !pagePreviewActive && !readerJumpBusy && !layoutBusy && !stableLayoutAnchor) book.cfi = location.start.cfi;
+        if (!readerHistory.temporary && !pagePreviewActive && !readerJumpBusy && !layoutBusy && !stableLayoutAnchor) book.percentage = epubReadingPercentage(location);
+        if (!pagePreviewActive && !readerJumpBusy && !layoutBusy) readerHistory.observe(capturePosition()); updateHistory();
+        updatePosition();
+        if (!layoutBusy) void persistCurrent();
+        window.requestAnimationFrame(renderNoteMarkers);
+      });
+}
+
+async function renderPdfPage(draft?: PdfPageDraft): Promise<void> {
   if (!pdfDocument || !currentBook || currentBook.format !== "pdf") return;
-  const sequence = ++pdfRenderSequence;
-  pdfSelectionListener?.abort();
-  pdfSelectionListener = null;
-  pdfRenderTask?.cancel();
-  pdfTextLayer?.cancel();
-  pdfTextLayer = null;
-  pdfPosition.page = Math.max(1, Math.min(pdfPosition.page, pdfDocument.numPages));
-  const page = await pdfDocument.getPage(pdfPosition.page);
-  if (sequence !== pdfRenderSequence) return;
+  const sequence = draft ? loadSequence : ++pdfRenderSequence;
+  const valid = () => draft ? pageTurn?.pdfDraft === draft && sequence === loadSequence : sequence === pdfRenderSequence;
+  const content = draft?.target ?? readerContent, position = draft?.position ?? pdfPosition;
+  if (!draft) {
+    pdfSelectionListener?.abort();
+    pdfSelectionListener = null;
+    pdfRenderTask?.cancel();
+    pdfTextLayer?.cancel();
+    pdfTextLayer = null;
+  }
+  position.page = Math.max(1, Math.min(position.page, pdfDocument.numPages));
+  const page = await pdfDocument.getPage(position.page);
+  if (!valid()) return;
   const natural = page.getViewport({ scale: 1 });
-  let blocks = pdfTextCache.get(pdfPosition.page);
+  let blocks = pdfTextCache.get(position.page);
   if (!blocks) {
     blocks = pdfTextBlocks(await page.getTextContent(), natural);
-    if (sequence !== pdfRenderSequence) return;
-    pdfTextCache.set(pdfPosition.page, blocks);
+    if (!valid()) return;
+    pdfTextCache.set(position.page, blocks);
     // Keep extraction bounded even when reading a long book.
     if (pdfTextCache.size > 6) pdfTextCache.delete(pdfTextCache.keys().next().value!);
   }
-  pdfTextView = null;
+  if (!draft) pdfTextView = null;
   // Measure with the same PDF padding on the first render and every rerender.
-  readerContent.classList.add("pdf-content");
-  readerContent.classList.toggle("pdf-reflow-content", pdfReadingMode === "text" && blocks.length > 0);
-  const contentStyle = getComputedStyle(readerContent);
+  content.classList.add("pdf-content");
+  content.classList.toggle("pdf-reflow-content", pdfReadingMode === "text" && blocks.length > 0);
+  const contentStyle = getComputedStyle(content);
   const horizontalPadding = parseFloat(contentStyle.paddingLeft) + parseFloat(contentStyle.paddingRight);
   const verticalPadding = parseFloat(contentStyle.paddingTop) + parseFloat(contentStyle.paddingBottom);
   const availableWidth = Math.max(120, readingSurface.clientWidth - horizontalPadding);
@@ -1722,11 +2112,16 @@ async function renderPdfPage(): Promise<void> {
     sheet.className = "pdf-sheet pdf-reading-sheet";
     sheet.style.width = `${availableWidth}px`;
     sheet.style.height = `${availableHeight}px`;
-    readerContent.replaceChildren(sheet);
-    pdfTextView = new PdfTextView(sheet, blocks, 18 * currentBook.fontSize / 100, fontCss(bookFont), pagePreferences);
-    pdfTextView.show(pdfPosition.offset === 1 ? pdfTextView.count - 1 : pdfTextView.pageForOffset(pdfPosition.offset ?? 0));
-    readingSurface.scrollTop = 0;
-    readingSurface.scrollLeft = 0;
+    content.replaceChildren(sheet);
+    const textView = new PdfTextView(sheet, blocks, 18 * currentBook.fontSize / 100, fontCss(bookFont), pagePreferences);
+    textView.show(position.offset === 1 ? textView.count - 1 : textView.pageForOffset(position.offset ?? 0));
+    if (draft) {
+      if (draft.textIndex !== undefined) textView.show(draft.textIndex);
+      draft.textView = textView; position.offset = textView.visibleOffset(); return;
+    }
+    pdfTextView = textView;
+    if (!draft) readingSurface.scrollTop = 0;
+    if (!draft) readingSurface.scrollLeft = 0;
     bindPdfSelection(pdfTextView.flow, sheet);
     renderNoteMarkers();
     updatePosition();
@@ -1749,33 +2144,32 @@ async function renderPdfPage(): Promise<void> {
   const textLayerElement = document.createElement("div");
   textLayerElement.className = "pdf-text-layer";
   sheet.append(canvas, textLayerElement);
-  readerContent.replaceChildren(sheet);
-  readingSurface.scrollLeft = 0;
-  readingSurface.scrollTop = 0;
+  content.replaceChildren(sheet);
+  if (!draft) readingSurface.scrollLeft = 0;
+  if (!draft) readingSurface.scrollTop = 0;
   const context = canvas.getContext("2d");
   if (!context) throw new Error(t("viewerFailed"));
   const task = page.render({ canvasContext: context, canvas, viewport, transform: [ratio, 0, 0, ratio, 0, 0] });
-  pdfRenderTask = task;
+  if (draft) draft.renderTask = task; else pdfRenderTask = task;
   try { await task.promise; }
   catch (error) { if (!(error instanceof Error && error.name === "RenderingCancelledException")) throw error; }
   finally { if (pdfRenderTask === task) pdfRenderTask = null; }
-  if (sequence !== pdfRenderSequence) return;
+  if (!valid()) return;
   const { TextLayer } = await loadPdfEngine();
   const textLayer = new TextLayer({ textContentSource: page.streamTextContent(), container: textLayerElement, viewport });
-  pdfTextLayer = textLayer;
+  if (draft) draft.textLayer = textLayer; else pdfTextLayer = textLayer;
   try { await textLayer.render(); }
   catch (error) { if (sequence === pdfRenderSequence) console.info(t("noSelectableText"), error); }
-  if (sequence !== pdfRenderSequence) return;
-  bindPdfSelection(textLayerElement, sheet);
+  if (!valid()) return;
+  if (!draft) bindPdfSelection(textLayerElement, sheet);
   for (const link of await pdfPageLinks(page)) {
-    if (sequence !== pdfRenderSequence) return;
+    if (!valid()) return;
     const rect = [...viewport.convertToViewportPoint(link.rect[0],link.rect[1]),...viewport.convertToViewportPoint(link.rect[2],link.rect[3])], left = Math.min(rect[0], rect[2]), top = Math.min(rect[1], rect[3]);
     const button = document.createElement("button"); button.type = "button"; button.className = "pdf-internal-link"; button.setAttribute("aria-label", t("openPdfReference"));
     button.style.cssText = `left:${left}px;top:${top}px;width:${Math.abs(rect[2] - rect[0])}px;height:${Math.abs(rect[3] - rect[1])}px`;
     button.addEventListener("click", () => void jumpToPdfReference(link.destination).catch(error => showToast(errorMessage(error)))); sheet.append(button);
   }
-  renderNoteMarkers();
-  updatePosition();
+  if (!draft) { renderNoteMarkers(); updatePosition(); }
 }
 
 function bindPdfSelection(textLayerElement: HTMLElement, sheet: HTMLElement): void {
@@ -1806,6 +2200,11 @@ async function openBook(book: StoredBook): Promise<void> {
     assertBookOwner(book);
     if (!books.some(item => item.id === book.id && item.ownerId === book.ownerId)) throw new Error(t("bookOtherAccount"));
   } catch (error) { showToast(errorMessage(error)); setView("library"); return; }
+  if (!hasLocalFile(book) && !connectivity.usable) {
+    showToast(t("offlineDownloadNeedsConnection"));
+    setView("library");
+    return;
+  }
   const sequence = ++loadSequence;
   const positionRevision = ++readerPositionRevision;
   const baselinePosition = { page: book.page, cfi: book.cfi, percentage: book.percentage, pdfTextOffset: book.pdfTextOffset, fontSize: book.fontSize };
@@ -1817,7 +2216,7 @@ async function openBook(book: StoredBook): Promise<void> {
   pdfPosition = { page: book.page, offset: book.pdfTextOffset ?? 0 };
   epubPosition = { cfi: book.cfi ?? "", label: "" };
   const cached = hasLocalFile(book);
-  const needsRemote = Boolean(book.cloudId && navigator.onLine && auth.state.status === "authenticated");
+  const needsRemote = Boolean(book.cloudId && connectivity.usable && auth.state.status === "authenticated");
   restoringRemotePosition = cached && needsRemote;
   // Cached files open immediately. Refresh the position concurrently, without queuing stale startup positions.
   const remotePosition = needsRemote ? sync.flush().then(() => library.refreshBook(book)).catch((error: unknown) => { if (sequence === loadSequence) showToast(errorMessage(error)); return undefined; }) : undefined;
@@ -1865,11 +2264,17 @@ async function openBook(book: StoredBook): Promise<void> {
         if (depth > 8) return;
         for (const item of items) {
           if (pdfOutlineDestinations.size >= 1000) return;
-          if (item.dest) { const id = `pdf:${pdfOutlineDestinations.size}`; pdfOutlineDestinations.set(id, item.dest); addReaderTocEntry(toc, item.title, id, depth); }
+          if (item.dest) {
+            const id = `pdf:${pdfOutlineDestinations.size}`;
+            pdfOutlineDestinations.set(id, item.dest);
+            addReaderTocEntry(toc, item.title, id, depth, { format: "pdf", destination: item.dest });
+          }
           if (item.items) addOutline(item.items, depth + 1);
         }
       };
-      addOutline(outline ?? []); toc.hidden = toc.options.length <= 1;
+      addOutline(outline ?? []);
+      toc.hidden = toc.options.length <= 1;
+      void resolvePdfTocTargets(pdfDocument, sequence);
     } else {
       const frame = document.createElement("div");
       frame.className = "epub-frame";
@@ -1877,67 +2282,28 @@ async function openBook(book: StoredBook): Promise<void> {
       epubBook = ePub(buffer);
       const viewport = epubViewportSize(frame);
       rendition = epubBook.renderTo(frame, { width: "100%", height: "100%", flow: "paginated", spread: columnCount(pagePreferences.columns, viewport.width, viewport.height) === 2 ? "always" : "none" });
-      rendition.hooks.content.register((contents: Contents) => {
-        const typographyReady = standardizeEpubPage(contents);
-        addTapNavigation(contents.document, () => contents.window.getSelection());
-        const selectedText = () => {
-          const selection = contents.window.getSelection();
-          if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
-          const quote = selection.toString().trim();
-          if (!quote) return null;
-          const range = selection.getRangeAt(0);
-          let cfi: string;
-          try { cfi = contents.cfiFromRange(range); }
-          catch { return null; }
-          const frameElement = contents.document.defaultView?.frameElement as HTMLElement | null;
-          if (!frameElement) return null;
-          const frameRect = frameElement.getBoundingClientRect();
-          const rect = range.getBoundingClientRect();
-          return { quote, anchor: { format: "epub" as const, cfi }, x: frameRect.left + rect.left, y: frameRect.top + rect.bottom + 8 };
-        };
-        contents.document.addEventListener("contextmenu", (event) => {
-          const note = selectedText();
-          if (!note) return;
-          event.preventDefault();
-          const frameElement = contents.document.defaultView?.frameElement as HTMLElement | null;
-          if (frameElement) {
-            const frameRect = frameElement.getBoundingClientRect();
-            showNoteMenu(note.quote, note.anchor, frameRect.left + event.clientX, frameRect.top + event.clientY);
-          }
-        });
-        // El contenido EPUB está en un iframe: sus clics no llegan al documento principal.
-        contents.document.addEventListener("pointerdown", () => {
-          if (!$<HTMLDivElement>("#note-menu").hidden) hideNoteMenu();
-        }, { capture: true });
-        contents.document.addEventListener("selectionchange", () => scheduleTouchNote(selectedText));
-        contents.document.addEventListener("keydown", handleReaderKeydown);
-        contents.document.addEventListener("wheel", handleReaderWheel, { passive: false });
-        contents.document.addEventListener("click", event => {
-          const link = (event.target as Element | null)?.closest("a[href]");
-          const href = link?.getAttribute("href");
-          if (href && !/^(?:[a-z]+:|\/\/)/i.test(href)) { temporaryNavigationSource = "other"; const from = capturePosition(); readerHistory.jump(from, from); updateHistory(); }
-        }, { capture: true });
-        return typographyReady;
-      });
-      rendition.themes.fontSize(`${book.fontSize}%`);
+      configureEpubReader(rendition, book);
       applyTheme();
       applyBookFont();
-      rendition.on("relocated", (location: Location) => {
-        if (currentBook?.id !== book.id) return;
-        epubPosition = { cfi: location.start.cfi, label: t("sectionPage", { section: location.start.index + 1, page: location.start.displayed.page }) };
-        if (!readerHistory.temporary && !pagePreviewActive && !readerJumpBusy && !layoutBusy && !stableLayoutAnchor) book.cfi = location.start.cfi;
-        if (!readerHistory.temporary && !pagePreviewActive && !readerJumpBusy && !layoutBusy && !stableLayoutAnchor) book.percentage = epubReadingPercentage(location);
-        if (!pagePreviewActive && !readerJumpBusy && !layoutBusy) readerHistory.observe(capturePosition()); updateHistory();
-        updatePosition();
-        if (!layoutBusy) void persistCurrent();
-        window.requestAnimationFrame(renderNoteMarkers);
-      });
       await rendition.display(book.cfi || undefined);
       searchUI?.setSource(epubSearch(epubBook));
       const navigation = await epubBook.loaded.navigation;
       const toc = resetReaderToc();
-      const addToc = (entries: typeof navigation.toc, depth = 0): void => { for (const entry of entries) { addReaderTocEntry(toc, entry.label.trim(), entry.href, depth); if (entry.subitems) addToc(entry.subitems, depth + 1); } };
-      addToc(navigation.toc); toc.hidden = toc.options.length <= 1;
+      const addToc = (entries: typeof navigation.toc, depth = 0): void => {
+        for (const entry of entries) {
+          const hashIndex = entry.href.indexOf("#");
+          addReaderTocEntry(toc, entry.label.trim(), entry.href, depth, {
+            format: "epub",
+            sectionIndex: epubBook?.spine.get(entry.href)?.index,
+            fragment: hashIndex >= 0 ? entry.href.slice(hashIndex + 1) : undefined,
+          });
+          if (entry.subitems) addToc(entry.subitems, depth + 1);
+        }
+      };
+      addToc(navigation.toc);
+      toc.hidden = toc.options.length <= 1;
+      updateReaderTocActive();
+      void resolveEpubTocTargets(epubBook, sequence);
       window.requestAnimationFrame(renderNoteMarkers);
     }
     readingActivity.start(book.ownerId ?? auth.state.ownerId ?? "local", book.id, book.format);
@@ -2050,7 +2416,7 @@ async function importFiles(files: FileList): Promise<void> {
 }
 
 async function navigate(direction: -1 | 1, preview = false): Promise<void> {
-  if (!currentBook || view !== "reader" || readerJumpBusy || (pageTurn && !preview)) return;
+  if (!currentBook || view !== "reader" || readerJumpBusy || pageOverview?.opened || (pageTurn && !preview)) return;
   clearSearchHighlight();
   ++readerPositionRevision; restoringRemotePosition = false;
   if (currentBook.format === "pdf" && pdfDocument) {
@@ -2105,16 +2471,111 @@ async function navigate(direction: -1 | 1, preview = false): Promise<void> {
 function resetPageTransform(): void {
   readerContent.getAnimations().forEach(animation => animation.cancel());
   readerContent.style.transform = ""; readerContent.style.visibility = ""; readerContent.style.willChange = "";
+  readerContent.style.position = ""; readerContent.style.zIndex = "";
   readerContent.classList.remove("page-turn-sheet"); delete readerContent.dataset.turnDirection;
   readingSurface.classList.remove("page-turning");
 }
-function beginPageTurn(direction: -1|1, preloadOnly = false): void {
+function clearAdjacentEpubPages(): void {
+  window.clearTimeout(adjacentEpubTimer);
+  adjacentEpubTimer = undefined;
+  for (const entry of adjacentEpubPages.values()) { entry.active.destroy(); entry.element.remove(); }
+  adjacentEpubPages.clear(); adjacentEpubKey = "";
+}
+function epubAdjacentKey(): string {
+  return JSON.stringify([loadSequence, rendition?.location?.start?.cfi, readingSurface.clientWidth, readingSurface.clientHeight, currentBook?.fontSize, bookFont, pagePreferences, bookReaderColors()]);
+}
+function prepareAdjacentEpubPage(direction: -1|1): AdjacentEpubPage | undefined {
+  if (!epubBook || !rendition || !currentBook || !rendition.location?.start?.cfi) return;
+  const key = epubAdjacentKey();
+  if (key !== adjacentEpubKey) { clearAdjacentEpubPages(); adjacentEpubKey = key; }
+  const cached = adjacentEpubPages.get(direction); if (cached) return cached;
+  const origin = rendition.location.start.cfi, book = currentBook, main = rendition;
+  const sourceStage = readerContent.querySelector<HTMLElement>(".epub-container");
+  const sourceScroll = sourceStage ? {left:sourceStage.scrollLeft,top:sourceStage.scrollTop} : undefined;
+  const element = readerContent.cloneNode(false) as HTMLDivElement;
+  element.removeAttribute("id"); element.classList.add("epub-adjacent-page"); element.setAttribute("aria-hidden", "true");
+  element.dataset.direction = String(direction);
+  const rect = readerContent.getBoundingClientRect(), bounds = readingSurface.getBoundingClientRect();
+  element.style.cssText = `position:absolute;left:${rect.left-bounds.left}px;top:${rect.top-bounds.top}px;width:${rect.width}px;height:${rect.height}px;min-height:0;z-index:1;pointer-events:none;visibility:hidden;contain:layout paint`;
+  element.style.setProperty("--reader-margin", readerContent.style.getPropertyValue("--reader-margin"));
+  const frame = document.createElement("div"); frame.className = "epub-frame"; element.append(frame); readingSurface.append(element);
+  const viewport = epubViewportSize(frame);
+  const active = epubBook.renderTo(frame, {width:viewport.width,height:viewport.height,resizeOnOrientationChange:false,flow:"paginated",spread:columnCount(pagePreferences.columns,viewport.width,viewport.height)===2?"always":"none"});
+  epubBook.rendition = main;
+  configureEpubReader(active, book);
+  active.themes.font(fontCss(bookFont));
+  active.themes.override("line-height", String(pagePreferences.lineHeight), true);
+  const colors = bookReaderColors(); element.style.background = colors.canvas; frame.style.background = colors.paper;
+  active.themes.default({body:{color:colors.ink,background:colors.paper}});
+  const entry: AdjacentEpubPage = { element, active, ready: Promise.resolve(), settled: false };
+  adjacentEpubPages.set(direction, entry);
+  entry.ready = (async () => {
+    await active.display(origin);
+    if (!element.isConnected) return;
+    // CFI round-tripping is not page-exact: a first-visible character at a
+    // column edge can be mapped into the preceding column. Start from the
+    // source reader's actual viewport, not that rounded textual location.
+    const contents: unknown = active.getContents();
+    if (Array.isArray(contents)) await Promise.all((contents as Contents[]).map(c=>waitForStableTypography(c.document)));
+    const stage = element.querySelector<HTMLElement>(".epub-container");
+    if (stage && sourceScroll) { stage.scrollLeft=sourceScroll.left; stage.scrollTop=sourceScroll.top; }
+    await settledPageMove({move:()=>direction<0?active.prev():active.next(),onRelocated:h=>active.on("relocated",h),offRelocated:h=>active.off("relocated",h),reportLocation:()=>active.reportLocation(),documents:()=>{
+      const contents: unknown = active.getContents(); return Array.isArray(contents)?(contents as Contents[]).map(c=>c.document):[];
+    }});
+    entry.settled = true; element.dataset.ready = "true";
+  })();
+  void entry.ready.catch(() => { if (adjacentEpubPages.get(direction) === entry) { adjacentEpubPages.delete(direction); active.destroy(); element.remove(); } });
+  return entry;
+}
+function scheduleAdjacentEpubPages(): void {
+  if (pageTurn || !epubBook || !rendition || layoutBusy || readerJumpBusy || view !== "reader" || !animatePageTurn() || !matchMedia("(pointer: coarse)").matches) return;
+  if (adjacentEpubKey === epubAdjacentKey() && adjacentEpubPages.size === 2) return;
+  window.clearTimeout(adjacentEpubTimer);
+  adjacentEpubTimer = window.setTimeout(() => {
+    if (pageTurn || layoutBusy || readerJumpBusy || view !== "reader") return;
+    const next = prepareAdjacentEpubPage(1);
+    void next?.ready.then(() => { if (!pageTurn && adjacentEpubKey === epubAdjacentKey()) prepareAdjacentEpubPage(-1); }).catch(() => {});
+  }, 80);
+}
+function beginPageTurn(direction: -1|1, preloadOnly = false, manual = false): void {
   if (pageTurn || !currentBook) return;
+  if (manual && currentBook.format === "pdf" && pdfDocument) {
+    const index = pdfTextView ? pdfTextView.index + direction : -1;
+    const samePage = pdfTextView && index >= 0 && index < pdfTextView.count;
+    const page = samePage ? pdfPosition.page : pdfPosition.page + direction;
+    if (page < 1 || page > pdfDocument.numPages) return;
+    const target = readerContent.cloneNode(false) as HTMLDivElement;
+    target.removeAttribute("id"); target.classList.add("page-turn-snapshot"); target.setAttribute("aria-hidden","true");
+    target.style.cssText = "position:absolute;inset:0;width:100%;height:100%;min-height:0;z-index:1;pointer-events:none;visibility:hidden";
+    target.style.setProperty("--reader-margin", readerContent.style.getPropertyValue("--reader-margin"));
+    readingSurface.append(target);
+    const draft: PdfPageDraft = {target,position:{page,offset:samePage?pdfPosition.offset:direction<0?1:0},textIndex:samePage?index:undefined};
+    const turn: PageTurn = {snapshot:target,live:readerContent,pdfDraft:draft,manual:true,origin:capturePosition(),direction,dx:0,width:readingSurface.clientWidth,sequence:loadSequence,ready:Promise.resolve(),readySettled:false,failed:false,ending:false};
+    pageTurn = turn; pagePreviewActive = true;
+    readingSurface.classList.add("page-turning");readerContent.style.zIndex="8";readerContent.style.willChange="transform";
+    turn.ready = renderPdfPage(draft).then(()=>{turn.readySettled=true;if(pageTurn===turn){target.style.visibility="";target.dataset.ready="true";dragPageTurn(turn.dx);}}).catch(error=>{turn.readySettled=true;turn.failed=true;if(pageTurn===turn)showToast(errorMessage(error));});
+    updatePosition(); return;
+  }
+  if (manual && epubBook) {
+    const entry = prepareAdjacentEpubPage(direction);
+    if (!entry) return;
+    adjacentEpubPages.delete(direction);
+    window.clearTimeout(adjacentEpubTimer);
+    const turn: PageTurn = {snapshot:entry.element,live:readerContent,preview:entry.active,manual:true,origin:capturePosition(),direction,dx:0,width:readingSurface.clientWidth,sequence:loadSequence,ready:entry.ready,readySettled:entry.settled,failed:false,ending:false};
+    pageTurn = turn; pagePreviewActive = true;
+    entry.element.classList.remove("epub-adjacent-page"); entry.element.classList.add("page-turn-preview");
+    readingSurface.classList.add("page-turning");
+    readerContent.style.zIndex = "8"; readerContent.style.willChange = "transform";
+    if (entry.settled) entry.element.style.visibility = "";
+    turn.ready = entry.ready.then(() => {turn.readySettled=true; if(pageTurn===turn){entry.element.style.visibility="";dragPageTurn(turn.dx);}}).catch(error=>{turn.readySettled=true;turn.failed=true;if(pageTurn===turn)showToast(errorMessage(error));});
+    updatePosition(); return;
+  }
   const snapshot = epubBook ? document.createElement("div") : pageSnapshot(readerContent, readingSurface);
   if (epubBook) { snapshot.className="page-turn-snapshot"; snapshot.style.visibility="hidden"; snapshot.setAttribute("aria-hidden","true"); readingSurface.append(snapshot); }
   const sheet = snapshot;
   if (!preloadOnly) { sheet.classList.add("page-turn-sheet"); sheet.dataset.turnDirection=String(direction); }
   const turn: PageTurn = { snapshot, live: readerContent, preloadOnly, origin: capturePosition(), direction, dx: 0, width: readingSurface.clientWidth, sequence: loadSequence, ready: Promise.resolve(), readySettled: false, failed: false, ending: false };
+  turn.manual = manual;
   pageTurn = turn; pagePreviewActive = true;
   $<HTMLButtonElement>("#previous-button").disabled = true;
   $<HTMLButtonElement>("#next-button").disabled = true;
@@ -2141,6 +2602,23 @@ function beginPageTurn(direction: -1|1, preloadOnly = false): void {
     cover.style.visibility="hidden"; cover.style.transform="translate3d(0,0,0)";
     turn.ready=(async()=>{
       await preview.display((turn.origin as Extract<ReaderPosition,{format:"epub"}>).cfi);
+      if (manual) {
+        await settledPageMove({
+          move: () => direction < 0 ? preview.prev() : preview.next(),
+          onRelocated: handler => preview.on("relocated", handler),
+          offRelocated: handler => preview.off("relocated", handler),
+          reportLocation: () => preview.reportLocation(),
+          documents: () => {
+            const contents: unknown = preview.getContents();
+            return Array.isArray(contents) ? (contents as Contents[]).map(item => item.document) : [];
+          },
+        });
+        // Keep the live iframe mounted under the finger. Only the auxiliary
+        // rendition prepares the destination during a manual EPUB drag.
+        cover.style.zIndex = "1";
+        readerContent.style.position = "relative";
+        readerContent.style.zIndex = "8";
+      }
       const contents: unknown = preview.getContents();
       if (Array.isArray(contents)) await Promise.all((contents as Contents[]).map(item => waitForStableTypography(item.document)));
 
@@ -2166,10 +2644,15 @@ function beginPageTurn(direction: -1|1, preloadOnly = false): void {
   }).catch(error => { turn.readySettled = true; turn.failed = true; if(pageTurn === turn)showToast(errorMessage(error)); });
 }
 function dragPageTurn(dx: number): void {
-  const turn = pageTurn; if (!turn || turn.ending) return;
+  const turn = pageTurn; if (!turn) return;
   turn.dx = Math.max(-turn.width, Math.min(turn.width, turn.direction === 1 ? Math.min(0, dx) : Math.max(0, dx)));
-  turn.snapshot.style.transform = pageTurnSheetTransform(turn.dx,turn.width,turn.direction);
-  if (!turn.preview) turn.live.style.transform = `translate3d(${turn.direction * turn.width + turn.dx}px,0,0)`;
+  if (turn.manual && (turn.preview || turn.pdfDraft)) {
+    turn.live.style.transform = `translate3d(${turn.readySettled ? turn.dx : 0}px,0,0)`;
+    turn.snapshot.style.transform = "translate3d(0,0,0)";
+  } else {
+    turn.snapshot.style.transform = turn.manual ? `translate3d(${turn.readySettled ? turn.dx : 0}px,0,0)` : pageTurnSheetTransform(turn.dx,turn.width,turn.direction);
+    if (!turn.preview) turn.live.style.transform = turn.manual ? "translate3d(0,0,0)" : `translate3d(${turn.direction * turn.width + turn.dx}px,0,0)`;
+  }
 }
 async function endPageTurn(commit: boolean, direction: -1|1): Promise<void> {
   const turn = pageTurn; if (!turn || turn.ending) return; turn.ending = true;
@@ -2188,6 +2671,7 @@ async function endPageTurn(commit: boolean, direction: -1|1): Promise<void> {
     }
     if (pageTurn !== turn || turn.sequence !== loadSequence) return;
     if (turn.failed || !turn.readySettled) commit = false;
+    if (turn.manual && turn.preview && turn.origin.format === "epub" && turn.preview.location?.start?.cfi === turn.origin.cfi) commit = false;
     if (turn.preloadOnly && commit) {
       turn.preloadOnly = false;
       readingSurface.classList.add("page-turning");
@@ -2195,11 +2679,59 @@ async function endPageTurn(commit: boolean, direction: -1|1): Promise<void> {
       turn.snapshot.style.willChange = "transform";
       turn.snapshot.style.visibility = ""; turn.snapshot.dataset.ready = "true";
     }
-    if (turn.preview && commit && direction === turn.direction) {
+    if (turn.manual) {
+      // Direct manipulation lasts only while held. On release, continue from
+      // the exact finger position before replacing the live EPUB iframe.
+      const remaining = Math.max(0, 1 - Math.abs(turn.dx) / Math.max(1, turn.width));
+      const duration = animatePageTurn() && Math.abs(turn.dx) > 0 ? Math.max(100, 300 * (commit ? remaining : 1 - remaining)) : 0;
+      await slide(turn.preview || turn.pdfDraft ? turn.live : turn.snapshot, commit ? -turn.direction * turn.width : 0, duration);
+      if (pageTurn !== turn || turn.sequence !== loadSequence) return;
+    }
+    if (turn.manual && turn.pdfDraft && commit && direction === turn.direction) {
+      const previous = readerContent, draft = turn.pdfDraft;
+      previous.removeAttribute("id"); readerContent = draft.target;
+      readerContent.id = "reader-content"; readerContent.classList.remove("page-turn-snapshot");
+      readerContent.removeAttribute("aria-hidden"); readerContent.removeAttribute("style");
+      readerContent.style.setProperty("--reader-margin", previous.style.getPropertyValue("--reader-margin"));
+      pdfSelectionListener?.abort(); pdfTextLayer?.cancel();
+      pdfPosition = {...draft.position}; pdfTextView = draft.textView ?? null; pdfTextLayer = draft.textLayer ?? null;
+      const sheet = readerContent.querySelector<HTMLElement>(".pdf-sheet");
+      const text = pdfTextView?.flow ?? readerContent.querySelector<HTMLElement>(".pdf-text-layer");
+      if (sheet && text) bindPdfSelection(text,sheet);
+      previous.remove(); readingSurface.scrollTop=0; readingSurface.scrollLeft=0;
+      ++readerPositionRevision; restoringRemotePosition=false; turn.promoted=true;
+    }
+    if (turn.manual && turn.preview && commit && direction === turn.direction) {
+      const previous = rendition!, previousElement = readerContent;
+      clearAdjacentEpubPages();
+      // Promote the mounted destination in place. Reparenting an iframe would
+      // reload its document, losing both the rendered page and its listeners.
+      previousElement.removeAttribute("id");
+      readerContent = turn.snapshot as HTMLDivElement;
+      readerContent.id = "reader-content";
+      readerContent.classList.remove("page-turn-preview", "page-turn-sheet");
+      const margin = previousElement.style.getPropertyValue("--reader-margin");
+      readerContent.removeAttribute("aria-hidden"); readerContent.removeAttribute("style");
+      readerContent.style.setProperty("--reader-margin", margin);
+      rendition = turn.preview; if (epubBook) epubBook.rendition = rendition;
+      const location = rendition.location;
+      epubPosition = {cfi:location.start.cfi,label:t("sectionPage",{section:location.start.index+1,page:location.start.displayed.page})};
+      stableLayoutAnchor = null; stableLayoutPercentage = null;
+      ++readerPositionRevision; restoringRemotePosition = false;
+      previousElement.classList.add("epub-adjacent-page"); previousElement.setAttribute("aria-hidden", "true");
+      previousElement.style.cssText = "position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;visibility:hidden;contain:layout paint";
+      previousElement.style.setProperty("--reader-margin", margin);
+      adjacentEpubKey = epubAdjacentKey();
+      previousElement.dataset.direction = String(-turn.direction); previousElement.dataset.ready = "true";
+      adjacentEpubPages.set(turn.direction === 1 ? -1 : 1, {element:previousElement,active:previous,ready:Promise.resolve(),settled:true});
+      turn.promoted = true;
+    }
+    if (turn.preview && !turn.promoted && commit && direction === turn.direction) {
       // Fully cover the live iframe while EPUB.js moves it. This is the key
       // ordering guarantee: only a settled real destination can be revealed.
       turn.snapshot.style.transform = "translate3d(0,0,0)";
-      readerContent.style.transform = "";
+      if (turn.manual) readerContent.style.visibility = "hidden";
+      else readerContent.style.transform = "";
       await navigate(turn.direction,true);
       if (pageTurn !== turn || turn.sequence !== loadSequence) return;
       turn.snapshot.dataset.destinationReady = "true";
@@ -2207,8 +2739,8 @@ async function endPageTurn(commit: boolean, direction: -1|1): Promise<void> {
     const position = capturePosition();
     const changed = position.format === "pdf" && turn.origin.format === "pdf" ? position.page !== turn.origin.page || Math.abs(position.offset-turn.origin.offset) > .0001 : position.format === "epub" && turn.origin.format === "epub" && position.cfi !== turn.origin.cfi;
     commit &&= direction === turn.direction && changed;
-    const duration = turn.readySettled && animatePageTurn() && (commit || Math.abs(turn.dx) > 4) ? 360 : 0;
-    await Promise.all([
+    const duration = !turn.manual && turn.readySettled && animatePageTurn() && (commit || Math.abs(turn.dx) > 4) ? 360 : 0;
+    if (!turn.manual) await Promise.all([
       slide(turn.snapshot, commit ? -turn.direction * turn.width : 0, duration,{width:turn.width,direction:turn.direction}),
       ...(turn.preview ? [] : [slide(turn.live, commit ? 0 : turn.direction * turn.width, duration)]),
     ]);
@@ -2218,11 +2750,15 @@ async function endPageTurn(commit: boolean, direction: -1|1): Promise<void> {
     if (pageTurn === turn) showToast(errorMessage(error));
   } finally {
     if (pageTurn === turn) {
-      turn.snapshot.remove();
-      try { turn.preview?.destroy(); } catch (error) { console.warn("Page preview cleanup failed", error); }
-      if(turn.live!==readerContent)turn.live.remove(); pageTurn = undefined; pagePreviewActive = false; resetPageTransform();
+      if (!turn.promoted) {
+        turn.pdfDraft?.renderTask?.cancel(); turn.pdfDraft?.textLayer?.cancel();
+        turn.snapshot.remove();
+        try { turn.preview?.destroy(); } catch (error) { console.warn("Page preview cleanup failed", error); }
+        if(turn.live!==readerContent)turn.live.remove();
+      }
+      pageTurn = undefined; pagePreviewActive = false; resetPageTransform();
       const origin = turn.origin;
-      if (!completed && origin.format === "pdf" && currentBook?.format === "pdf" && turn.sequence === loadSequence) {
+      if (!completed && !turn.pdfDraft && origin.format === "pdf" && currentBook?.format === "pdf" && turn.sequence === loadSequence) {
         // Starting a fresh render invalidates any PDF.js work still running for
         // the adjacent page. Keep the saved reading position on cancellation.
         ++pdfNavigationToken; pdfNavigationBusy = false;
@@ -2251,6 +2787,7 @@ async function endPageTurn(commit: boolean, direction: -1|1): Promise<void> {
   }
 }
 async function turnPage(direction: -1|1): Promise<void> {
+  if (pageOverview?.opened) return;
   if (!animatePageTurn()) { await navigate(direction); return; }
   if (!currentBook || view!=="reader" || pageTurn || readerJumpBusy || pdfNavigationBusy) return;
   beginPageTurn(direction);
@@ -2267,6 +2804,7 @@ function resetReaderChrome(): void {
     if (view !== "reader" || pageTurn || readerJumpBusy || readerOptions.classList.contains("is-open") ||
       !$<HTMLDivElement>("#note-menu").hidden || !$<HTMLDivElement>("#note-dialog").hidden ||
       !$<HTMLDivElement>("#all-notes-dialog").hidden || searchUI?.opened || translationUI?.opened ||
+      pageOverview?.opened ||
       window.getSelection()?.isCollapsed === false) { resetReaderChrome(); return; }
     $<HTMLElement>("#view-reader").classList.add("controls-hidden");
     void relayoutReader();
@@ -2274,17 +2812,28 @@ function resetReaderChrome(): void {
   if (wasHidden) void relayoutReader();
 }
 function addTapNavigation(target: Document | HTMLElement, getSelection: () => Selection | null): void {
-  const discrete = window.matchMedia("(pointer: coarse)").matches;
+  const mobile = window.matchMedia("(pointer: coarse)").matches;
+  const manual = () => mobile && animatePageTurn();
   bindPageGestures(target, getSelection, {
-    discrete,
-    blocked: ownGesture => view !== "reader" || !currentBook || readerJumpBusy || pdfNavigationBusy || Boolean(pageTurn && !ownGesture) || !$("#note-dialog").hidden || !$("#all-notes-dialog").hidden || !$("#note-menu").hidden || Boolean(searchUI?.opened) || Boolean(translationUI?.opened),
-    start: direction => { if (animatePageTurn() && (!discrete || currentBook?.format === "epub")) beginPageTurn(direction, discrete); },
-    drag: dx => { if (pageTurn) dragPageTurn(dx); },
-    end: (commit, direction) => {
-      if (discrete) { if (pageTurn) void endPageTurn(commit, direction); else if (commit) void turnPage(direction); return; }
+    discrete: false,
+    manual,
+    blocked: ownGesture => view !== "reader" || !currentBook || readerJumpBusy || layoutBusy || pdfNavigationBusy || Boolean(pageOverview?.opened) || Boolean(pageTurn && !ownGesture) || !$("#note-dialog").hidden || !$("#all-notes-dialog").hidden || !$("#note-menu").hidden || Boolean(searchUI?.opened) || Boolean(translationUI?.opened),
+    start: direction => {
+      if (animatePageTurn()) beginPageTurn(direction, false, manual());
+    },
+    drag: dx => { if (pageTurn && !pageTurn.ending) dragPageTurn(dx); },
+    end: (commit, direction, cancelled) => {
+      const turn = pageTurn;
+      if (turn?.manual && !cancelled) {
+        // Distance only: speed never adds pages or commits a returned sheet.
+        void endPageTurn(Math.abs(turn.dx) >= turn.width * .2, turn.direction);
+        return;
+      }
+      if (manual() && !turn) return;
+      if (mobile) { if (pageTurn) void endPageTurn(cancelled ? false : commit, pageTurn.direction); else if (commit) void navigate(direction); return; }
       if (pageTurn) void endPageTurn(commit,direction); else if (commit) void navigate(direction);
     },
-    tap: direction => { resetReaderChrome(); void turnPage(direction); },
+    tap: direction => { resetReaderChrome(); if (!manual()) void turnPage(direction); },
     neutralTap: () => resetReaderChrome(),
   });
 }
@@ -2296,7 +2845,7 @@ addTapNavigation(readingSurface, () => window.getSelection());
 let readerWheelLocked = false;
 let readerWheelUnlockTimer: number | undefined;
 function handleReaderWheel(event: WheelEvent): void {
-  if (view !== "reader" || !currentBook || readerJumpBusy || pdfNavigationBusy || pageTurn) return;
+  if (view !== "reader" || !currentBook || readerJumpBusy || pdfNavigationBusy || pageTurn || pageOverview?.opened) return;
   if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
   if (Math.abs(event.deltaY) < 4) return;
   event.preventDefault();
@@ -2390,6 +2939,7 @@ function setReaderSidebarTab(tab: ReaderSidebarTab): void {
   closeReaderOptions();
   searchUI?.close();
   translationUI?.close();
+  pageOverview?.close({ restoreFocus: false });
   activeReaderSidebarTab = tab;
   for (const name of ["contents", "notes", "tts"] as const) {
     const button = $<HTMLButtonElement>(`#reader-${name}-tab`);
@@ -2399,6 +2949,7 @@ function setReaderSidebarTab(tab: ReaderSidebarTab): void {
     $<HTMLElement>(`#reader-sidebar-${name}`).hidden = !selected;
   }
   if (tab === "notes") renderSidebarNotes();
+  if (tab === "contents") updateReaderTocActive(true);
   if (tab === "tts") {
     placeSpeechPanel();
     $<HTMLElement>("#speech-panel").hidden = false;
@@ -2416,6 +2967,7 @@ function showDesktopSettingsTab(tab: "layout" | "appearance"): void {
   $<HTMLElement>("#size-panel").hidden = layout;
   $<HTMLElement>("#book-theme-panel").hidden = layout;
   $<HTMLElement>("#note-visibility-panel").hidden = layout;
+  $<HTMLElement>("#speech-panel").hidden = true;
   readerOptions.scrollTop = 0;
 }
 
@@ -2424,9 +2976,9 @@ function openDesktopReaderSettings(tab: "layout" | "appearance" = "appearance"):
     closeReaderOptions();
     return;
   }
-  if (!desktopReaderMedia.matches) return;
   searchUI?.close();
   translationUI?.close();
+  pageOverview?.close({ restoreFocus: false });
   placeSpeechPanel();
   showDesktopSettingsTab(tab);
   readerOptions.hidden = false;
@@ -2465,6 +3017,7 @@ function closeReaderOptions(fromHistory = false): void {
   }
 }
 function openReaderOptions(trigger: HTMLButtonElement): void {
+  pageOverview?.close({ restoreFocus: false });
   placeSpeechPanel();
   const panelId = trigger.getAttribute("aria-controls");
   if (!panelId) return;
@@ -2603,7 +3156,7 @@ function aiSpeechError(error: unknown): string {
   if (code.includes("ai_speech_quota")) return t("aiSpeechQuotaExhausted");
   if (code.includes("global_budget")) return t("aiSpeechBudgetReached");
   if (code.includes("rate_limited") || code.includes("generation_limit")) return t("aiSpeechRateLimited");
-  if (!navigator.onLine) return t("aiSpeechOfflineFallback");
+  if (!connectivity.usable) return t("aiSpeechOfflineFallback");
   return t("aiSpeechGenerationError");
 }
 
@@ -2628,7 +3181,7 @@ function renderCloudTtsSettings(): void {
   field.hidden = !cloudTtsVoices.length;
   status.dataset.available = String(Boolean(cloudTtsUsage?.serviceAvailable && cloudTtsVoices.length));
   status.textContent = auth.state.status !== "authenticated" ? t("aiSpeechSignIn")
-    : !navigator.onLine ? t("aiSpeechOfflineFallback")
+    : !connectivity.usable ? t("aiSpeechOfflineFallback")
     : cloudTtsUsage?.plan !== "premium" ? t("aiSpeechSubscriberOnly")
     : cloudTtsUsage.budgetPaused || !cloudTtsUsage.serviceAvailable ? t("aiSpeechServicePaused")
     : t("aiSpeechServiceReady");
@@ -2641,7 +3194,7 @@ async function refreshCloudTtsSettings(): Promise<void> {
   const root = document.querySelector<HTMLElement>("#tts-cloud-settings");
   if (root) root.setAttribute("aria-busy", "true");
   cloudTtsUsage = undefined; cloudTtsVoices = [];
-  if (!owner || auth.state.status !== "authenticated" || !navigator.onLine) {
+  if (!owner || auth.state.status !== "authenticated" || !connectivity.usable) {
     renderCloudTtsSettings(); renderReaderVoiceOptions(); return;
   }
   try {
@@ -2955,7 +3508,7 @@ function startTtsPage(): void {
   if (!cloudVoice && !engineAvailable(ttsPreferences.engine)) { showToast(t("speechUnavailable")); return; }
   if (!cloudVoice && ttsPreferences.engine !== "system" && !activeCatalogVoice()) { showToast(t("ttsVoiceRequired")); return; }
   if (cloudVoice && !currentBook?.cloudId) { showToast(t("aiSpeechNeedsCloudBook")); return; }
-  if (cloudVoice && !navigator.onLine) { showToast(t("aiSpeechOfflineFallback")); return; }
+  if (cloudVoice && !connectivity.usable) { showToast(t("aiSpeechOfflineFallback")); return; }
   const source = currentTtsSource();
   const text = source.text;
   if (!text) { showToast(t("noSelectableText")); stopTts(); return; }
@@ -3368,6 +3921,7 @@ $<HTMLSelectElement>("#pdf-reading-mode").addEventListener("change", () => {
   void renderPdfPage().then(persistCurrent);
 });
 $("#note-add").addEventListener("click", () => openNoteDialog());
+$("#bookmark-button").addEventListener("click", () => void toggleBookmark());
 $("#selection-copy").addEventListener("click", async () => {
   const quote = selectedTranslationText;
   hideNoteMenu();
@@ -3431,8 +3985,8 @@ async function renderDictionary(): Promise<void> {
   attribution.hidden = true;
   sourceLink.hidden = true;
   content.setAttribute("aria-busy", "true");
-  content.textContent = navigator.onLine ? t("dictionaryLoading") : t("dictionaryOffline");
-  if (!navigator.onLine || !dictionaryWord) { content.removeAttribute("aria-busy"); return; }
+  content.textContent = connectivity.usable ? t("dictionaryLoading") : t("dictionaryOffline");
+  if (!connectivity.usable || !dictionaryWord) { content.removeAttribute("aria-busy"); return; }
   try {
     const entry = await dictionaryService.lookup(dictionaryWord, {
       definitionLanguage: language,
@@ -3486,7 +4040,7 @@ $("#note-save").addEventListener("click", () => void saveNote());
 $("#note-delete").addEventListener("click", () => void deleteNote());
 $("#note-cancel").addEventListener("click", closeNoteDialog);
 $("#note-close").addEventListener("click", closeNoteDialog);
-$("#all-notes-button").addEventListener("click", () => { closeReaderOptions(); openAllNotes(); });
+$("#all-notes-button").addEventListener("click", () => { closeReaderOptions(); pageOverview?.close({ restoreFocus: false }); openAllNotes(); });
 $("#all-notes-close").addEventListener("click", closeAllNotes);
 $<HTMLDivElement>("#all-notes-dialog").addEventListener("mousedown", (event) => {
   if (event.target === event.currentTarget) closeAllNotes();
@@ -3509,7 +4063,14 @@ libraryStatusSelect.setAttribute("aria-label", t("filterLibrary"));
 for (const [value, label] of [["all", "filterAllBooks"], ["reading", "statusReading"], ["finished", "statusFinished"], ["unread", "statusUnread"], ["favorites", "favorites"]] as const)
   libraryStatusSelect.add(new Option(t(label), value));
 libraryStatusSelect.addEventListener("change", () => { libraryStatusFilter = libraryStatusSelect.value as LibraryStatusFilter; renderCollections(); });
-$(".library-display-tools").prepend(libraryStatusSelect);
+const libraryDisplayTools = $<HTMLElement>(".library-display-tools");
+const librarySearchField = $<HTMLElement>(".library-tools .search-field");
+const libraryLayoutToggle = $<HTMLElement>(".library-layout-toggle");
+const librarySortSelect = $<HTMLSelectElement>("#library-sort");
+const librarySortControl = mountSelectMenu(librarySortSelect, { className: "library-sort-control", prefixHtml: svg("sort", 16) });
+$<HTMLButtonElement>("#library-grid-button").innerHTML = svg("pageGrid", 18);
+$<HTMLButtonElement>("#library-list-button").innerHTML = svg("list", 18);
+libraryDisplayTools.replaceChildren(libraryStatusSelect, libraryLayoutToggle, librarySearchField, librarySortControl);
 for (const button of document.querySelectorAll<HTMLButtonElement>(".theme-choice")) {
   button.addEventListener("click", () => {
     theme = button.dataset.themeChoice as "light" | "dark";
@@ -3598,6 +4159,41 @@ languageSelect.addEventListener("change", async () => {
     }
   } else showToast(t("restartLaterStatus"));
 });
+
+function runDesktopShortcut(action: ShortcutAction): boolean {
+  if (!desktopShortcutsEnabled) return false;
+  if (action === "openLibrary") {
+    if (view === "reader") void leaveReader();
+    else setView("library");
+    return true;
+  }
+  if (action === "openSettings") {
+    if (view === "reader") void persistCurrent().catch(() => {}).finally(() => setView("settings"));
+    else setView("settings");
+    return true;
+  }
+  if (action === "importBooks") { fileInput.click(); return true; }
+  if (action === "search") {
+    if (view === "reader") {
+      pageOverview?.close({ restoreFocus: false });
+      translationUI?.close();
+      searchUI?.open();
+    } else {
+      setView("library");
+      window.requestAnimationFrame(() => $<HTMLInputElement>("#library-search").focus());
+    }
+    return true;
+  }
+  if (view !== "reader") return false;
+  if (action === "readerBack") { void leaveReader(); return true; }
+  if (action === "previousPage") { void turnPage(-1); return true; }
+  if (action === "nextPage") { void turnPage(1); return true; }
+  if (action === "pageOverview") { void togglePageOverview(); return true; }
+  if (action === "decreaseSize") { changeSize(-1); return true; }
+  if (action === "increaseSize") { changeSize(1); return true; }
+  return false;
+}
+
 function handleReaderKeydown(event: KeyboardEvent): void {
   if (!$<HTMLDivElement>("#confirm-dialog").hidden) {
     if (event.key === "Escape") {
@@ -3612,6 +4208,7 @@ function handleReaderKeydown(event: KeyboardEvent): void {
     return;
   }
   if (event.key === "Escape") {
+    if (pageOverview?.opened) { event.preventDefault(); pageOverview.close(); return; }
     if (readerOptions.classList.contains("is-open")) { event.preventDefault(); const trigger = activeReaderOptionsTrigger; closeReaderOptions(); trigger?.focus(); return; }
     document.querySelectorAll<HTMLDetailsElement>(".book-menu[open]").forEach(menu => { menu.open = false; menu.querySelector<HTMLElement>("summary")?.focus(); });
     if (translationUI?.opened) translationUI.close();
@@ -3622,15 +4219,18 @@ function handleReaderKeydown(event: KeyboardEvent): void {
     return;
   }
   if (!$<HTMLDivElement>("#note-dialog").hidden || !$<HTMLDivElement>("#all-notes-dialog").hidden) return;
-  if (view === "reader" && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") { event.preventDefault(); translationUI?.close(); searchUI?.open(); return; }
   if ((event.target as Element | null)?.closest("input,textarea,select,[contenteditable='true']")) return;
-  if (event.altKey || event.ctrlKey || event.metaKey || view !== "reader") return;
-  if (event.key === "ArrowLeft") { event.preventDefault(); void turnPage(-1); }
-  if (event.key === "ArrowRight") { event.preventDefault(); void turnPage(1); }
+  if (event.repeat) return;
+  const action = shortcutActionForEvent(event, desktopShortcutBindings, view === "reader" ? "reader" : "app");
+  if (action && runDesktopShortcut(action)) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
 }
 window.addEventListener("keydown", handleReaderKeydown);
 let resizeTimer: number | undefined;
 window.addEventListener("resize", () => {
+  cancelPageGesture();
   if (view === "reader" && currentBook?.format === "epub" && !stableLayoutAnchor) {
     stableLayoutAnchor = currentBook.cfi ?? rendition?.location?.start?.cfi ?? epubPosition.cfi;
     stableLayoutPercentage = currentBook.percentage ?? null;
@@ -3643,17 +4243,72 @@ window.addEventListener("resize", () => {
   }, 150);
 });
 
+const pageOverviewButton = $<HTMLButtonElement>("#page-overview-button");
+pageOverview = mountPageOverview($<HTMLElement>("#page-overview"), {
+  trigger: pageOverviewButton,
+  onStateChange(open) {
+    $<HTMLElement>("#view-reader").classList.toggle("page-overview-open", open);
+    readerContent.inert = open;
+    if (open) readerContent.setAttribute("aria-hidden", "true");
+    else readerContent.removeAttribute("aria-hidden");
+    if (open) resetReaderChrome();
+    updatePosition();
+  },
+  async onSelect(position) {
+    if (!currentBook) return;
+    temporaryNavigationSource = null;
+    await displayPosition(position);
+    readerHistory.commit(capturePosition());
+    if (currentBook.format === "epub" && rendition?.location) {
+      stableLayoutAnchor = null;
+      stableLayoutPercentage = null;
+      currentBook.cfi = rendition.location.start.cfi;
+      currentBook.percentage = epubReadingPercentage(rendition.location);
+    }
+    await persistCurrent();
+    readingSurface.focus({ preventScroll: true });
+  },
+});
+
+async function togglePageOverview(): Promise<void> {
+  if (pageOverview?.opened) { pageOverview.close(); return; }
+  if (!currentBook || !pageOverview) return;
+  closeReaderOptions();
+  searchUI?.close();
+  translationUI?.close();
+  hideNoteMenu();
+  stopTts();
+  if (currentBook.format === "pdf" && pdfDocument) {
+    await pageOverview.open({ format: "pdf", document: pdfDocument, currentPage: pdfPosition.page });
+    return;
+  }
+  if (currentBook.format === "epub" && epubBook) {
+    const scale = Math.max(.7, currentBook.fontSize / 100);
+    const area = Math.max(1, readingSurface.clientWidth * readingSurface.clientHeight);
+    const charactersPerPage = Math.max(520, Math.min(1800, Math.round(area / (460 * scale))));
+    await pageOverview.open({ format: "epub", book: epubBook, currentCfi: rendition?.location?.start?.cfi ?? epubPosition.cfi, charactersPerPage });
+  }
+}
+pageOverviewButton.addEventListener("click", () => void togglePageOverview());
+
 applyTheme();
 setView("home");
 mountSettings($("#view-settings"));
+if (desktopShortcutsEnabled) mountShortcutSettings($("#settings-shortcuts-panel"), desktopShortcutBindings, bindings => { desktopShortcutBindings = bindings; });
 $<HTMLButtonElement>("#settings-tts-tab").addEventListener("click", () => void refreshCloudTtsSettings());
 renderCloudTtsSettings();
 void mountDesktopGeneralSettings();
 translationUI=mountTranslation($("#translation-panel"),translationService,()=>readingSurface.focus({preventScroll:true}));
-$("#selection-translate").addEventListener("click",()=>{hideNoteMenu();searchUI?.close();translationUI?.open(selectedTranslationText);});
+$("#selection-translate").addEventListener("click",()=>{hideNoteMenu();pageOverview?.close({ restoreFocus: false });searchUI?.close();translationUI?.open(selectedTranslationText);});
 searchUI = mountBookSearch($("#book-search-panel"), jumpToSearch, () => { clearSearchHighlight(); $("#book-search-button").focus(); });
-$("#book-search-button").addEventListener("click", () => {closeReaderOptions();translationUI?.close();searchUI?.opened ? searchUI.close() : searchUI?.open();});
-$("#reader-toc").addEventListener("change", () => { closeReaderOptions(); const toc = $<HTMLSelectElement>("#reader-toc"); void (currentBook?.format === "pdf" ? jumpToPdfReference(pdfOutlineDestinations.get(toc.value)) : jumpToContents(toc.value)).catch(error => showToast(errorMessage(error))); toc.value = ""; });
+$("#book-search-button").addEventListener("click", () => {closeReaderOptions();pageOverview?.close({ restoreFocus: false });translationUI?.close();searchUI?.opened ? searchUI.close() : searchUI?.open();});
+$("#reader-toc").addEventListener("change", () => {
+  closeReaderOptions();
+  const toc = $<HTMLSelectElement>("#reader-toc");
+  void (currentBook?.format === "pdf" ? jumpToPdfReference(pdfOutlineDestinations.get(toc.value)) : jumpToContents(toc.value))
+    .catch(error => showToast(errorMessage(error)))
+    .finally(() => updateReaderTocActive());
+});
 const historyAction = (direction: "back" | "forward" | "return"): void => {
   if (readerJumpBusy) return;
   const position = direction === "return" ? readerHistory.returnToReading() : direction === "back" ? readerHistory.back() : readerHistory.forward();
@@ -3684,6 +4339,7 @@ folderUI = mountFolders(
     renderCollections();
   },
 );
+$("#library-tools-slot").append($(".library-tools"));
 $("#legacy-recovery-button").addEventListener("click", () => {
   const owner = auth.state.ownerId;
   if (!owner) return;
@@ -3750,12 +4406,18 @@ mountSync($("#settings-account-sheet"), accountPlans.refresh);
 mountAccountStorage(accountPlans.actions, coverElement, reloadCloudLibrary);
 mountAccount(app, $(".shell"), $("#settings-account-footer"));
 const cloudDownloads = new Map<string, Promise<StoredBook>>();
-setCloudBookLoader((book) => {
+function loadCloudBook(book: StoredBook): Promise<StoredBook> {
   const previous = cloudDownloads.get(book.id);
   if (previous) return previous;
   const download = bookStorage.getBook(book).finally(() => cloudDownloads.delete(book.id));
   cloudDownloads.set(book.id, download);
   return download;
+}
+setCloudBookLoader(loadCloudBook);
+$<HTMLButtonElement>("#prepare-offline-library").addEventListener("click", prepareLibraryOffline);
+sync.subscribe(status => {
+  latestSyncStatus = { ...status };
+  renderOfflineLibraryStatus();
 });
 void requestPersistentCache();
 reviewComposer = mountReviewComposer(app, showToast);
@@ -3812,7 +4474,7 @@ function drainContentQueue(): void {
   while (activeContent < 2 && contentQueue.length) {
     const book = contentQueue.shift()!;
     const generation = contentGeneration;
-    if (book.ownerId !== auth.state.ownerId || (!navigator.onLine && !hasLocalFile(book))) {
+    if (book.ownerId !== auth.state.ownerId || (!connectivity.usable && !hasLocalFile(book))) {
       queuedContent.delete(book.id);
       continue;
     }
@@ -3828,7 +4490,7 @@ function drainContentQueue(): void {
 function scheduleContentRecovery(): void {
   for (const book of books) {
     if (book.contentMetadataVersion === BOOK_CONTENT_METADATA_VERSION || !book.ownerId || book.ownerId !== auth.state.ownerId || queuedContent.has(book.id)) continue;
-    if (!hasLocalFile(book) && (!book.cloudId || !navigator.onLine)) continue;
+    if (!hasLocalFile(book) && (!book.cloudId || !connectivity.usable)) continue;
     // An edited private cover and edited metadata already have a cheaper cloud path.
     if (!hasLocalFile(book) && book.coverPath && book.displayTitle !== undefined && book.author !== undefined) continue;
     queuedContent.add(book.id);
@@ -3845,7 +4507,13 @@ async function refreshFolders(): Promise<void> {
 }
 async function reloadCloudLibrary(): Promise<void> {
   const sequence = ++collectionSequence; const owner = auth.state.ownerId;
-  const loaded = await reconcileLocalLibrary(owner);
+  const local = await reconcileLocalLibrary(owner);
+  // In offline mode the library is an honest inventory of readable files,
+  // not a metadata catalogue containing placeholders that cannot be opened.
+  const loaded = connectivity.state.status === "offline"
+    ? (await Promise.all(local.map(async book => [book, await hasReadableLocalFile(book)] as const)))
+      .filter(([, readable]) => readable).map(([book]) => book)
+    : local;
   if (sequence !== collectionSequence || auth.state.ownerId !== owner) return;
   books = loaded;
   const unclaimed = await unclaimedBookCount();
@@ -3862,7 +4530,7 @@ async function reloadCloudLibrary(): Promise<void> {
   }
   renderCollections();
   scheduleContentRecovery();
-  if (auth.state.status !== "authenticated" || !navigator.onLine) return;
+  if (auth.state.status !== "authenticated" || !connectivity.usable) return;
   try {
     const result = await library.page(0);
     if (sequence !== collectionSequence || auth.state.ownerId !== owner) return;
@@ -3875,7 +4543,10 @@ async function reloadCloudLibrary(): Promise<void> {
     if (sequence !== collectionSequence || auth.state.ownerId !== owner) return;
     renderCollections();
     scheduleContentRecovery();
-  } catch (error: unknown) { if (auth.state.ownerId === owner) showToast(errorMessage(error)); }
+  } catch (error: unknown) {
+    if (isNetworkFailure(error)) { connectivity.markOffline(); return; }
+    if (auth.state.ownerId === owner) showToast(errorMessage(error));
+  }
 }
 loadMoreCloud.addEventListener("click", () => {
   const owner = auth.state.ownerId; const sequence = collectionSequence;
@@ -3908,11 +4579,12 @@ auth.subscribe((state) => {
     cloudDownloads.clear();
     for (const cached of coverCache.values()) URL.revokeObjectURL(cached.url);
     coverCache.clear();
-    books = []; cloudState.clear(); folderUI?.reset(); $("#legacy-recovery").hidden = true; renderCollections();
+    books = []; cloudState.clear(); offlineDownloadState.clear(); folderUI?.reset(); $("#legacy-recovery").hidden = true; renderCollections();
     currentBook = null; readerCleanup = clearReader();
     if (switchedAccount) setView("home");
     loadMoreCloud.hidden = true;
     const owner = state.ownerId;
+    if (state.status === "offline" && owner && view === "home") setView("library");
     void reloadCloudLibrary().catch(() => { if (auth.state.ownerId === owner) showToast(t("libraryOpenFailed")); });
   } else if (state.status === "authenticated") void reloadCloudLibrary();
   if (state.status === "authenticated") void resumeApprovedMigrations().then((resumed) => resumed ? reloadCloudLibrary() : undefined).catch((error: unknown) => showToast(errorMessage(error)));
@@ -3920,8 +4592,33 @@ auth.subscribe((state) => {
 readingSurface.addEventListener("pointerdown", () => { if (view === "reader") readingActivity.interact(); }, { passive: true });
 readingSurface.addEventListener("keydown", () => { if (view === "reader") readingActivity.interact(); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && view !== "reader") void reloadCloudLibrary(); });
-window.addEventListener("online", () => { void refreshCloudTtsSettings(); void refreshReaderAppearanceAccess(); void auth.refresh().then(resumeApprovedMigrations).then(reloadCloudLibrary).catch((error: unknown) => showToast(errorMessage(error))); });
-window.addEventListener("offline", () => { void refreshCloudTtsSettings(); void refreshReaderAppearanceAccess(); });
+connectivity.subscribe(connection => {
+  const offline = connection.status === "offline";
+  const indicator = $<HTMLElement>("#connection-status");
+  indicator.hidden = !offline;
+  indicator.querySelector("span")!.textContent = t("offlineModeLabel");
+  if (offline) {
+    loadMoreCloud.hidden = true;
+    // Keep the current interaction stable while the network changes. Cloud-only
+    // records disappear immediately; local-file validation occurs on cold load.
+    const localBooks = books.filter(book => hasLocalFile(book));
+    if (localBooks.length !== books.length) {
+      books = localBooks;
+      renderCollections();
+    }
+    const validationOwner = auth.state.ownerId;
+    void Promise.all(localBooks.map(async book => [book.id, await hasReadableLocalFile(book)] as const)).then(results => {
+      if (connectivity.state.status !== "offline" || auth.state.ownerId !== validationOwner) return;
+      const unreadable = new Set(results.filter(([, readable]) => !readable).map(([id]) => id));
+      if (!unreadable.size) return;
+      books = books.filter(book => !unreadable.has(book.id));
+      renderCollections();
+    }).catch(() => {});
+  }
+  renderOfflineLibraryStatus();
+  void refreshCloudTtsSettings();
+  void refreshReaderAppearanceAccess();
+});
 window.addEventListener("autumn-device-ready", () => { void reloadCloudLibrary(); void sync.flush(true); });
 window.addEventListener("autumn-synced", () => { if (view !== "reader") void refreshFolders().catch(() => {}); });
 window.addEventListener("autumn-upload-progress", event => {
@@ -3932,4 +4629,4 @@ window.addEventListener("autumn-migration-error", event => {
   const id = (event as CustomEvent<{ bookId?: string }>).detail.bookId;
   if (id) { cloudState.set(id, "error"); renderCollections(); }
 });
-document.addEventListener("visibilitychange",()=>{if(document.hidden&&pageTurn)void endPageTurn(false,pageTurn.direction);});
+document.addEventListener("visibilitychange",()=>{if(document.hidden){cancelPageGesture();if(pageTurn)void endPageTurn(false,pageTurn.direction);}});

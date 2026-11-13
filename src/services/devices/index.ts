@@ -2,6 +2,7 @@ import type { Session } from "@supabase/supabase-js";
 import { auth } from "../auth";
 import { cloud, checkError } from "../client";
 import { CloudError } from "../errors";
+import { connectivity } from "../connectivity";
 
 const idKey = "autumn-installation-id", secretKey = "autumn-installation-secret";
 function installation(): {id:string;secret:string} {
@@ -44,7 +45,7 @@ export const devices = {
       ++generation;
       owner = account; sessionToken = token; access = undefined; pending = undefined; checkedAt = 0;
     }
-    if (!navigator.onLine) return { allowed: true, active_devices: 0, max_devices: null };
+    if (!connectivity.usable) return { allowed: true, active_devices: 0, max_devices: null };
     if (!force && access && Date.now() - checkedAt < 60_000) return access;
     if (pending) return pending;
     const requestGeneration = generation;
@@ -76,7 +77,7 @@ export const devices = {
     }
   },
   async requireAccess(): Promise<void> {
-    if (!navigator.onLine) return;
+    if (!connectivity.usable) return;
     if (!(await devices.register()).allowed) throw new CloudError("device_limit");
   },
   async list(): Promise<AccountDevice[]> {

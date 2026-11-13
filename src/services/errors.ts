@@ -1,4 +1,5 @@
 import { t, type TranslationKey } from "../i18n";
+import { connectivity } from "./connectivity";
 export type CloudErrorCode =
   | "offline"
   | "session_expired"
@@ -47,5 +48,5 @@ export function errorMessage(error: unknown): string {
     : t("errorUnknown");
 }
 export function requireOnline(): void {
-  if (!navigator.onLine) throw new CloudError("offline");
+  if (!connectivity.usable) throw new CloudError("offline");
 }

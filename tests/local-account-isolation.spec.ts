@@ -13,7 +13,7 @@ test("two accounts keep separate local libraries across logout, repeated switche
     name: `${name}.epub`, mimeType: "application/epub+zip", buffer: await epubFixture(name),
   })));
   await page.locator("#file-input").setInputFiles(files);
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await expect(page.locator("#library-list .library-book-card")).toHaveCount(3);
 
@@ -25,7 +25,7 @@ test("two accounts keep separate local libraries across logout, repeated switche
   await page.locator("#file-input").setInputFiles({
     name: "D.epub", mimeType: "application/epub+zip", buffer: await epubFixture("D"),
   });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await expect(page.locator("#library-list .library-book-card")).toHaveCount(1);
 

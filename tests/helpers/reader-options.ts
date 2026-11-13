@@ -3,12 +3,16 @@ import { expect, type Page } from "@playwright/test";
 export async function revealReaderOption(page: Page, selector: string): Promise<void> {
   const option = page.locator(selector);
   if (!(await option.isVisible())) {
+    const inReaderToolbar = await option.evaluate(element => Boolean(element.closest(".reader-toolbar")));
+    if (inReaderToolbar) await page.locator("#view-reader").evaluate(element => element.classList.remove("controls-hidden"));
     const panelId = await option.evaluate(element => element.closest<HTMLElement>("[data-reader-panel]")?.id ?? "");
-    const desktopMenu = page.locator("#reader-settings-toggle");
-    if (panelId && await page.locator("#reader-sidebar").isVisible()) {
-      if (!(await page.locator("#reader-options").isVisible())) await desktopMenu.click();
+    if (panelId === "speech-panel") await page.locator("#speech-toggle").click();
+    else if (panelId) {
+      const settings = page.locator("#reader-settings-toggle");
+      const settingsOpen = await page.locator("#reader-options").evaluate(element => element.classList.contains("desktop-settings-open"));
+      if (!settingsOpen) await settings.click();
       await page.locator(panelId === "layout-panel" ? "#reader-settings-layout-tab" : "#reader-settings-appearance-tab").click();
-    } else if (panelId) await page.locator(`[aria-controls="${panelId}"]`).click();
+    }
   }
   await expect(option).toBeVisible();
 }

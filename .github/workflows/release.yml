@@ -29,7 +29,26 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Autumn Reader ${{ github.ref_name }}"
-          releaseBody: "Instalador de Windows para Autumn Reader."
+          releaseBody: |
+            Autumn Reader ${{ github.ref_name }} para Windows.
+
+            Incluye lectura local sin conexión, arrastre manual de página en móvil, vista general de páginas, atajos configurables en PC y mejoras de biblioteca. Se adjuntan el instalador, la versión portable y el CSV de idiomas.
+
+            `locales.csv` incluye las cadenas de la aplicación en inglés, español, italiano y francés.
           releaseDraft: true
           prerelease: false
           args: --bundles nsis
+      - name: Preparar ejecutable portable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          Copy-Item -LiteralPath src-tauri/target/release/autumn-reader.exe -Destination artifacts/AutumnReader-PC-portable.exe
+      - name: Adjuntar traducciones y publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            locales.csv
+            artifacts/AutumnReader-PC-portable.exe
+          draft: false
+          prerelease: false

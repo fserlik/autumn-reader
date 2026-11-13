@@ -1,8 +1,9 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { epubFixture, login, mockCloud } from "./helpers/cloud";
 
-async function openAppearance(page: Page, info: TestInfo): Promise<void> {
-  await page.locator(info.project.name === "desktop" ? "#reader-settings-toggle" : "#brightness-toggle").click();
+async function openAppearance(page: Page): Promise<void> {
+  await page.locator("#reader-settings-toggle").click();
+  await page.locator("#reader-settings-appearance-tab").click();
   await expect(page.locator("#book-theme-panel")).toBeVisible();
 }
 
@@ -20,8 +21,8 @@ test("Premium themes can be selected without recoloring the reader chrome", asyn
     mimeType: "application/epub+zip",
     buffer: await epubFixture("premium-themes", "Temas"),
   });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await openAppearance(page, info);
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
+  await openAppearance(page);
 
   const premiumThemes = page.locator("[data-premium-theme]");
   await expect(premiumThemes).toHaveCount(3);
@@ -43,7 +44,7 @@ test("Premium themes can be selected without recoloring the reader chrome", asyn
   }
 });
 
-test("Free readers keep the standard themes and see Premium choices locked", async ({ page }, info) => {
+test("Free readers keep the standard themes and see Premium choices locked", async ({ page }) => {
   await mockCloud(page, true);
   await page.goto("/");
   await login(page);
@@ -52,8 +53,8 @@ test("Free readers keep the standard themes and see Premium choices locked", asy
     mimeType: "application/epub+zip",
     buffer: await epubFixture("free-themes", "Gratis"),
   });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await openAppearance(page, info);
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
+  await openAppearance(page);
   await expect(page.locator("[data-premium-theme]").first()).toHaveAttribute("aria-disabled", "true");
   await page.locator('[data-book-theme="sepia"]').click();
   await expect(page.locator("#view-reader")).toHaveAttribute("data-book-theme", "sepia");

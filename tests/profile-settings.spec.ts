@@ -48,7 +48,7 @@ test("profile loads account collections lazily, saves identity, works offline, a
   await expect(page.locator("#profile-name")).toHaveText("Facundo");
   await expect(page.locator("#profile-description")).toHaveText("Leo historias para cada estación.");
   await page.locator("#profile-favorites .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   expect(cloud.downloads).toBe(1);
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await expect(page.locator("#view-profile")).toBeVisible();
@@ -64,7 +64,7 @@ test("profile loads account collections lazily, saves identity, works offline, a
   await expect(page.locator("#profile-banner-change")).toBeDisabled();
   await expect(page.locator("#profile-edit")).toBeDisabled();
   await page.locator("#profile-favorites .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   expect(cloud.downloads).toBe(1);
   await context.setOffline(false);
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
@@ -85,7 +85,7 @@ test("local favorites and finished books appear in profile without cloud uploads
   await page.goto("/");
   await login(page);
   await page.locator("#file-input").setInputFiles({name:"Local favorite.epub", mimeType:"application/epub+zip", buffer:await epubFixture("favorite", "Local favorite")});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator("#library-list .book-status").selectOption("finished");
   await expect(page.locator("#library-list .book-status")).toHaveValue("finished");

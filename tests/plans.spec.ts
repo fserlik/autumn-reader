@@ -199,7 +199,7 @@ test("revoking a PC session blocks cloud access, signs it out, and cannot restor
   await mockCloud(page, true, undefined, registry);
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Kept.epub",mimeType:"application/epub+zip",buffer:await epubFixture("kept","Kept locally")});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   const phoneContext = await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   try {

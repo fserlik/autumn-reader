@@ -77,7 +77,7 @@ export function mountLibraryDrag(
   list.addEventListener("dragstart", event => { if ((event.target as Element).closest(".library-book-card")) event.preventDefault(); });
   list.addEventListener("pointerdown", event => {
     if (event.pointerType !== "mouse" || !matchMedia("(pointer: fine)").matches || event.button !== 0) return;
-    if ((event.target as Element).closest("select, .book-menu, .book-title, .book-status, .book-folder")) return;
+    if ((event.target as Element).closest("select, .book-menu, .book-title, .book-status, .book-folder-control, .select-menu")) return;
     const card = (event.target as Element).closest<HTMLElement>(".library-book-card[data-book-id]");
     const book = card?.dataset.bookId ? bookById(card.dataset.bookId) : undefined;
     if (!card || !book) return;

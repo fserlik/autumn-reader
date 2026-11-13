@@ -37,7 +37,7 @@ test("Library card opens directly while its menu edits display metadata offline 
   await page.reload(); await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator(".library-book-card .book-title")).toHaveText("Mi edición personal");
   await card.locator(".book-card-info").click({position:{x:4,y:70}});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
 });
 
 test("custom cover previews, validates and syncs privately without changing book bytes", async ({page,context}) => {
@@ -63,7 +63,7 @@ test("custom cover previews, validates and syncs privately without changing book
   await expect.poll(() => cloud.coverUploads.length).toBe(1);
   expect(cloud.coverUploads[0].contentType).toContain("image/webp");
   expect(cloud.coverUploads[0].size).toBeLessThan(512*1024);
-  expect(cloud.bookMetadata.cover_path).toBe(cloud.coverUploads[0].path);
+  await expect.poll(() => cloud.bookMetadata.cover_path).toBe(cloud.coverUploads[0].path);
   expect(cloud.uploads).toBe(0);
   await page.locator('.nav-button[data-view="home"]').click();
   await expect(page.locator("#hero-art .book-cover > img")).toBeVisible();
@@ -83,7 +83,7 @@ test("custom cover previews, validates and syncs privately without changing book
 test("editing a local title never renames or rewrites the EPUB", async ({page}) => {
   const cloud = await mockCloud(page,true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Original_file-name.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible(); await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   const stored = () => page.evaluate(() => new Promise<{name:string;hash?:string;bytes:number[]}>(resolve => {
     const open=indexedDB.open("autumn-reader"); open.onsuccess=() => {

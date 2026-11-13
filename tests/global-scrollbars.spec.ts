@@ -53,9 +53,9 @@ test("EPUB iframe, PDF surface and long dialogs retain scroll without native bar
   await mockCloud(page, true);
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Scroll fixture.epub", mimeType: "application/epub+zip", buffer: await epubFixture() });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await hiddenScrollbar(page, "#reading-surface");
-  const iframe = page.frameLocator(".epub-frame iframe");
+  const iframe = page.frameLocator("#reader-content .epub-frame iframe");
   await expect(iframe.locator("#autumn-scrollbars")).toBeAttached();
   await expect(iframe.locator("html")).toHaveCSS("scrollbar-width", "none");
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();

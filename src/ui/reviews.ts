@@ -4,6 +4,7 @@ import { errorMessage } from "../services/errors";
 import type { StoredBook } from "../storage";
 import type { Book } from "../services/types";
 import { t } from "../i18n";
+import { connectivity } from "../services/connectivity";
 
 export interface ReviewComposer {
   openBook(book: StoredBook): Promise<void>;
@@ -58,7 +59,7 @@ export function mountReviewComposer(parent: HTMLElement, notify: (message: strin
       current = { ...draft }; title.value = draft.title; author.value = draft.author; text.value = draft.text;
       title.readOnly = author.readOnly = draft.catalogExists;
       form.querySelectorAll<HTMLInputElement>('input[name="rating"]').forEach(input => { input.checked = Number(input.value) === draft.rating; });
-      stars(); status.textContent = navigator.onLine ? "" : t("reviewOffline");
+      stars(); status.textContent = connectivity.usable ? "" : t("reviewOffline");
       if (!dialog.open) dialog.showModal();
       form.querySelector<HTMLInputElement>('input[name="rating"]:checked')?.focus();
     },
@@ -127,7 +128,7 @@ export function mountOwnReviews(parent: HTMLElement, composer: ReviewComposer, c
     for (const row of rows) { const button = document.createElement("button"); button.className = "secondary-button review-draft-item"; button.type = "button"; button.textContent = `${row.title} · ${row.rating ? `${row.rating}/5` : t("noStars")} · ${t("continueDraft")}`; button.addEventListener("click", () => composer.openDraft(row)); drafts.append(button); }
   }
   async function page(revision: number): Promise<void> {
-    if (busy || !navigator.onLine || auth.state.status !== "authenticated") return;
+    if (busy || !connectivity.usable || auth.state.status !== "authenticated") return;
     busy = true; more.disabled = true;
     try {
       const rows = await personalReviews.page(offset); if (!valid(revision)) return;
@@ -141,7 +142,7 @@ export function mountOwnReviews(parent: HTMLElement, composer: ReviewComposer, c
     if (!owner || !active) return;
     const saved = await personalReviews.cached(); if (!valid(revision)) return; entries = saved; draw(); await loadDrafts(revision);
     if (!valid(revision)) return;
-    if (!navigator.onLine || auth.state.status !== "authenticated") { status.textContent = t("offlineReviewCache"); return; }
+    if (!connectivity.usable || auth.state.status !== "authenticated") { status.textContent = t("offlineReviewCache"); return; }
     // Replace cached items with the first authoritative page, retaining cache if the request fails.
     const cached = entries; entries = [];
     await page(revision); if(valid(revision) && !entries.length && status.textContent) { entries = cached; draw(); }

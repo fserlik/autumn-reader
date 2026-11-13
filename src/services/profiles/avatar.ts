@@ -5,6 +5,7 @@ import { localGet, localPut } from "../local/database";
 import { t } from "../../i18n";
 import type { Profile } from "../types";
 import { newUuid } from "../platform/ids";
+import { connectivity } from "../connectivity";
 
 interface AvatarCache { id: string; ownerId: string; url: string; blob: Blob }
 export const AVATAR_INPUT_LIMIT = 10 * 1024 * 1024;
@@ -48,7 +49,7 @@ export async function ownAvatar(profile: Profile): Promise<Blob | null> {
   if (!owner || profile.id !== owner || !profile.avatar_url) return null;
   const cached = await localGet<AvatarCache>("cloud_state", `avatar:${owner}`);
   if (cached?.ownerId === owner && cached.url === profile.avatar_url) return cached.blob;
-  if (!navigator.onLine) return null;
+  if (!connectivity.usable) return null;
   // Fetch only this application's public avatar object, without credentials or external URLs.
   const expected = cloud().storage.from("avatars").getPublicUrl(`${owner}/avatar`).data.publicUrl;
   const remote = new URL(profile.avatar_url), allowed = new URL(expected);

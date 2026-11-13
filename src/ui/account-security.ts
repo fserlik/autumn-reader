@@ -1,6 +1,7 @@
 import { auth } from "../services/auth";
 import { errorMessage } from "../services/errors";
 import { t } from "../i18n";
+import { connectivity } from "../services/connectivity";
 
 export function mountAccountSecurity(parent: HTMLElement): void {
   const section = document.createElement("section");
@@ -63,7 +64,7 @@ export function mountAccountSecurity(parent: HTMLElement): void {
     const confirm = String(values.get("confirm") ?? "");
     if (next !== confirm) { error.textContent = t("passwordMismatch"); return; }
     if (next.length < 8) { error.textContent = t("passwordTooShort"); return; }
-    if (!navigator.onLine) { error.textContent = t("passwordOffline"); return; }
+    if (!connectivity.usable) { error.textContent = t("passwordOffline"); return; }
     busy = true;
     error.textContent = "";
     for (const button of form.querySelectorAll<HTMLButtonElement>("button")) button.disabled = true;

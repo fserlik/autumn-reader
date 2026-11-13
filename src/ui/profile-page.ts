@@ -10,6 +10,7 @@ import { ownAvatar, prepareAvatar } from "../services/profiles/avatar";
 import { ownBanner, prepareBanner, updateBanner } from "../services/profiles/banner";
 import { mountOwnReviews, type ReviewComposer } from "./reviews";
 import type { ReviewEntry } from "../services/reviews/personal";
+import { connectivity } from "../services/connectivity";
 import { readingStats } from "./book-presentation";
 
 export interface ProfileUI {
@@ -96,7 +97,7 @@ export function mountProfile(
     photo.hidden = true;
     bannerImage.hidden = true;
     bannerImage.removeAttribute("src");
-    if (profile?.banner_url?.startsWith("https://") && navigator.onLine) {
+    if (profile?.banner_url?.startsWith("https://") && connectivity.usable) {
       bannerImage.referrerPolicy = "no-referrer";
       bannerImage.src = profile.banner_url;
       bannerImage.hidden = false;
@@ -107,7 +108,7 @@ export function mountProfile(
       bannerImage.src = bannerUrl;
       bannerImage.hidden = false;
     }).catch(() => {});
-    if (profile?.avatar_url?.startsWith("https://") && navigator.onLine) {
+    if (profile?.avatar_url?.startsWith("https://") && connectivity.usable) {
       photo.alt = `${t("profilePhoto")} · ${name}`;
       photo.referrerPolicy = "no-referrer";
       photo.src = profile.avatar_url;
@@ -118,7 +119,8 @@ export function mountProfile(
       photoUrl = URL.createObjectURL(blob);
       photo.src = photoUrl; photo.hidden = false;
     }).catch(() => { /* Keep the remote image or initials when caching is unavailable. */ });
-    edit.disabled = !profile || auth.state.status !== "authenticated" || !navigator.onLine;
+    edit.hidden = !connectivity.usable;
+    edit.disabled = !profile || auth.state.status !== "authenticated" || !connectivity.usable;
     avatarChange.disabled = bannerChange.disabled = edit.disabled;
   }
   photo.addEventListener("error", () => { photo.hidden = true; });
@@ -140,7 +142,7 @@ export function mountProfile(
     }).then(() => profiles.cachedOwn()).then(updated => {
       if (updated && active && updated.id === auth.state.ownerId) { identity(updated); find("#profile-message").textContent = t("profileSaved"); }
     }).catch(error => { find("#profile-message").textContent = errorMessage(error); })
-      .finally(() => { avatarChange.disabled = !currentProfile || !navigator.onLine; });
+      .finally(() => { avatarChange.disabled = !currentProfile || !connectivity.usable; });
   });
   bannerFile.addEventListener("change", () => {
     const file = bannerFile.files?.[0], profile = currentProfile;
@@ -151,7 +153,7 @@ export function mountProfile(
     void prepareBanner(file).then(blob => updateBanner(profile, blob)).then(() => profiles.cachedOwn()).then(updated => {
       if (updated && active && updated.id === auth.state.ownerId) { identity(updated); find("#profile-message").textContent = t("profileSaved"); }
     }).catch(error => { find("#profile-message").textContent = errorMessage(error); })
-      .finally(() => { bannerChange.disabled = !currentProfile || !navigator.onLine; });
+      .finally(() => { bannerChange.disabled = !currentProfile || !connectivity.usable; });
   });
 
   async function collections(token: number, owner: string): Promise<void> {
@@ -166,7 +168,7 @@ export function mountProfile(
     find("#profile-favorites-count").textContent = String(stats.favorites);
     const favorites = books.filter(book => book.favorite);
     favoriteShelf.grid.replaceChildren(...(favorites.length ? favorites.map(bookCard) : [emptyMessage(t("profileFavoritesEmpty"))]));
-    favoriteShelf.more.hidden = !favoriteShelf.hasMore || !navigator.onLine || auth.state.status !== "authenticated";
+    favoriteShelf.more.hidden = !favoriteShelf.hasMore || !connectivity.usable || auth.state.status !== "authenticated";
     favoriteShelf.more.disabled = favoriteShelf.loading;
   }
   function emptyMessage(message: string): HTMLElement {
@@ -176,7 +178,7 @@ export function mountProfile(
     return empty;
   }
   async function remotePage(token: number, owner: string): Promise<void> {
-    if (favoriteShelf.loading || !navigator.onLine || auth.state.status !== "authenticated") return;
+    if (favoriteShelf.loading || !connectivity.usable || auth.state.status !== "authenticated") return;
     favoriteShelf.loading = true;
     favoriteShelf.more.disabled = true;
     try {
@@ -242,7 +244,7 @@ export function mountProfile(
       identity(cached);
       await collections(token, owner);
       if (!valid(token, owner)) return;
-      if (!navigator.onLine || auth.state.status !== "authenticated") {
+      if (!connectivity.usable || auth.state.status !== "authenticated") {
         find("#profile-message").textContent = t("profileOffline");
         return;
       }
@@ -258,7 +260,7 @@ export function mountProfile(
   auth.subscribe(state => {
     if (!active) return;
     if (state.ownerId !== renderedOwner) void refresh();
-    else edit.disabled = !currentProfile || state.status !== "authenticated" || !navigator.onLine;
+    else { edit.hidden = !connectivity.usable; edit.disabled = !currentProfile || state.status !== "authenticated" || !connectivity.usable; }
   });
   window.addEventListener("autumn-local-change", () => {
     if (!active) return;

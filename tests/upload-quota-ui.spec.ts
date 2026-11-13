@@ -8,7 +8,7 @@ test("Settings distinguishes three pending states and retries failed local uploa
   cloud.setQuota({used_books:14,used_bytes:Math.round(19.3*1_048_576),max_bytes:1_073_741_824,active_pending_uploads:0,reserved_bytes:0});
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Libro local.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="settings"]').click();
   await page.locator("#settings-account-tab").click();
@@ -35,7 +35,7 @@ test("double-clicking Sync all starts only one migration for a local book", asyn
   const cloud=await mockCloud(page,true);
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Solo una vez.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="settings"]').click();
   await page.locator("#settings-account-tab").click();

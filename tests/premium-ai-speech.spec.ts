@@ -29,7 +29,7 @@ test("Premium cloud voices and their quota live in TTS settings, not in the read
   await page.screenshot({path:info.outputPath("premium-ai-usage.png"),fullPage:true});
 
   await page.locator("#file-input").setInputFiles({name:"Voz.epub",mimeType:"application/epub+zip",buffer:await epubFixture("premium-voice","Voz")});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator(info.project.name === "desktop" ? "#reader-tts-tab" : "#speech-toggle").click();
   await expect(page.locator('#tts-reader-voice option[value^="cloud:"]')).toHaveCount(5);
   await expect(page.locator("#speech-panel")).not.toContainText(/premium|cuota|mensual/i);
@@ -48,7 +48,7 @@ test("a cloud voice selected in the ordinary reader list requests Polly for a sy
   await page.goto("/");await login(page);
   await expect(page.locator("#library-list .book-title")).toHaveCount(1);
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator(info.project.name === "desktop" ? "#reader-tts-tab" : "#speech-toggle").click();
   await page.locator("#tts-reader-voice").selectOption("cloud:Lucia:es-ES");
   await page.locator("#tts-play-pause").click();

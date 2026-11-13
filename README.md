@@ -2,9 +2,19 @@
 
 Autumn Reader is a calm, customizable place to read and organize the PDF and EPUB books you already own. It is available for Windows and Android, with an interface in English, Spanish, Italian, and French.
 
+## What's new in 0.5.0
+
+- Open books stored on the device without an internet connection. Reading position, notes, highlights, and other supported changes stay local and sync when the account is confirmed online again.
+- On mobile, drag a page with your finger and release to complete one page turn or return to the current page.
+- Browse a visual overview of the pages and see the current chapter marked in the table of contents.
+- Use configurable keyboard shortcuts in the desktop app.
+- Find and organize books with the refreshed library and folder views.
+
+The complete set of 925 translated interface strings is published as [`locales.csv`](./locales.csv) and attached to each GitHub release.
+
 ## Download
 
-[Visit autumnreader.lat](https://autumnreader.lat/#descargas) to get the current version and see platform availability.
+[Download the Windows installer from GitHub Releases](https://github.com/fserlik/autumn-reader/releases/latest), or visit [autumnreader.lat](https://autumnreader.lat/#descargas) for platform information.
 
 ## Features
 

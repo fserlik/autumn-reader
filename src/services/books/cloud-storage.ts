@@ -1,4 +1,5 @@
 import { auth } from "../auth";
+import { connectivity } from "../connectivity";
 import { cloud, checkError } from "../client";
 import { CloudError, requireOnline } from "../errors";
 import { openDatabase } from "../local/database";
@@ -56,7 +57,7 @@ export const cloudStorage = {
   },
   /** Reconcile cached books removed from another device without downloading files. */
   async reconcile(localBooks: StoredBook[]): Promise<void> {
-    if (!navigator.onLine || auth.state.status !== "authenticated") return;
+    if (!connectivity.usable || auth.state.status !== "authenticated") return;
     const owner = auth.requireUser();
     const ids = [...new Set(localBooks.filter(book => book.ownerId === owner && book.cloudId)
       .map(book => book.cloudId!))];

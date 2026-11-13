@@ -1,4 +1,5 @@
 import { auth } from "../auth";
+import { connectivity } from "../connectivity";
 import { t } from "../../i18n";
 import { cloud, checkError } from "../client";
 import { localGet, localPut, localAll } from "../local/database";
@@ -66,7 +67,7 @@ export const personalReviews = {
     };
     // Save the stable catalog ID before any HTTP request; retry cannot create another catalog entry.
     await personalReviews.saveDraft(draft);
-    if (!draft.dirty && (old || book.cloudId) && navigator.onLine && auth.state.status === "authenticated") {
+    if (!draft.dirty && (old || book.cloudId) && connectivity.usable && auth.state.status === "authenticated") {
       const own = (await reviews.page({ bookId: draft.bookId, userId: owner }).catch(() => []))[0];
       if (own) { draft.rating = own.rating; draft.text = own.text; draft.catalogExists = true; await personalReviews.saveDraft(draft); }
     }

@@ -75,7 +75,7 @@ test("manual title, author and private cover win over embedded metadata", async 
   await expect(card.locator(".library-book-author")).toHaveText("Mi autora");
   await expect(card.locator(".book-cover:not(.book-cover-fallback) > img")).toBeVisible();
   await card.locator(".book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await backToLibrary(page, info.project.name);
   await expect(card.locator(".book-title")).toHaveText("Mi edición");
   await expect(card.locator(".library-book-author")).toHaveText("Mi autora");
@@ -88,7 +88,7 @@ test("local import shares the parser and uploads embedded metadata without chang
   const cloud = await mockCloud(page, true);
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "_OceanofPDF.com_book.epub", mimeType: "application/epub+zip", buffer: bytes });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await backToLibrary(page, info.project.name);
   const card = page.locator(".library-book-card");
   await expect(card.locator(".book-title")).toHaveText("La hipótesis del amor");
@@ -112,7 +112,7 @@ test("EPUB 2 cover pages resolve their nested image instead of becoming a genera
     mimeType: "application/epub+zip",
     buffer: await epub2WrapperCoverFixture(),
   });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await backToLibrary(page, info.project.name);
   await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator(".library-book-card .book-cover:not(.book-cover-fallback) > img")).toBeVisible();
@@ -217,7 +217,7 @@ test("a second account can import the same binary without inheriting the first a
   await login(page, "b@example.org");
   await expect(page.locator(".library-book-card")).toHaveCount(0);
   await page.locator("#file-input").setInputFiles({ name: "shared-copy.epub", mimeType: "", buffer: bytes });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible(); await backToLibrary(page, info.project.name);
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible(); await backToLibrary(page, info.project.name);
   await expect(page.locator(".library-book-card .book-title")).toHaveText("La hipótesis del amor");
   await page.locator(".book-menu summary").click();
   await page.locator(".book-menu-options").getByRole("button", { name: "Editar libro" }).click();

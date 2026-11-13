@@ -28,17 +28,25 @@ export class SwipeGesture {
 }
 export interface GestureCallbacks {
   blocked(ownGesture?: boolean): boolean; start(direction:-1|1): void; drag(dx:number): void;
-  end(commit:boolean,direction:-1|1): void; tap(direction:-1|1): void;
+  end(commit:boolean,direction:-1|1,cancelled?:boolean): void; tap(direction:-1|1): void;
   neutralTap?(): void;
   /** Mobile recognizes the gesture without moving or replacing the live page. */
   discrete?: boolean;
+  manual?: () => boolean;
 }
+// One physical contact can be observed by a surface and an EPUB document.
+// Only the binding that accepted touchstart may finish that contact.
+let activeGestureOwner: symbol | undefined;
+let cancelOwnedGesture: (() => void) | undefined;
+export function cancelPageGesture(): void { cancelOwnedGesture?.(); }
 /** Touch listeners also run in EPUB iframes. System edges use screen coordinates,
  * not the book iframe's local edge. Horizontal locking leaves vertical scroll and long press alone. */
 export function bindPageGestures(target: Document|HTMLElement,getSelection:()=>Selection|null,callbacks:GestureCallbacks):()=>void {
   const coarse=window.matchMedia("(pointer: coarse)").matches;
   const discrete=callbacks.discrete ?? coarse;
   const controller=new AbortController(),gesture=new SwipeGesture(coarse); let active=false,dragging=false,startX=0;
+  const owner = Symbol("page gesture");
+  let suppressClick = false;
   let dragDirection: -1|1 = 1, idleTimer: number | undefined, pointerId: number | undefined, lastX=0,lastY=0;
   const touchWindow = "documentElement" in target ? target.defaultView : target.ownerDocument.defaultView;
   const clearIdle = (): void => { if (idleTimer !== undefined) touchWindow?.clearTimeout(idleTimer); idleTimer=undefined; };
@@ -49,14 +57,19 @@ export function bindPageGestures(target: Document|HTMLElement,getSelection:()=>S
   const cancelDrag = (): void => {
     if (!active) return;
     clearIdle(); releasePointer(); gesture.cancel(); active=false;
-    if (dragging) callbacks.end(false,dragDirection);
+    if (activeGestureOwner === owner) { activeGestureOwner = undefined; cancelOwnedGesture = undefined; }
+    if (dragging && callbacks.manual?.()) suppressClick = true;
+    if (dragging) callbacks.end(false,dragDirection,true);
     dragging=false;
   };
   const finishAt = (x:number,y:number): void => {
     if(!active)return;
     active=false;clearIdle();releasePointer();
+    if (activeGestureOwner === owner) { activeGestureOwner = undefined; cancelOwnedGesture = undefined; }
     const result=gesture.finish(x,y,performance.now());
     if(dragging){
+      if (callbacks.manual?.()) suppressClick = true;
+      if (callbacks.manual?.() && (callbacks.blocked(true) || getSelection()?.isCollapsed===false)) { callbacks.end(false,dragDirection,true); dragging=false;return; }
       if (discrete && (callbacks.blocked(true) || getSelection()?.isCollapsed===false)) callbacks.end(false,result.direction);
       else callbacks.end(result.commit,result.direction);
       dragging=false;return;
@@ -82,6 +95,8 @@ export function bindPageGestures(target: Document|HTMLElement,getSelection:()=>S
   const screenX = (touch: Touch): number => touch.clientX + ("documentElement" in target ? viewport().left : 0);
   const pointerX = (event: PointerEvent): number => event.clientX + ("documentElement" in target ? viewport().left : 0);
   target.addEventListener("touchstart",event=>{
+    if (callbacks.manual?.() && activeGestureOwner && activeGestureOwner !== owner) return;
+    suppressClick = false;
     const e=event as TouchEvent,v=viewport(),touch=e.touches[0];
     if(!touch)return;
     const globalX="documentElement" in target?touch.clientX+v.left:touch.clientX;
@@ -91,6 +106,7 @@ export function bindPageGestures(target: Document|HTMLElement,getSelection:()=>S
     // EPUB's iframe can lay out wider than the visible WebView. Use the
     // visible width so a short phone swipe keeps the same threshold as PDF.
     active=gesture.begin(globalX,touch.clientY,performance.now(),Math.min(v.width,window.innerWidth),e.touches.length!==1||callbacks.blocked()||selected||interactive||globalX<28||globalX>window.innerWidth-28);
+    if (active && callbacks.manual?.()) { activeGestureOwner = owner; cancelOwnedGesture = cancelDrag; }
     dragging=false;startX=lastX=globalX;lastY=touch.clientY;
   },{passive:true,signal:controller.signal});
   target.addEventListener("touchmove",event=>{
@@ -107,21 +123,23 @@ export function bindPageGestures(target: Document|HTMLElement,getSelection:()=>S
         callbacks.start(dragDirection);
       }
     }
-    if(!discrete)armIdle();if(e.cancelable)e.preventDefault();if(!discrete)callbacks.drag(dx);
+    if(!discrete&&!callbacks.manual?.())armIdle();if(e.cancelable)e.preventDefault();if(!discrete)callbacks.drag(dx);
   },{passive:false,signal:controller.signal});
   const finish = (event: Event): void => {
     if(!active)return;const touch=(event as TouchEvent).changedTouches[0];if(!touch){cancelDrag();return;}
     finishAt(screenX(touch),touch.clientY);
   };
   if ("setPointerCapture" in target) {
-    target.addEventListener("pointerdown",event=>{if((event as PointerEvent).pointerType==="touch")pointerId=(event as PointerEvent).pointerId;},{passive:true,signal:controller.signal});
+    // Manual paging uses touch exclusively. Pointer events are only the legacy
+    // fallback for modes that replace the touched PDF element during a swipe.
+    target.addEventListener("pointerdown",event=>{if(!callbacks.manual?.()&&(event as PointerEvent).pointerType==="touch")pointerId=(event as PointerEvent).pointerId;},{passive:true,signal:controller.signal});
     touchWindow?.addEventListener("pointermove",event=>{
       const e=event as PointerEvent;
       if(!active||!dragging||e.pointerId!==pointerId||e.clientX===lastX&&e.clientY===lastY)return;
       const globalX=pointerX(e);
       const dx=gesture.move(globalX,e.clientY,performance.now(),getSelection()?.isCollapsed===false);
       if(dx===undefined){cancelDrag();return;}
-      lastX=globalX;lastY=e.clientY;if(!discrete){armIdle();callbacks.drag(dx);}
+      lastX=globalX;lastY=e.clientY;if(!discrete){if(!callbacks.manual?.())armIdle();callbacks.drag(dx);}
     },{passive:true,signal:controller.signal});
     touchWindow?.addEventListener("pointerup",event=>{const e=event as PointerEvent;if(e.pointerId===pointerId)finishAt(pointerX(e),e.clientY);},{passive:true,signal:controller.signal});
     touchWindow?.addEventListener("pointercancel",event=>{if((event as PointerEvent).pointerId===pointerId)cancelDrag();},{passive:true,signal:controller.signal});
@@ -131,5 +149,6 @@ export function bindPageGestures(target: Document|HTMLElement,getSelection:()=>S
   target.addEventListener("touchcancel",cancelDrag,{passive:true,signal:controller.signal});
   touchWindow?.addEventListener("touchcancel",cancelDrag,{passive:true,signal:controller.signal});
   touchWindow?.addEventListener("blur",cancelDrag,{signal:controller.signal});
-  return ()=>{clearIdle();controller.abort();};
+  target.addEventListener("click",event=>{if(suppressClick){event.preventDefault();event.stopImmediatePropagation();suppressClick=false;}},{capture:true,signal:controller.signal});
+  return ()=>{cancelDrag();clearIdle();controller.abort();};
 }

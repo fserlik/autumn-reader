@@ -1,4 +1,5 @@
 import { auth } from "../auth";
+import { connectivity } from "../connectivity";
 import { folders } from "../folders";
 import { localAll, localGet, localPut } from "../local/database";
 import { bookCache, bookStorage, type UploadProgress } from "../storage";
@@ -256,7 +257,7 @@ async function approvedBooks(retryQuota: boolean): Promise<StoredBook[]> {
   if (
     !owner ||
     auth.state.status !== "authenticated" ||
-    !navigator.onLine ||
+    !connectivity.usable ||
     running
   )
     return [];

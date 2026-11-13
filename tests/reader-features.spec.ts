@@ -38,7 +38,7 @@ async function mockDeviceSpeech(page: Page): Promise<void> {
 }
 
 async function epubSpeechHighlight(page: Page): Promise<string> {
-  return page.frameLocator(".epub-frame iframe").locator("body").evaluate(() => {
+  return page.frameLocator("#reader-content .epub-frame iframe").locator("body").evaluate(() => {
     const registry = (CSS as typeof CSS & {highlights?: {get(name:string): Iterable<Range> | undefined}}).highlights;
     return [...(registry?.get("autumn-tts-current") ?? [])].map(range => range.toString()).join(" ");
   });
@@ -52,10 +52,10 @@ async function pageSpeechHighlight(page: Page): Promise<string> {
 }
 
 async function firstVisibleEpubPassage(page: Page): Promise<string> {
-  return page.frameLocator(".epub-frame iframe").locator("body").evaluate(() => {
+  return page.frameLocator("#reader-content .epub-frame iframe").locator("body").evaluate(() => {
     const frame = window.frameElement as HTMLElement | null;
     const frameRect = frame?.getBoundingClientRect();
-    const clipRect = frame?.closest<HTMLElement>(".epub-frame")?.getBoundingClientRect();
+    const clipRect = frame?.closest<HTMLElement>("#reader-content .epub-frame")?.getBoundingClientRect();
     const scaleX = frameRect?.width ? innerWidth / frameRect.width : 1;
     const scaleY = frameRect?.height ? innerHeight / frameRect.height : 1;
     const bounds = frameRect && clipRect ? {
@@ -116,7 +116,7 @@ test("TTS catalogs local voices, keeps book controls in the reader, and plays of
   })).toMatchObject({ saved: { engine: "system", voices: { system: "local-es" } }, previewCalls: 0 });
 
   await page.locator("#file-input").setInputFiles({name:"Narración.epub",mimeType:"application/epub+zip",buffer:await epubFixture("narration", "Narración")});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   const speechEntry = page.locator(info.project.name === "desktop" ? "#reader-tts-tab" : "#speech-toggle");
   await expect(speechEntry).toBeVisible();
   await speechEntry.click();
@@ -203,7 +203,7 @@ test("Free plan shows the same local reader controls without premium speech", as
     mimeType: "application/epub+zip",
     buffer: await epubFixture("free-speech", "Lectura"),
   });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   const speechEntry = page.locator(info.project.name === "desktop" ? "#reader-tts-tab" : "#speech-toggle");
   await expect(speechEntry).toBeVisible();
   await speechEntry.click();
@@ -262,7 +262,7 @@ test("EPUB TTS starts at the first text visible on the current reading page", as
   await login(page);
   if (info.project.name === "android") await page.setViewportSize({ width: 375, height: 667 });
   await page.locator("#file-input").setInputFiles({ name: "Visible.epub", mimeType: "application/epub+zip", buffer: await epubFixture("visible", "Visible") });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   for (let turn = 0; turn < 2; turn += 1) {
     const before = await saved(page);
     await page.locator("#next-button").click();
@@ -312,7 +312,7 @@ test("folder tiles contain books offline, support moving out, survive reload, an
   await mockCloud(page,true);await page.goto("/");await login(page);
   await context.setOffline(true);
   await page.locator("#file-input").setInputFiles({name:"Philosophy.epub",mimeType:"application/epub+zip",buffer:await epubFixture("philosophy", "Philosophy")});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#folder-new").click();await page.locator("#folder-name").fill("Filosofía");await page.locator('#folder-form [type="submit"]').click();
   const tile=page.locator(".folder-tile");
@@ -340,12 +340,12 @@ test("folder tiles contain books offline, support moving out, survive reload, an
   await expect(page.locator("#library-list .book-title")).toHaveCount(1);
   await page.locator("#folder-delete").click();await page.locator("#confirm-accept").click();
   await expect(tile).toHaveCount(0);await expect(page.locator("#library-list .book-title")).toHaveCount(1);
-  await page.locator("#library-list .book-title").click();await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await page.locator("#library-list .book-title").click();await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
 });
 test("EPUB search supports a phrase and history without overwriting offline reading CFI",async({page,context})=>{
   await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:"Search.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();await context.setOffline(true);
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();await context.setOffline(true);
   const start=await saved(page);await page.locator("#next-button").click();await expect.poll(async()=>(await saved(page)).cfi).not.toBe(start.cfi);
   const first=await saved(page);await page.locator("#next-button").click();await expect.poll(async()=>(await saved(page)).cfi).not.toBe(first.cfi);
   const anchor=await saved(page);await clickReaderOption(page, "#book-search-button");await page.locator("#book-search-input").fill("PARAGRAPH 0: autumn reading");
@@ -382,45 +382,44 @@ test("spacing persists in PDF reflow and EPUB, while the original PDF canvas sta
   await page.locator(info.project.name === "desktop" ? "#desktop-reader-back" : "#back-button").click();
   await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#spacing-reset").click();
   await page.locator("#file-input").setInputFiles({name:"SpacingEPUB.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  expect(await page.frameLocator(".epub-frame iframe").locator("#autumn-spacing").textContent()).toContain("1.6");
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
+  expect(await page.frameLocator("#reader-content .epub-frame iframe").locator("#autumn-spacing").textContent()).toContain("1.6");
   await page.locator(info.project.name === "desktop" ? "#desktop-reader-back" : "#back-button").click();await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list").getByRole("button",{name:"SpacingPDF",exact:true}).click();
   await expect(page.locator(".pdf-page")).toBeVisible();expect(Math.abs((await page.locator(".pdf-page").boundingBox())!.width-before!.width)).toBeLessThan(8);
   await page.reload();await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-page-tab").click();await expect(page.locator("#line-spacing")).toHaveValue("1.6");
 });
-for (const format of ["pdf","epub"] as const) test(`${format} mobile swipe waits for release, turns once, and preserves selection and vertical scroll`,async({page},info)=>{
+for (const format of ["pdf","epub"] as const) test(`${format} with movement disabled, mobile swipe waits for release, turns once, and preserves selection and vertical scroll`,async({page},info)=>{
   test.skip(info.project.name!=="android","Touch WebView viewport");
+  await page.addInitScript(() => localStorage.setItem("autumn-page-turn-animation", "off"));
   await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:`Swipe.${format}`,mimeType:format==="pdf"?"application/pdf":"application/epub+zip",buffer:format==="pdf"?samplePdf():await epubFixture()});
-  await expect(page.locator(format==="pdf"?".pdf-reading-text":".epub-frame iframe")).toBeVisible();
+  await expect(page.locator(format==="pdf"?".pdf-reading-text":"#reader-content .epub-frame iframe")).toBeVisible();
   const cdp=await page.context().newCDPSession(page),rect=(await page.locator("#reading-surface").boundingBox())!;
   const x=rect.x+rect.width*.7,y=rect.y+rect.height*.5;
   const touch=async(type:"touchStart"|"touchMove"|"touchEnd",tx=x,ty=y)=>cdp.send("Input.dispatchTouchEvent",{type,touchPoints:type==="touchEnd"?[]:[{x:tx,y:ty}]});
   const position=await page.locator("#position-label").textContent(),anchor=await saved(page);
   await touch("touchStart");await touch("touchMove",x-17);
   await touch("touchMove",x-20);await expect(page.locator("#position-label")).toHaveText(position!);
-  if(format==="epub")await expect(page.locator(".page-turn-preview")).toHaveCount(1);
-  else await expect(page.locator(".page-turn-snapshot, .page-turn-preview")).toHaveCount(0);
+  await expect(page.locator(".page-turn-snapshot, .page-turn-preview")).toHaveCount(0);
   expect((await saved(page)).page).toBe(anchor.page);expect((await saved(page)).cfi).toBe(anchor.cfi);
   await touch("touchEnd");await expect(page.locator(".page-turn-snapshot")).toHaveCount(0);await expect(page.locator("#position-label")).toHaveText(position!);
   await touch("touchStart");await touch("touchMove",x-20);await touch("touchMove",x-55);
-  if(format==="epub")await expect(page.locator(".page-turn-preview")).toHaveCount(1);
-  else await expect(page.locator(".page-turn-snapshot, .page-turn-preview")).toHaveCount(0);
+  await expect(page.locator(".page-turn-snapshot, .page-turn-preview")).toHaveCount(0);
   await expect(page.locator("#reader-content")).toHaveCSS("transform","none");
   await page.screenshot({path:info.outputPath(`${format}-gesture-detected.png`)});
   await touch("touchEnd");
-  await touch("touchStart");await touch("touchMove",x-55);await touch("touchEnd");
   await expect(page.locator(".page-turn-snapshot")).toHaveCount(0);await expect(page.locator("#position-label")).not.toHaveText(position!);
   const after=await page.locator("#position-label").textContent();
   expect(Number(after!.match(/(\d+)\/\d+$/)?.[1])).toBe(Number(position!.match(/(\d+)\/\d+$/)?.[1])+1);
   await page.waitForTimeout(450);await expect(page.locator("#position-label")).toHaveText(after!);
   await touch("touchStart");await touch("touchMove",x-10,y+80);await touch("touchEnd");await expect(page.locator("#position-label")).toHaveText(after!);
   const select=()=>{const node=document.querySelector(".pdf-reading-text p span")?.firstChild??document.querySelector("p")?.firstChild;if(node){const range=document.createRange();range.selectNodeContents(node);window.getSelection()!.removeAllRanges();window.getSelection()!.addRange(range);}};
-  if(format==="pdf")await page.evaluate(select);else await page.frameLocator(".epub-frame iframe").locator("body").evaluate(select);
+  if(format==="pdf")await page.evaluate(select);else await page.frameLocator("#reader-content .epub-frame iframe").locator("body").evaluate(select);
   await touch("touchStart");await touch("touchMove",x-130);await touch("touchEnd");await expect(page.locator("#position-label")).toHaveText(after!);
 });
-test("Android PDF never replaces a page during drag, so a lost touchend leaves it usable",async({page},info)=>{
+test("With movement disabled, Android PDF never replaces a page during drag, so a lost touchend leaves it usable",async({page},info)=>{
   test.skip(info.project.name!=="android","Touch WebView viewport");
+  await page.addInitScript(() => localStorage.setItem("autumn-page-turn-animation", "off"));
   await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:"Interrupted.pdf",mimeType:"application/pdf",buffer:samplePdf()});
   await expect(page.locator(".pdf-reading-text")).toBeVisible();
@@ -448,17 +447,20 @@ test("Android PDF never replaces a page during drag, so a lost touchend leaves i
   await page.locator("#next-button").click();
   await expect(page.locator("#position-label")).not.toHaveText(before!);
 });
-test("Android right swipe crosses a PDF boundary only on release and a lost touchend cannot leave a half page",async({page},info)=>{
+test("With movement disabled, Android right swipe crosses a PDF boundary only on release and a lost touchend cannot leave a half page",async({page},info)=>{
   test.skip(info.project.name!=="android","Touch WebView viewport");
+  await page.addInitScript(() => localStorage.setItem("autumn-page-turn-animation", "off"));
   await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:"Backwards.pdf",mimeType:"application/pdf",buffer:samplePdf()});
   await expect(page.locator(".pdf-reading-text")).toBeVisible();
   for(let i=0;i<20 && (await saved(page)).page===1;i++){
     await page.locator("#next-button").click();
     await expect(page.locator(".page-turn-sheet")).toHaveCount(0);
+    await expect(page.locator("#next-button")).toBeEnabled();
   }
   await expect.poll(async()=>(await saved(page)).page).toBe(2);
   await expect(page.locator("#reader-content")).toHaveCSS("touch-action","pan-y");
+  await expect(page.locator("#previous-button")).toBeEnabled();
   const cdp=await page.context().newCDPSession(page),rect=(await page.locator("#reading-surface").boundingBox())!;
   const x=rect.x+rect.width*.3,y=rect.y+rect.height*.5;
   const touch=async(type:"touchStart"|"touchMove"|"touchEnd"|"touchCancel",tx=x,ty=y)=>cdp.send("Input.dispatchTouchEvent",{type,touchPoints:type==="touchEnd"||type==="touchCancel"?[]:[{x:tx,y:ty}]});
@@ -478,8 +480,9 @@ test("Android right swipe crosses a PDF boundary only on release and a lost touc
   await expect.poll(async()=>(await saved(page)).page).toBe(2);
   await expect(page.locator("#previous-button")).toBeEnabled();
 });
-test("Android right swipe also returns to the previous original-layout PDF page",async({page},info)=>{
+test("With movement disabled, Android right swipe also returns to the previous original-layout PDF page",async({page},info)=>{
   test.skip(info.project.name!=="android","Touch WebView viewport");
+  await page.addInitScript(() => localStorage.setItem("autumn-page-turn-animation", "off"));
   await mockCloud(page,true);await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:"OriginalBack.pdf",mimeType:"application/pdf",buffer:samplePdf()});
   await selectReaderOption(page,"#pdf-reading-mode","original");
@@ -508,7 +511,7 @@ test("PDF turn releases the reader if WebView never resolves its animation",asyn
 for(const format of ["pdf","epub"] as const)test(`${format} page turn animates buttons and keyboard, can be disabled and respects reduced motion`,async({page},info)=>{
   await mockCloud(page,true);await page.addInitScript(()=>localStorage.setItem("autumn-language","es"));await page.goto("/");await login(page);
   await page.locator("#file-input").setInputFiles({name:`Turn.${format}`,mimeType:format==="pdf"?"application/pdf":"application/epub+zip",buffer:format==="pdf"?samplePdf():await epubFixture()});
-  await expect(page.locator(format==="pdf"?".pdf-reading-text":".epub-frame iframe")).toBeVisible();
+  await expect(page.locator(format==="pdf"?".pdf-reading-text":"#reader-content .epub-frame iframe")).toBeVisible();
   const initial=await saved(page);
   await page.locator("#next-button").click();
   await expect(page.locator(".page-turn-sheet")).toHaveCount(1);
@@ -516,14 +519,16 @@ for(const format of ["pdf","epub"] as const)test(`${format} page turn animates b
   await page.screenshot({path:info.outputPath(`${format}-page-turn.png`)});
   await expect(page.locator(".page-turn-sheet")).toHaveCount(0);
   await expect.poll(async()=>{const position=await saved(page);return format==="pdf"?position.pdfTextOffset:position.cfi;}).not.toBe(format==="pdf"?initial.pdfTextOffset:initial.cfi);
-  await page.keyboard.press("ArrowLeft");await expect(page.locator(".page-turn-sheet")).toHaveCount(1);await expect(page.locator(".page-turn-sheet")).toHaveCount(0);
+  if (info.project.name === "desktop") {
+    await page.keyboard.press("ArrowLeft");await expect(page.locator(".page-turn-sheet")).toHaveCount(1);await expect(page.locator(".page-turn-sheet")).toHaveCount(0);
+  }
   await page.locator(info.project.name === "desktop" ? "#desktop-reader-back" : "#back-button").click();
   await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-interface-tab").click();
   await expect(page.locator("#page-turn-animation")).toBeChecked();await page.locator("#page-turn-animation").uncheck();
   await expect(page.locator("#page-turn-animation-status")).toHaveText("Desactivada");
   expect(await page.evaluate(()=>localStorage.getItem("autumn-page-turn-animation"))).toBe("off");
   await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list .book-title").click();
-  await expect(page.locator(format==="pdf"?".pdf-reading-text":".epub-frame iframe")).toBeVisible();
+  await expect(page.locator(format==="pdf"?".pdf-reading-text":"#reader-content .epub-frame iframe")).toBeVisible();
   const beforeInstant=await saved(page);await page.locator("#next-button").click();
   await expect(page.locator(".page-turn-sheet")).toHaveCount(0);
   await expect.poll(async()=>{const position=await saved(page);return format==="pdf"?position.pdfTextOffset:position.cfi;}).not.toBe(format==="pdf"?beforeInstant.pdfTextOffset:beforeInstant.cfi);
@@ -532,7 +537,7 @@ for(const format of ["pdf","epub"] as const)test(`${format} page turn animates b
   await page.locator("#page-turn-animation").check();await page.emulateMedia({reducedMotion:"reduce"});
   await expect(page.locator("#page-turn-animation-status")).toHaveText("Reducida por el sistema");
   await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list .book-title").click();
-  await expect(page.locator(format==="pdf"?".pdf-reading-text":".epub-frame iframe")).toBeVisible();
+  await expect(page.locator(format==="pdf"?".pdf-reading-text":"#reader-content .epub-frame iframe")).toBeVisible();
   const beforeReduced=await saved(page);await page.locator(format==="epub"?"#next-button":"#previous-button").click();
   await expect(page.locator(".page-turn-sheet")).toHaveCount(0);
   await expect.poll(async()=>{const position=await saved(page);return format==="pdf"?position.pdfTextOffset:position.cfi;}).not.toBe(format==="pdf"?beforeReduced.pdfTextOffset:beforeReduced.cfi);
@@ -629,7 +634,7 @@ for(const format of ["pdf","epub"] as const)test(`${format} selection translates
   await page.goto("/");await login(page);await page.locator("#file-input").setInputFiles({name:`Translate.${format}`,mimeType:format==="pdf"?"application/pdf":"application/epub+zip",buffer:format==="pdf"?samplePdf():await epubFixture()});
   const selectText=(element:Element)=>{const node=element.querySelector("span")?.firstChild??element.firstChild;const range=document.createRange();range.selectNodeContents(node!);window.getSelection()!.removeAllRanges();window.getSelection()!.addRange(range);element.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:80}));};
   if(format==="pdf"){await expect(page.locator(".pdf-reading-text")).toBeVisible();await page.locator(".pdf-reading-text p").first().evaluate(selectText);}
-  else{await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.frameLocator(".epub-frame iframe").locator("p").first().evaluate(selectText);}
+  else{await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();await page.frameLocator("#reader-content .epub-frame iframe").locator("p").first().evaluate(selectText);}
   await expect(page.locator("#selection-highlight")).toHaveCount(0);await expect(page.locator("#note-add")).toBeVisible();await page.locator("#selection-translate").click();
   // Let the mobile selection debounce elapse: it must not reopen a menu over translation.
   if(info.project.name==="android")await page.waitForTimeout(450);
@@ -648,12 +653,16 @@ test("PDF internal link and outline use temporary history and restore the true r
   expect((await saved(page)).page).toBe(2);await page.locator("#reading-return").click();await expect(page.locator("#position-label")).toContainText("2");
   await selectReaderOption(page, "#reader-toc", {label:"Chapter One"});await expect(page.locator("#reading-return")).toBeVisible();expect((await saved(page)).page).toBe(2);await page.locator("#reading-return").click();
 });
-test("EPUB searches across inline markup and chapters; internal links/TOC and iframe keyboard preserve the reading anchor",async({page})=>{
+test("EPUB searches across inline markup and chapters; internal links/TOC and iframe keyboard preserve the reading anchor",async({page},info)=>{
   await mockCloud(page,true);await page.goto("/");await login(page);await page.locator("#file-input").setInputFiles({name:"Chapters.epub",mimeType:"application/epub+zip",buffer:await multiChapterFixture()});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();await expect.poll(async()=>(await saved(page)).cfi).toBeTruthy();const anchor=await saved(page);
-  await page.frameLocator(".epub-frame iframe").getByText("Consultar segundo capítulo").click();await expect(page.locator("#reading-return")).toBeVisible();expect((await saved(page)).cfi).toBe(anchor.cfi);
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();await expect.poll(async()=>(await saved(page)).cfi).toBeTruthy();const anchor=await saved(page);
+  if (info.project.name === "android") await expect(page.locator(".reader-toolbar")).toBeHidden({ timeout: 10_000 });
+  await page.frameLocator("#reader-content .epub-frame iframe").getByText("Consultar segundo capítulo").click();await expect(page.locator("#reading-return")).toBeVisible();expect((await saved(page)).cfi).toBe(anchor.cfi);
   await page.locator("#reading-return").click();await selectReaderOption(page, "#reader-toc", {label:"Second chapter"});await expect(page.locator("#reading-return")).toBeVisible();
-  await page.locator("#reading-return").click();await page.frameLocator(".epub-frame iframe").locator("body").press("Control+f");await expect(page.locator("#book-search-panel")).toBeVisible();
+  await page.locator("#reading-return").click();
+  if (info.project.name === "desktop") await page.frameLocator("#reader-content .epub-frame iframe").locator("body").press("Control+f");
+  else await page.locator("#book-search-button").evaluate(element => (element as HTMLButtonElement).click());
+  await expect(page.locator("#book-search-panel")).toBeVisible();
   await page.locator("#book-search-input").fill("FREEDOM ACROSS CHAPTERS");await expect(page.locator("#book-search-status")).toHaveText("2 resultados");
   await page.locator("#search-next").click();await expect(page.locator("#position-label")).toContainText("2");expect((await saved(page)).cfi).toBe(anchor.cfi);
   await page.locator("#book-search-close").click();await page.locator("#reading-return").click();
@@ -668,7 +677,7 @@ test("EPUB spacing survives a new chapter, theme/font changes and reopening",asy
   await page.locator("#line-spacing").fill("2.2");await page.locator("#line-spacing").dispatchEvent("change");
   await page.locator("#paragraph-spacing").fill("1.5");await page.locator("#paragraph-spacing").dispatchEvent("change");
   await page.locator("#file-input").setInputFiles({name:"Chapter spacing.epub",mimeType:"application/epub+zip",buffer:await multiChapterFixture()});
-  const spacing=async()=>page.frameLocator(".epub-frame iframe").locator("p").first().evaluate(element=>{
+  const spacing=async()=>page.frameLocator("#reader-content .epub-frame iframe").locator("p").first().evaluate(element=>{
     const style=getComputedStyle(element),ratio=(value:string)=>Math.round(parseFloat(value)/parseFloat(style.fontSize)*1000)/1000;return {line:ratio(style.lineHeight),paragraph:ratio(style.marginBottom)};
   });
   await expect.poll(spacing).toEqual({line:2.2,paragraph:1.5});
@@ -677,7 +686,7 @@ test("EPUB spacing survives a new chapter, theme/font changes and reopening",asy
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="settings"]').click();await page.locator("#settings-interface-tab").click();await page.locator('[data-theme-choice="dark"]').click();
   await page.locator('.nav-button[data-view="library"]').click();await page.locator("#library-list .book-title").click();await expect.poll(spacing).toEqual({line:2.2,paragraph:1.5});
-  await expect(page.frameLocator(".epub-frame iframe").locator("body")).toHaveCSS("background-color","rgb(36, 31, 29)");
+  await expect(page.frameLocator("#reader-content .epub-frame iframe").locator("body")).toHaveCSS("background-color","rgb(36, 31, 29)");
 });
 
 for(const format of ["pdf","epub"] as const)test(`${format} adding a note preserves its highlight, progress and return navigation`,async({page},info)=>{
@@ -685,7 +694,7 @@ for(const format of ["pdf","epub"] as const)test(`${format} adding a note preser
   await page.locator("#file-input").setInputFiles({name:`Highlight.${format}`,mimeType:format==="pdf"?"application/pdf":"application/epub+zip",buffer:format==="pdf"?samplePdf():await epubFixture()});
   const select=(element:Element)=>{const node=element.querySelector("span")?.firstChild??element.firstChild;const range=document.createRange();range.selectNodeContents(node!);window.getSelection()!.removeAllRanges();window.getSelection()!.addRange(range);element.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:80}));};
   if(format==="pdf"){await expect(page.locator(".pdf-reading-text")).toBeVisible();await page.locator(".pdf-reading-text p").first().evaluate(select);}
-  else{await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.frameLocator(".epub-frame iframe").locator("p").first().evaluate(select);}
+  else{await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();await page.frameLocator("#reader-content .epub-frame iframe").locator("p").first().evaluate(select);}
   await expect(page.locator("#selection-highlight")).toHaveCount(0);await page.locator("#note-add").click();
   await page.locator("#note-text").fill("Mi nota sobre este fragmento");await page.locator("#note-save").click();await expect(page.locator("#notes-count")).toHaveText("1");
   if(format==="pdf")await selectReaderOption(page,"#pdf-reading-mode","original");
@@ -717,7 +726,7 @@ for(const format of ["pdf","epub"] as const)test(`saved note appearance is selec
   await page.locator("#file-input").setInputFiles({name:`Note style.${format}`,mimeType:format==="pdf"?"application/pdf":"application/epub+zip",buffer:format==="pdf"?samplePdf():await epubFixture()});
   const select=(element:Element)=>{const node=element.querySelector("span")?.firstChild??element.firstChild;const range=document.createRange();range.selectNodeContents(node!);window.getSelection()!.removeAllRanges();window.getSelection()!.addRange(range);element.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:80}));};
   if(format==="pdf"){await expect(page.locator(".pdf-reading-text")).toBeVisible();await page.locator(".pdf-reading-text p").first().evaluate(select);}
-  else{await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.frameLocator(".epub-frame iframe").locator("p").first().evaluate(select);}
+  else{await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();await page.frameLocator("#reader-content .epub-frame iframe").locator("p").first().evaluate(select);}
   await page.locator("#note-add").click();await page.locator("#note-text").fill("Nota con estilo");await page.locator("#note-save").click();
   const noteMark=page.locator(format==="pdf"?'.note-highlight[data-note-style="strikethrough"]':'g[ref="autumn-note-strikethrough"]');
   await expect.poll(async()=>noteMark.count()).toBeGreaterThan(0);
@@ -736,7 +745,7 @@ for(const format of ["pdf","epub"] as const)test(`${format} note accepts blue an
   await page.locator("#file-input").setInputFiles({name:`Colour.${format}`,mimeType:format==="pdf"?"application/pdf":"application/epub+zip",buffer:format==="pdf"?samplePdf():await epubFixture()});
   const select=(element:Element)=>{const node=element.querySelector("span")?.firstChild??element.firstChild;const range=document.createRange();range.selectNodeContents(node!);window.getSelection()!.removeAllRanges();window.getSelection()!.addRange(range);element.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:80}));};
   if(format==="pdf"){await expect(page.locator(".pdf-reading-text")).toBeVisible();await page.locator(".pdf-reading-text p").first().evaluate(select);}
-  else{await expect(page.locator(".epub-frame iframe")).toBeVisible();await page.frameLocator(".epub-frame iframe").locator("p").first().evaluate(select);}
+  else{await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();await page.frameLocator("#reader-content .epub-frame iframe").locator("p").first().evaluate(select);}
   await page.locator("#note-add").click();await page.locator(".note-color").nth(7).click();
   await expect(page.locator(".note-color").nth(7)).toHaveAttribute("aria-pressed","true");
   await page.locator("#note-custom-color").fill("#61b7f3");await page.locator("#note-text").fill("Color propio");

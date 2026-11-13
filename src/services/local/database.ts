@@ -70,6 +70,9 @@ export async function localPut<T extends { id: string }>(
 ): Promise<void> {
   await request(store, "readwrite", (s) => s.put(value));
 }
+export async function localDelete(store: StoreName, id: string): Promise<void> {
+  await request(store, "readwrite", (s) => s.delete(id));
+}
 export async function localAll<T>(store: StoreName): Promise<T[]> {
   return request(store, "readonly", (s) => s.getAll()) as Promise<T[]>;
 }

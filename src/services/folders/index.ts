@@ -1,4 +1,5 @@
 import { auth } from "../auth";
+import { connectivity } from "../connectivity";
 import { cloud, checkError } from "../client";
 import { localAll, openDatabase } from "../local/database";
 import { newUuid } from "../platform/ids";
@@ -107,7 +108,7 @@ export const folders = {
   },
   async refresh(bookIds: string[] = []): Promise<void> {
     const owner = auth.state.ownerId;
-    if (!owner || auth.state.status !== "authenticated" || !navigator.onLine) return;
+    if (!owner || auth.state.status !== "authenticated" || !connectivity.usable) return;
     const remoteFolders: LibraryFolder[] = [], remoteMembers: FolderMembership[] = [];
     for (let offset = 0; ; offset += 100) {
       const { data, error } = await cloud().from("library_folders").select("*").eq("user_id", owner).order("id").range(offset, offset + 99);

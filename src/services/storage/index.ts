@@ -17,6 +17,7 @@ import {
 import { withTimeout } from "../platform/network";
 import { t } from "../../i18n";
 import type { CloudUsage } from "../types";
+import { connectivity } from "../connectivity";
 import { ensureBookContentMetadata } from "../books/content-metadata";
 import { bookDisplayTitle } from "../books/display";
 
@@ -126,6 +127,7 @@ async function backend<T>(
         throw new CloudError("session_expired");
       }
     }
+    if (!context) connectivity.markOffline();
     throw new CloudError(signal?.aborted ? "cancelled" : "cloud_unavailable");
   }
   if (!data) throw new CloudError("cloud_unavailable");

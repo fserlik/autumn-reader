@@ -11,7 +11,7 @@ test("local imports remain available offline without uploading or enqueueing clo
   await context.setOffline(true);
   const files = await Promise.all([1, 2, 3].map(async i => ({name:`Local ${i}.epub`, mimeType:"application/epub+zip", buffer:await epubFixture(`local-${i}`)})));
   await page.locator("#file-input").setInputFiles(files);
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
   await expect(page.locator("#library-list .book-title")).toHaveCount(3);
@@ -35,9 +35,9 @@ test("account library warms metadata once; EPUB reads offline, queues changes an
   await expect(page.locator("#library-list .book-title")).toHaveCount(1);
   await expect.poll(() => cloud.downloads).toBe(1);
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await expect(
-    page.frameLocator(".epub-frame iframe").locator("h1"),
+    page.frameLocator("#reader-content .epub-frame iframe").locator("h1"),
   ).toHaveText("Cloud chapter");
   expect(cloud.downloads).toBe(1);
   await context.setOffline(true);
@@ -66,7 +66,7 @@ test("account library warms metadata once; EPUB reads offline, queues changes an
   await page.reload();
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   expect(cloud.downloads).toBe(1);
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
@@ -75,7 +75,7 @@ test("account library warms metadata once; EPUB reads offline, queues changes an
   cloud.stalled = true;
   const start = Date.now();
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   expect(Date.now() - start).toBeLessThan(1400);
   expect(cloud.downloads).toBe(1);
 });
@@ -87,7 +87,7 @@ test("offline logout and another account hide the first account's cached file an
   await page.goto("/");
   await login(page);
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await context.setOffline(true);
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="settings"]').click();
@@ -279,13 +279,13 @@ test("a remembered expired account can open its downloaded EPUB after an offline
   await page.goto("/");
   await login(page);
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await context.setOffline(true);
   await page.evaluate(() => { localStorage.removeItem("autumn-auth"); });
   await page.reload();
   await expect(page.locator("#auth-entry")).toBeHidden();
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   expect(cloud.downloads).toBe(1);
 });

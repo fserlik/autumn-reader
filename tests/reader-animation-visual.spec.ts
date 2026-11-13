@@ -17,7 +17,7 @@ for (const mode of ["epub", "pdf-text", "pdf-original"] as const) test(`${mode} 
   await mockCloud(page, true);
   await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:`Frames.${format}`,mimeType:format === "epub" ? "application/epub+zip" : "application/pdf",buffer:format === "epub" ? await epubFixture() : samplePdf()});
-  await expect(page.locator(format === "epub" ? ".epub-frame iframe" : ".pdf-reading-text")).toBeVisible();
+  await expect(page.locator(format === "epub" ? "#reader-content .epub-frame iframe" : ".pdf-reading-text")).toBeVisible();
   if (mode === "pdf-original") await selectReaderOption(page, "#pdf-reading-mode", "original");
   await page.evaluate(() => {
     const samples: { t:number; currentX:number; adjacentX:number; animated:boolean; adjacentVisible:boolean }[] = [];
@@ -53,7 +53,7 @@ for (const mode of ["epub", "pdf-text", "pdf-original"] as const) test(`${mode} 
 test("EPUB turn remains animated when moving into the next chapter", async ({page}) => {
   await mockCloud(page,true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Chapters.epub",mimeType:"application/epub+zip",buffer:await multiChapterFixture()});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   let crossed = false;
   for (let i=0; i<16; i++) {
     const before = await page.locator("#position-label").textContent();
@@ -65,13 +65,13 @@ test("EPUB turn remains animated when moving into the next chapter", async ({pag
     if (/^Section 1\b/.test(before ?? "") && /^Section 2\b/.test(after ?? "")) { crossed = true; break; }
   }
   expect(crossed).toBe(true);
-  await expect(page.frameLocator(".epub-frame iframe").locator("body")).toContainText("Second chapter");
+  await expect(page.frameLocator("#reader-content .epub-frame iframe").locator("body")).toContainText("Second chapter");
 });
 
 test("EPUB turn keeps its current-page cover hidden until typography is stable", async ({page}) => {
   await mockCloud(page,true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({name:"Stable type.epub",mimeType:"application/epub+zip",buffer:await epubFixture()});
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.evaluate(() => {
     const testWindow = window as Window & { releasePreviewFonts?: () => void };
     let releaseFonts!: (fonts: FontFaceSet) => void;
@@ -97,7 +97,7 @@ test("EPUB turn keeps its current-page cover hidden until typography is stable",
   await page.evaluate(() => (window as Window & { releasePreviewFonts?: () => void }).releasePreviewFonts?.());
   await expect(preview).toHaveAttribute("data-ready", "true");
   await expect(preview).toHaveCSS("visibility", "visible");
-  const typography = await page.locator(".epub-frame iframe").evaluateAll(frames => frames.map(frame => {
+  const typography = await page.locator("#reader-content .epub-frame iframe, .page-turn-preview .epub-frame iframe").evaluateAll(frames => frames.map(frame => {
     const body = (frame as HTMLIFrameElement).contentDocument!.body;
     const style = getComputedStyle(body);
     return { fontSize: style.fontSize, textSizeAdjust: style.textSizeAdjust };

@@ -9,6 +9,7 @@ import { hasLocalFile, type StoredBook } from "../storage";
 import type { CloudStorageBook, CloudUsage } from "../services/types";
 import { language, t } from "../i18n";
 import { accountIcon } from "./account-icons";
+import { connectivity } from "../services/connectivity";
 
 export const formatBytes = (bytes: number): string => {
   const mib = bytes / 1048576;
@@ -66,7 +67,7 @@ export function mountAccountStorage(
   };
   const refreshUsage = async () => {
     const current = auth.state.ownerId;
-    if (!dialog.open || auth.state.status !== "authenticated" || !navigator.onLine) return;
+    if (!dialog.open || auth.state.status !== "authenticated" || !connectivity.usable) return;
     try {
       const value = await library.quota();
       if (auth.state.ownerId === current) summary(value);
@@ -114,7 +115,7 @@ export function mountAccountStorage(
   };
   const load = async (reset: boolean) => {
     if (loading) return;
-    if (!navigator.onLine) { message.textContent = t("removeCloudOffline"); return; }
+    if (!connectivity.usable) { message.textContent = t("removeCloudOffline"); return; }
     const current = auth.state.ownerId;
     if (!current || auth.state.status !== "authenticated") return;
     const token = ++generation;
@@ -139,7 +140,7 @@ export function mountAccountStorage(
   confirm.addEventListener("cancel", event => { if (removing) event.preventDefault(); });
   removeButton.addEventListener("click", () => {
     if (!selected || removing) return;
-    if (!navigator.onLine) { removeError.textContent = t("removeCloudOffline"); return; }
+    if (!connectivity.usable) { removeError.textContent = t("removeCloudOffline"); return; }
     const entry = selected;
     removing = true; removeButton.disabled = true;
     void cloudStorage.remove(entry.book_id).then(async value => {

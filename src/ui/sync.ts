@@ -10,6 +10,7 @@ import {
 import type { UploadProgress } from "../services/storage";
 import { listBooks, type StoredBook } from "../storage";
 import { errorMessage } from "../services/errors";
+import { connectivity } from "../services/connectivity";
 import { library } from "../services/books";
 import { t } from "../i18n";
 import { accountIcon } from "./account-icons";
@@ -31,7 +32,7 @@ export function mountSync(
   let lastFailure = "";
   const quota = async (): Promise<void> => {
     const owner = auth.state.ownerId;
-    if (auth.state.status !== "authenticated" || !navigator.onLine) {
+    if (auth.state.status !== "authenticated" || !connectivity.usable) {
       find("#server-pending").textContent = "";
       return;
     }

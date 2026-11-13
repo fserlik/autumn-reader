@@ -21,10 +21,11 @@ test("authenticated password change checks current password, confirmation, polic
   expect(cloud.passwordUpdates).toHaveLength(0);
   await dialog.locator('[name="confirm"]').fill("example-next-password");
   await context.setOffline(true);
-  await dialog.locator('button[type="submit"]').click();
-  await expect(page.locator(".account-password-error")).toContainText("conexión");
+  await expect(page.locator("#settings-account-sheet")).toBeHidden();
+  await expect(page.locator("#settings-account-footer")).toBeVisible();
   expect(cloud.passwordUpdates).toHaveLength(0);
   await context.setOffline(false);
+  await expect(page.locator("#settings-account-sheet")).toBeVisible();
   cloud.passwordFailure = "current";
   await dialog.locator('button[type="submit"]').click();
   await expect(page.locator(".account-password-error")).toContainText("actual no es correcta");
@@ -52,7 +53,7 @@ test("removing a downloaded book frees cloud quota while its offline file remain
   await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   const firstBack = page.locator("#desktop-reader-back:visible, #back-button:visible");
   if (await firstBack.isVisible()) await firstBack.click();
   else await page.locator("#desktop-reader-back").click();
@@ -75,7 +76,7 @@ test("removing a downloaded book frees cloud quota while its offline file remain
   await expect(page.locator("#library-list .cloud-badge.state-local")).toHaveCount(1);
   await context.setOffline(true);
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
 });
 
 test("cloud-only removal warns clearly and does not download the file", async ({ page }) => {
@@ -102,7 +103,7 @@ test("a removed local book can be synchronized again without losing its cached E
   await page.goto("/"); await login(page);
   await page.locator('.nav-button[data-view="library"]').click();
   await page.locator("#library-list .book-title").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   const secondBack = page.locator("#desktop-reader-back:visible, #back-button:visible");
   if (await secondBack.isVisible()) await secondBack.click();
   else await page.locator("#desktop-reader-back").click();

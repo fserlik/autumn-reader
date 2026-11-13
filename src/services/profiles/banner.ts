@@ -5,6 +5,7 @@ import { optimizeCover } from "../storage/covers";
 import { newUuid } from "../platform/ids";
 import { t } from "../../i18n";
 import type { Profile } from "../types";
+import { connectivity } from "../connectivity";
 
 interface BannerCache { id: string; ownerId: string; url: string; blob: Blob }
 const inputLimit = 10 * 1024 * 1024;
@@ -42,7 +43,7 @@ export async function ownBanner(profile: Profile): Promise<Blob | null> {
   if (!owner || owner !== profile.id || !profile.banner_url) return null;
   const cached = await localGet<BannerCache>("cloud_state", `banner:${owner}`);
   if (cached?.ownerId === owner && cached.url === profile.banner_url) return cached.blob;
-  if (!navigator.onLine) return null;
+  if (!connectivity.usable) return null;
   const expected = cloud().storage.from("avatars").getPublicUrl(`${owner}/banner`).data.publicUrl;
   const remote = new URL(profile.banner_url), allowed = new URL(expected);
   if (remote.origin !== allowed.origin || remote.pathname !== allowed.pathname) return null;

@@ -4,9 +4,11 @@ import { cloud, cloudConfigured, temporaryAuthClient } from "../client";
 import { CloudError, requireOnline } from "../errors";
 import { devices } from "../devices";
 import { t } from "../../i18n";
+import { connectivity, isNetworkFailure } from "../connectivity";
+import { forgetOfflineIdentity, readOfflineIdentity, rememberOfflineIdentity, type OfflineIdentity } from "./offline-identity";
 
 export type AuthState = {
-  status: "loading" | "anonymous" | "authenticated" | "expired";
+  status: "loading" | "anonymous" | "authenticated" | "offline" | "expired";
   session: Session | null;
   ownerId: string | null;
   recovery: boolean;
@@ -27,6 +29,8 @@ let oauthState: OAuthState = { status: "idle", error: null };
 let loggingOut = false;
 let suppressAuthEvents = false;
 let authRevision = 0;
+let initialized = false;
+let offlineIdentity: OfflineIdentity | null = null;
 const nativeOAuthCallback = "autumnreader://auth/callback";
 const pendingOAuthFlowKey = "autumn-google-oauth-flow";
 const processedOAuthCallbacks = new Set<string>();
@@ -181,9 +185,17 @@ function publish(next: AuthState): void {
 }
 function accept(session: Session | null, recovery = state.recovery): void {
   authRevision++;
-  const ownerId =
-    session?.user.id ?? localStorage.getItem("autumn-offline-owner");
-  if (session) localStorage.setItem("autumn-offline-owner", session.user.id);
+  const ownerId = session?.user.id ?? offlineIdentity?.ownerId ?? null;
+  if (session) {
+    offlineIdentity = {
+      id: "offline_identity",
+      ownerId: session.user.id,
+      email: session.user.email,
+      authenticatedAt: Date.now(),
+      version: 1,
+    };
+    rememberOfflineIdentity(session.user.id, session.user.email);
+  }
   publish({
     session,
     ownerId,
@@ -195,6 +207,30 @@ function accept(session: Session | null, recovery = state.recovery): void {
       : ownerId
         ? "expired"
         : "anonymous",
+  });
+}
+function acceptOffline(identity = offlineIdentity): void {
+  authRevision++;
+  publish({
+    status: identity ? "offline" : "anonymous",
+    session: null,
+    ownerId: identity?.ownerId ?? null,
+    recovery: false,
+  });
+}
+function acceptExpired(identity = offlineIdentity): void {
+  authRevision++;
+  publish({
+    status: identity ? "expired" : "anonymous",
+    session: null,
+    ownerId: identity?.ownerId ?? null,
+    recovery: false,
+  });
+}
+function timed<T>(operation: Promise<T>, milliseconds = 4_000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new DOMException("Network request timed out", "TimeoutError")), milliseconds);
+    operation.then(resolve, reject).finally(() => window.clearTimeout(timer));
   });
 }
 export const auth = {
@@ -221,6 +257,9 @@ export const auth = {
     return () => oauthSubscribers.delete(listener);
   },
   async initialize(): Promise<void> {
+    if (initialized) return;
+    initialized = true;
+    offlineIdentity = await readOfflineIdentity();
     if (!cloudConfigured) {
       publish({
         status: "anonymous",
@@ -230,6 +269,7 @@ export const auth = {
       });
       return;
     }
+    const connection = await connectivity.initialize();
     suppressAuthEvents = true;
     cloud().auth.onAuthStateChange((event, session) => {
       // No awaited Supabase calls inside the SDK's auth lock.
@@ -237,64 +277,111 @@ export const auth = {
       if (event === "INITIAL_SESSION") return;
       if (loggingOut && event !== "SIGNED_OUT") return;
       if (event === "SIGNED_OUT") {
-        accept(null, false);
+        // SDK sign-out can be caused by an invalid/expired remote token. Only the
+        // explicit logout action is allowed to erase the device's local identity.
+        acceptExpired();
       } else {
         accept(session, event === "PASSWORD_RECOVERY");
-        if (session && navigator.onLine) window.setTimeout(() => void auth.refresh().catch(() => {}), 0);
+        if (session && connectivity.usable) window.setTimeout(() => void auth.refresh().catch(() => {}), 0);
       }
     });
-    const completedOAuth = await initializeOAuthCallbacks();
-    if (!completedOAuth) {
-      const revision = authRevision;
-      const { data, error } = await cloud().auth.getSession();
-      if (revision === authRevision) {
-        if (error) accept(null);
-        else if (data.session && navigator.onLine) {
-          const session = data.session;
-          publish({ status: "loading", session, ownerId: session.user.id, recovery: false });
-          try {
-            await devices.registerSession(session, true);
-            if (revision === authRevision) accept(session);
-          } catch (reason) {
-            if (reason instanceof CloudError && ["device_revoked", "forbidden"].includes(reason.code)) await auth.logout();
-            else if (revision === authRevision) accept(session);
-          }
-        } else accept(data.session);
+    if (connection.status !== "online") {
+      cloud().auth.stopAutoRefresh();
+      acceptOffline();
+      suppressAuthEvents = false;
+    }
+    let completedOAuth = false;
+    if (connection.status === "online") {
+      try { completedOAuth = await initializeOAuthCallbacks(); }
+      catch (reason) {
+        // A deep-link/plugin failure must not strand the whole application in
+        // the loading state. Normal persisted-session restoration can continue.
+        if (import.meta.env.DEV) console.info("OAuth callback initialization unavailable", reason);
       }
     }
-    suppressAuthEvents = false;
+    if (connection.status === "online" && !completedOAuth) {
+      const revision = authRevision;
+      try {
+        const { data, error } = await timed(cloud().auth.getSession());
+        if (revision === authRevision) {
+          if (error) {
+            if (isNetworkFailure(error)) { connectivity.markOffline(); acceptOffline(); }
+            else acceptExpired();
+          } else if (data.session) {
+            const session = data.session;
+            offlineIdentity = {
+              id: "offline_identity", ownerId: session.user.id, email: session.user.email,
+              authenticatedAt: Date.now(), version: 1,
+            };
+            rememberOfflineIdentity(session.user.id, session.user.email);
+            publish({ status: "loading", session, ownerId: session.user.id, recovery: false });
+            try {
+              await timed(devices.registerSession(session, true));
+              if (revision === authRevision) accept(session);
+            } catch (reason) {
+              if (reason instanceof CloudError && ["device_revoked", "forbidden"].includes(reason.code)) await auth.logout();
+              else if (isNetworkFailure(reason)) { connectivity.markOffline(); acceptOffline(); }
+              else if (revision === authRevision) accept(session);
+            }
+          } else acceptExpired();
+        }
+      } catch (reason) {
+        if (revision === authRevision && isNetworkFailure(reason)) {
+          connectivity.markOffline(reason instanceof DOMException && reason.name === "TimeoutError" ? "timeout" : "network");
+          acceptOffline();
+        } else if (revision === authRevision) acceptExpired();
+      }
+      suppressAuthEvents = false;
+    }
+    if (completedOAuth) suppressAuthEvents = false;
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) cloud().auth.stopAutoRefresh();
       else {
-        cloud().auth.startAutoRefresh();
-        void auth.refresh().catch(() => {});
+        if (connectivity.usable) {
+          cloud().auth.startAutoRefresh();
+          void auth.refresh().catch(() => {});
+        }
       }
     });
-    window.addEventListener(
-      "online",
-      () => void auth.refresh().catch(() => {}),
-    );
+    connectivity.subscribe(connectionState => {
+      if (connectionState.status === "offline") {
+        cloud().auth.stopAutoRefresh();
+        if (state.ownerId && state.status !== "offline") acceptOffline();
+      } else if (connectionState.status === "online") {
+        cloud().auth.startAutoRefresh();
+        if (state.ownerId && state.status !== "loading") void auth.refresh().catch(() => {});
+      }
+    });
     window.setInterval(() => {
-      if (!document.hidden && navigator.onLine && state.ownerId) void auth.refresh().catch(() => {});
-    }, 30_000);
+      if (!document.hidden && connectivity.usable && state.ownerId) void auth.refresh().catch(() => {});
+    }, 60_000);
   },
   async refresh(): Promise<void> {
-    if (!cloudConfigured || !navigator.onLine || !state.ownerId) return;
+    if (!cloudConfigured || !connectivity.usable || !state.ownerId) return;
     const owner = state.ownerId;
-    const { data, error } = await cloud().auth.getSession();
+    let result: Awaited<ReturnType<ReturnType<typeof cloud>["auth"]["getSession"]>>;
+    try { result = await timed(cloud().auth.getSession()); }
+    catch (reason) {
+      if (state.ownerId === owner && isNetworkFailure(reason)) { connectivity.markOffline(); acceptOffline(); }
+      return;
+    }
+    const { data, error } = result;
     if (state.ownerId !== owner || loggingOut) return;
     if (error) {
-      accept(null);
+      if (isNetworkFailure(error)) { connectivity.markOffline(); acceptOffline(); }
+      else acceptExpired();
       return;
     }
     if (data.session) {
-      try { await devices.registerSession(data.session, true); }
+      try { await timed(devices.registerSession(data.session, true)); }
       catch (reason) {
         if (reason instanceof CloudError && ["device_revoked", "forbidden"].includes(reason.code)) await auth.logout();
+        else if (isNetworkFailure(reason)) { connectivity.markOffline(); acceptOffline(); }
         else if (state.ownerId === owner && state.status !== "authenticated") accept(data.session);
         return;
       }
     }
+    if (!data.session) { acceptExpired(); return; }
     if (state.ownerId === owner && !loggingOut &&
         (state.status !== "authenticated" || state.session?.access_token !== data.session?.access_token))
       accept(data.session);
@@ -357,12 +444,13 @@ export const auth = {
     loggingOut = true;
     devices.reset();
     cloud().auth.stopAutoRefresh();
-    localStorage.removeItem("autumn-offline-owner");
+    offlineIdentity = null;
+    await forgetOfflineIdentity();
     clearPendingOAuth();
     clearPkceVerifiers();
     accept(null, false);
     try {
-      if (navigator.onLine) await cloud().auth.signOut({ scope: "local" });
+      if (connectivity.usable) await cloud().auth.signOut({ scope: "local" });
     } catch { /* A failed network sign-out must not restore the local session. */ }
     finally {
       for (const key of [
@@ -408,7 +496,7 @@ export const auth = {
     publish({ ...state, recovery: false });
   },
   async changeOwnPassword(currentPassword: string, nextPassword: string): Promise<void> {
-    if (!navigator.onLine) throw new Error(t("passwordOffline"));
+    if (!connectivity.usable) throw new Error(t("passwordOffline"));
     const owner = auth.requireUser();
     if (!currentPassword) throw new Error(t("currentPasswordWrong"));
     if (nextPassword.length < 8) throw new Error(t("passwordTooShort"));

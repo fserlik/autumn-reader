@@ -4,6 +4,7 @@ import { operationsForBook } from "./services/sync/operations";
 import { auth } from "./services/auth";
 import { t } from "./i18n";
 import { BOOK_CONTENT_METADATA_VERSION } from "./services/books/content-metadata-version";
+import { validBookHeader } from "../shared/book-file";
 
 export type BookFormat = "pdf" | "epub";
 
@@ -71,6 +72,17 @@ export function nativeBookUrl(path: string): string {
 let cloudLoader: ((book: StoredBook) => Promise<StoredBook>) | undefined;
 export function setCloudBookLoader(loader: (book: StoredBook) => Promise<StoredBook>): void { cloudLoader = loader; }
 export function hasLocalFile(book: StoredBook): boolean { return Boolean(book.nativeDataPath || book.data.size); }
+/** Fast startup check: native Android records have already been existence-checked
+ * by the plugin; IndexedDB blobs must at least have the declared file signature. */
+export async function hasReadableLocalFile(book: StoredBook): Promise<boolean> {
+  if (book.nativeDataPath) return (book.nativeDataSize ?? 0) > 0;
+  if (!book.data.size) return false;
+  try {
+    return validBookHeader(new Uint8Array(await book.data.slice(0, 8).arrayBuffer()), book.format);
+  } catch {
+    return false;
+  }
+}
 export function assertBookOwner(book: StoredBook): void {
   if (!book.ownerId || book.ownerId !== auth.state.ownerId) throw new Error(t("bookOtherAccount"));
 }
@@ -141,7 +153,13 @@ async function allBookRecords(): Promise<StoredBook[]> {
   const books = await runRequest("readonly", (store) => store.getAll()) as StoredBook[];
   if (!nativeAndroid) return books;
   const native = await invoke<{ books: Omit<StoredBook, "data">[] }>("native_list_books");
-  const merged = new Map(books.map((book) => [book.id, book]));
+  const nativeIds = new Set(native.books.map(book => book.id));
+  // The native index verifies that data.bin still exists. Do not keep a stale
+  // path from IndexedDB after Android storage cleanup or a partial restore.
+  const merged = new Map(books.map((book) => [book.id, nativeIds.has(book.id)
+    ? book
+    : { ...book, nativeDataPath: undefined, nativeDataSize: undefined,
+        nativeCoverPath: undefined, nativeCoverSize: undefined }]));
   for (const record of native.books) {
     const previous = merged.get(record.id);
     merged.set(record.id, { ...record, ...previous, nativeDataPath: record.nativeDataPath,

@@ -1,6 +1,6 @@
 [package]
 name = "autumn-reader"
-version = "0.4.1"
+version = "0.5.0"
 description = "A desktop book reader"
 authors = ["Autumn Reader contributors"]
 edition = "2021"

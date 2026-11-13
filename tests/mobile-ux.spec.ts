@@ -46,35 +46,58 @@ test("auth shares Android top inset and theme tokens across its modes", async ({
 
 test("mobile reader dedicates the top bar to tools and the bottom bar to navigation", async ({ page }, info) => {
   test.skip(info.project.name !== "android", "Mobile toolbar");
+  await page.setViewportSize({ width: 375, height: 667 });
   const cloud = await mockCloud(page, true); cloud.setPlan("premium"); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Mobile.epub", mimeType: "application/epub+zip", buffer: await multiChapterFixture() });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   const toolbar = page.locator(".reader-toolbar");
   expect(await toolbar.evaluate(el => el.getBoundingClientRect().height)).toBeLessThanOrEqual(60);
   await expect(page.locator("#next-button")).toBeVisible();
-  await expect(page.locator("#brightness-toggle")).toBeVisible();
-  await expect(page.locator("#size-toggle")).toBeVisible();
-  await expect(page.locator("#layout-toggle")).toBeVisible();
+  await expect(page.locator("#brightness-toggle")).toBeHidden();
+  await expect(page.locator("#size-toggle")).toBeHidden();
+  await expect(page.locator("#layout-toggle")).toBeHidden();
   await expect(page.locator("#speech-toggle")).toBeVisible();
   await expect(page.locator(".sidebar")).toBeHidden();
   await expect(page.locator("#all-notes-button")).toBeVisible();
+  await expect(page.locator("#notes-count")).toBeHidden();
+  await expect(page.locator("#page-overview-button")).toBeVisible();
   await expect(page.locator("#book-search-button")).toBeVisible();
+  await expect(page.locator("#reader-settings-toggle")).toBeVisible();
   await expect(page.locator("#reader-toc")).toBeVisible();
+  const notesButtonStyle = await page.evaluate(() => {
+    const notes = document.querySelector<HTMLElement>("#all-notes-button")!;
+    const notesIcon = notes.querySelector("svg")!;
+    const searchIcon = document.querySelector("#book-search-button svg")!;
+    const style = getComputedStyle(notes);
+    return { border: style.borderTopWidth, background: style.backgroundColor,
+      notesColor: getComputedStyle(notesIcon).color, searchColor: getComputedStyle(searchIcon).color };
+  });
+  expect(notesButtonStyle).toMatchObject({ border: "0px", background: "rgba(0, 0, 0, 0)" });
+  expect(notesButtonStyle.notesColor).toBe(notesButtonStyle.searchColor);
   expect(await page.locator(".reader-bottom").evaluate(element => innerHeight - element.getBoundingClientRect().bottom)).toBeGreaterThanOrEqual(23);
-  await page.locator("#size-toggle").click();
+  const stableSurface = await page.locator("#reading-surface").boundingBox();
+  await page.locator("#reader-settings-toggle").click();
+  await expect(page.locator("#reader-settings-appearance-tab")).toBeVisible();
   await expect(page.locator("#smaller-button")).toBeVisible();
-  await page.locator("#brightness-toggle").click();
   await expect(page.locator("#reader-brightness")).toBeVisible();
+  await page.locator("#reader-show-notes").scrollIntoViewIfNeeded();
+  await expect(page.locator("#reader-show-notes")).toHaveCSS("opacity", "0");
+  const switchGeometry = await page.locator(".reader-switch > span").boundingBox();
+  expect(switchGeometry).toMatchObject({ width: 44, height: 26 });
+  await page.screenshot({ path: info.outputPath("reader-notes-switch.png") });
+  expect(await page.locator("#reading-surface").boundingBox()).toEqual(stableSurface);
+  await page.locator("#reader-settings-toggle").click();
   await page.locator("#speech-toggle").click();
   await expect(page.locator("#tts-play-pause")).toBeVisible();
   await expect(page.locator("#tts-rate-reader")).toBeVisible();
-  await page.locator("#layout-toggle").click();
+  await page.locator("#reader-settings-toggle").click();
+  await page.locator("#reader-settings-layout-tab").click();
   await expect(page.locator("#book-layout-details")).toBeVisible();
   await page.screenshot({ path: info.outputPath("reader-layout-panel.png") });
   await page.goBack();
   await expect(page.locator("#view-reader")).toBeVisible();
   await expect(page.locator("#reader-options")).toBeHidden();
-  await page.locator("#brightness-toggle").click();
+  await page.locator("#reader-settings-toggle").click();
   await page.keyboard.press("Escape");
   await expect(page.locator("#reader-options")).toBeHidden();
   await page.locator("#book-search-button").click();
@@ -89,8 +112,8 @@ test("mobile note tabs stay outside the reading page while preserving their touc
   test.skip(info.project.name !== "android", "Mobile note marker geometry");
   await mockCloud(page, true); await page.goto("/"); await login(page);
   await page.locator("#file-input").setInputFiles({ name: "Notes.epub", mimeType: "application/epub+zip", buffer: await epubFixture() });
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
-  await page.frameLocator(".epub-frame iframe").locator("p").first().evaluate((paragraph) => {
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
+  await page.frameLocator("#reader-content .epub-frame iframe").locator("p").first().evaluate((paragraph) => {
     const range = document.createRange(); range.selectNodeContents(paragraph);
     const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
     paragraph.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 80, clientY: 120 }));
@@ -100,7 +123,7 @@ test("mobile note tabs stay outside the reading page while preserving their touc
   await page.locator("#note-save").click();
   const markerGeometry = () => page.locator(".note-marker").evaluate((marker) => {
     const tab = getComputedStyle(marker, "::before"), markerRect = marker.getBoundingClientRect();
-    const paperRect = document.querySelector(".epub-frame")!.getBoundingClientRect(), visibleWidth = Number.parseFloat(tab.width);
+    const paperRect = document.querySelector("#reader-content .epub-frame")!.getBoundingClientRect(), visibleWidth = Number.parseFloat(tab.width);
     return { width: markerRect.width, height: markerRect.height, rightGap: innerWidth - markerRect.right,
       paperOverlap: paperRect.right - (markerRect.right - visibleWidth) };
   });

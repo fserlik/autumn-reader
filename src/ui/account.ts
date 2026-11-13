@@ -3,6 +3,7 @@ import { cloudConfigured } from "../services/client";
 import { errorMessage } from "../services/errors";
 import leafUrl from "../assets/autumn-leaf.png";
 import { t } from "../i18n";
+import { connectivity } from "../services/connectivity";
 
 type EntryMode = "login" | "register" | "recover" | "verify";
 type VerificationType = "signup" | "recovery";
@@ -159,7 +160,7 @@ export function mountAccount(
       busy ||
       state.status === "loading" ||
       !cloudConfigured ||
-      !navigator.onLine ||
+      !connectivity.usable ||
       !resend.email ||
       resend.count >= maxResends ||
       remainingSeconds > 0;
@@ -200,9 +201,9 @@ export function mountAccount(
       enteredOwner = undefined;
     }
     const canReadCached =
-      state.status === "expired" &&
+      (state.status === "offline" || state.status === "expired") &&
       Boolean(state.ownerId) &&
-      (!navigator.onLine || enteredOwner === state.ownerId);
+      (state.status === "offline" || !connectivity.usable || enteredOwner === state.ownerId);
     const open =
       state.status !== "loading" &&
       !state.recovery &&
@@ -234,7 +235,9 @@ export function mountAccount(
       ? t("authChecking")
       : !cloudConfigured
         ? t("authUnconfigured")
-        : state.status === "expired"
+        : state.status === "offline"
+          ? t("authOfflineAccess")
+          : state.status === "expired"
           ? t("authExpired")
           : "";
     form.hidden = loading || state.recovery || mode === "verify";
@@ -283,7 +286,7 @@ export function mountAccount(
     password.disabled =
       busy || loading || !cloudConfigured || mode === "recover";
     username.disabled = busy || loading || !cloudConfigured || mode !== "register";
-    googleButton.disabled = busy || loading || !cloudConfigured || !navigator.onLine;
+    googleButton.disabled = busy || loading || !cloudConfigured || !connectivity.usable;
     googleLabel.textContent = googleBusy ? t("authGoogleOpening") : t("authContinueGoogle");
     logout.disabled = busy || loading;
     updateResendUi(state);
@@ -411,6 +414,7 @@ export function mountAccount(
     saveResendState(resend);
   }
   auth.subscribe(render);
+  connectivity.subscribe(() => render(auth.state));
   auth.subscribeOAuth((oauth) => {
     if (oauth.status === "waiting") message(t("authGoogleWaiting"));
     else if (oauth.status === "exchanging") message(t("authGoogleFinishing"));

@@ -11,6 +11,7 @@ test("Home keeps the real reading hero and gallery without import or favorites",
   await expect(page.locator("#import-button")).toBeHidden();
   await expect(page.locator("#hero-title")).toHaveText(/Cloud EPUB|La hipótesis del amor/);
   await expect(page.locator("#hero-author")).toHaveText(/Author|Ali Hazelwood/);
+  await expect(page.locator("#hero-art .book-cover")).toBeVisible();
   await expect(page.locator("#hero-art .book-cover")).toHaveCSS("overflow", "hidden");
   if (testInfo.project.name === "desktop") await expect(page.locator("#hero-art .book-cover")).not.toHaveCSS("transform", "none");
   await expect(page.locator("#hero-art .book-cover > img")).toHaveCSS("transform", "none");
@@ -24,11 +25,13 @@ test("Home keeps the real reading hero and gallery without import or favorites",
       page.locator("#hero-art .book-cover").boundingBox(),
     ]);
     expect(heroBox).not.toBeNull(); expect(coverBox).not.toBeNull();
-    expect(heroBox!.x).toBeLessThanOrEqual(1);
-    expect(Math.abs(heroBox!.width - viewportWidth)).toBeLessThanOrEqual(1);
-    expect(Math.abs(coverBox!.width - heroBox!.width)).toBeLessThanOrEqual(1);
+    expect(heroBox!.x).toBeGreaterThanOrEqual(15);
+    expect(heroBox!.width).toBeLessThanOrEqual(viewportWidth - 30);
+    expect(coverBox!.width).toBeLessThan(heroBox!.width * .6);
+    expect(coverBox!.height).toBeGreaterThan(coverBox!.width * 1.3);
     await expect(page.locator("#hero-art .book-cover")).toHaveCSS("border-top-width", "0px");
-    await expect(page.locator("#hero-art .book-cover")).toHaveCSS("transform", "none");
+    await expect(page.locator("#hero-art .book-cover")).not.toHaveCSS("transform", "none");
+    await expect(page.locator("#nav-book-count")).toHaveCount(0);
   }
   await expect(page.locator("#view-home .favorite-grid, #view-home #favorite-list, #view-home .favorites-heading")).toHaveCount(0);
   await expect(page.locator("#view-home .book-status, #view-home .book-cloud-button, #view-home .book-menu, #view-home .favorite-button")).toHaveCount(0);
@@ -37,7 +40,7 @@ test("Home keeps the real reading hero and gallery without import or favorites",
   await page.setViewportSize({ width: 820, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.locator("#hero-action").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   expect(cloud.downloads).toBe(1);
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator('.nav-button[data-view="library"]').click();
@@ -106,7 +109,7 @@ test("Continue reading hides its scrollbar but keeps every book reachable", asyn
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.locator("#hero-action").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
 });
 
 test("Home features the latest book once and starts its shelf with the previous read", async ({ page }, testInfo) => {
@@ -117,15 +120,15 @@ test("Home features the latest book once and starts its shelf with the previous 
     { name: "Second.epub", mimeType: "application/epub+zip", buffer: await epubFixture("second-home", "Second read") },
     { name: "Third.epub", mimeType: "application/epub+zip", buffer: await epubFixture("third-home", "Latest read") },
   ]);
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   const readerBack = page.locator("#desktop-reader-back:visible, #back-button:visible");
   await readerBack.click();
 
   await page.locator(".library-book-card", { hasText: "Second read" }).click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await readerBack.click();
   await page.locator(".library-book-card", { hasText: "Latest read" }).click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await readerBack.click();
   await page.locator('.nav-button[data-view="home"]').click();
 
@@ -163,7 +166,7 @@ test("Profile shows identity, statistics, favorites and real reviews only", asyn
   await page.screenshot({ path: testInfo.outputPath("profile-dark.png"), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.locator("#profile-favorites .presentation-cover").click();
-  await expect(page.locator(".epub-frame iframe")).toBeVisible();
+  await expect(page.locator("#reader-content .epub-frame iframe")).toBeVisible();
   await page.locator("#desktop-reader-back:visible, #back-button:visible").click();
   await page.locator(".profile-view-all").click();
   await expect(page.locator("#library-status-filter")).toHaveValue("favorites");

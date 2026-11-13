@@ -10,6 +10,7 @@ import freeLogoUrl from "../assets/autumn-free-logo.png";
 import premiumEmblemUrl from "../assets/autumnpro-logo.png";
 import { accountIcon } from "./account-icons";
 import { translationService, type TranslationUsage } from "../services/translation";
+import { connectivity } from "../services/connectivity";
 
 const size = (bytes: number): string => {
   const unit = bytes >= 1073741824 ? 1073741824 : 1048576;
@@ -232,7 +233,7 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
     if (!deviceDialog.open) deviceDialog.showModal();
     limitMessage.textContent = limited ? t("deviceLimitReached") : "";
     deviceRows.replaceChildren(); deviceMessage.textContent = "";
-    if (!navigator.onLine) { deviceMessage.textContent = t("deviceOffline"); return; }
+    if (!connectivity.usable) { deviceMessage.textContent = t("deviceOffline"); return; }
     try {
       const entries = await devices.list();
       if (!deviceDialog.open || token !== deviceLoad) return;
@@ -266,7 +267,7 @@ export function mountAccountPlans(accountParent: HTMLElement): { actions: HTMLEl
   async function refresh(): Promise<void> {
     const activeOwner = auth.state.ownerId;
     if (!activeOwner || auth.state.status !== "authenticated") return;
-    if (!navigator.onLine) { warning.textContent = t("quotaOffline"); return; }
+    if (!connectivity.usable) { warning.textContent = t("quotaOffline"); return; }
     const token = ++generation;
     try {
       const access = await devices.register();
